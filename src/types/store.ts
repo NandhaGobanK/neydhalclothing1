@@ -7,7 +7,7 @@ export type SareeFabric =
   | 'Tussar Handloom'
   | 'Cotton Silk';
 
-export type SareeColor =
+export type StandardSareeColor =
   | 'Crimson Red'
   | 'Emerald Green'
   | 'Lavender'
@@ -16,6 +16,8 @@ export type SareeColor =
   | 'Rani Pink'
   | 'Midnight Black'
   | 'Ivory Cream';
+
+export type SareeColor = StandardSareeColor | (string & {});
 
 export interface Product {
   id: string;
@@ -142,16 +144,19 @@ export interface StorefrontDisplaySettings {
   heroHeadline: string;
   heroSubheadline: string;
   showHeroBanner: boolean;
+  heroBannerImageUrl?: string; // Optional custom uploaded hero banner
   showTrustBadges: boolean;
   showCraftsmanshipStory: boolean;
   storyTitle: string;
   storyContent: string;
   showTrackOrder: boolean;
+  allowPublicCancellation: boolean;
   freeShippingText: string;
 }
 
 export interface StoreSettings {
   boutiqueName: string;
+  logoUrl?: string; // Optional custom uploaded brand logo
   tagline: string;
   contactPhone: string;
   contactEmail: string;

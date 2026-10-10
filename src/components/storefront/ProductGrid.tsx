@@ -42,6 +42,16 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
     'Ivory Cream',
   ];
 
+  const allAvailableColors = useMemo(() => {
+    const list = [...colors];
+    publicProducts.forEach((p) => {
+      if (p.color && !list.includes(p.color as any)) {
+        list.push(p.color as any);
+      }
+    });
+    return list;
+  }, [publicProducts]);
+
   const filteredProducts = useMemo(() => {
     return publicProducts
       .filter((p) => {
@@ -201,7 +211,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
             >
               All Colors
             </button>
-            {colors.map((color) => (
+            {allAvailableColors.map((color) => (
               <button
                 key={color}
                 onClick={() => setSelectedColor(color)}

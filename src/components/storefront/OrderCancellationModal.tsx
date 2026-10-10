@@ -97,6 +97,18 @@ export const OrderCancellationModal: React.FC<OrderCancellationModalProps> = ({
 
         {/* Content */}
         <div className="p-5 sm:p-6 space-y-4 text-xs">
+          {settings.storefrontDisplay?.allowPublicCancellation === false && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Public Cancellation Requests Disabled</p>
+                <p className="text-[11px] leading-relaxed">
+                  Direct online cancellations are currently disabled by boutique policy. Please contact our concierge team directly on WhatsApp for assistance with pending or confirmed orders.
+                </p>
+              </div>
+            </div>
+          )}
+
           {statusMsg && (
             <div
               className={`p-3.5 rounded-2xl flex items-start gap-2.5 ${

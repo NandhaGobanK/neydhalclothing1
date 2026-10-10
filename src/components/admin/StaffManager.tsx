@@ -18,6 +18,7 @@ import {
   Clock,
   X,
   Plus,
+  AlertCircle,
 } from 'lucide-react';
 
 export const StaffManager: React.FC = () => {
@@ -25,6 +26,7 @@ export const StaffManager: React.FC = () => {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [staffToDelete, setStaffToDelete] = useState<StaffMember | null>(null);
 
   // Form states
   const [name, setName] = useState('');
@@ -218,13 +220,9 @@ export const StaffManager: React.FC = () => {
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm(`Remove staff member "${staff.name}"?`)) {
-                        deleteStaffMember(staff.id);
-                      }
-                    }}
+                    onClick={() => setStaffToDelete(staff)}
                     className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50"
-                    title="Delete Staff"
+                    title="Remove Staff"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -413,6 +411,75 @@ export const StaffManager: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Removal Confirmation Modal (Prompt Request: Once removed, staff cannot log in) */}
+      {staffToDelete && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  <Trash2 className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Remove Staff Member
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Revoke credentials & boutique console access
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setStaffToDelete(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-1">
+                <p className="font-bold text-sm text-neutral-900">{staffToDelete.name}</p>
+                <p className="text-neutral-600">Username: <strong className="text-neutral-900 font-mono">@{staffToDelete.username}</strong></p>
+                <p className="text-neutral-600">Role: <span className="font-semibold text-rose-900 uppercase">{staffToDelete.role}</span></p>
+                <p className="text-neutral-600">Phone: {staffToDelete.phone || 'Not specified'}</p>
+              </div>
+
+              <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-rose-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-700 shrink-0" />
+                  <span>Permanent Access Revocation</span>
+                </p>
+                <p className="text-[11px] text-rose-800 leading-relaxed">
+                  Once removed, this staff member will be <strong>permanently barred from logging into the staff login portal</strong>. Even with their old credentials or username, they will not be able to sign in.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setStaffToDelete(null)}
+                  className="py-2.5 px-4 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-semibold transition text-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteStaffMember(staffToDelete.id);
+                    setStaffToDelete(null);
+                  }}
+                  className="py-2.5 px-4 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-sm shadow-rose-900/30"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Yes, Revoke & Remove</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

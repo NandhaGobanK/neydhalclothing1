@@ -243,9 +243,11 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               {matchedOrders.map((order) => {
                 const currentStep = getStatusStepIndex(order.status);
                 const isCancelled = order.status === 'Cancelled' || order.status === 'Rejected';
+                const isPendingOrConfirmed = order.status === 'Pending' || order.status === 'Confirmed';
+                const isPublicCancellationEnabled = settings.storefrontDisplay?.allowPublicCancellation !== false;
                 const canRequestCancel =
-                  !isCancelled &&
-                  order.status !== 'Delivered' &&
+                  isPublicCancellationEnabled &&
+                  isPendingOrConfirmed &&
                   !order.cancellationRequest?.requested;
 
                 return (
@@ -509,11 +511,17 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                         </button>
                       ) : (
                         <span className="text-[11px] text-neutral-400">
-                          {isCancelled
+                          {!isPublicCancellationEnabled
+                            ? 'Cancellation requests disabled'
+                            : isCancelled
                             ? 'Order already cancelled'
+                            : order.status === 'Shipped'
+                            ? 'Dispatched (Cancellations not permitted after shipping)'
                             : order.status === 'Delivered'
                             ? 'Delivered'
-                            : 'Cancellation requested'}
+                            : order.cancellationRequest?.requested
+                            ? 'Cancellation requested (Under Review)'
+                            : `Cannot cancel in ${order.status} state`}
                         </span>
                       )}
 

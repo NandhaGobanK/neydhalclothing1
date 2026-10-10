@@ -15,9 +15,18 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
           {/* Brand info */}
           <div className="md:col-span-2 space-y-3">
-            <h3 className="font-serif text-xl font-bold text-amber-100 flex items-center gap-2">
-              <span>{settings.boutiqueName}</span>
-            </h3>
+            <div className="flex items-center gap-2.5">
+              {settings.logoUrl && (
+                <img
+                  src={settings.logoUrl}
+                  alt={settings.boutiqueName}
+                  className="h-9 w-auto max-w-[140px] object-contain rounded-md"
+                />
+              )}
+              <h3 className="font-serif text-xl font-bold text-amber-100">
+                {settings.boutiqueName}
+              </h3>
+            </div>
             <p className="text-neutral-400 text-xs leading-relaxed max-w-md font-light">
               Dedicated to preserving India's royal loom traditions. Every saree in our boutique is individually handcrafted by master weavers in Kanchipuram, Varanasi, Chanderi, and Bengal. We support certified handloom weaver cooperatives.
             </p>

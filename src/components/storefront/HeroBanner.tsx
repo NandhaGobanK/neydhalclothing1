@@ -30,7 +30,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
         {/* Background Hero Image with measured contrast scrim */}
         <div className="absolute inset-0 z-0">
           <img
-            src="/src/assets/images/hero_saree_atelier_1791651761357.jpg"
+            src={display.heroBannerImageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
             alt="Luxury Saree Boutique Showroom"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover object-center opacity-40 scale-105 transform hover:scale-100 transition-transform duration-1000 ease-out"

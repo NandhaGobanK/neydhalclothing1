@@ -39,6 +39,7 @@ export const SettingsManager: React.FC = () => {
     storyTitle: 'The Heritage Loom Legacy',
     storyContent: 'Every saree in our collection is an heirloom woven with mulberry silk and authentic zari by master weavers across Kanchipuram and Varanasi.',
     showTrackOrder: true,
+    allowPublicCancellation: true,
     freeShippingText: 'Free Insured Express Delivery across India (Tamper-Proof Box)',
   };
 
@@ -48,6 +49,9 @@ export const SettingsManager: React.FC = () => {
   const [showTrustBadges, setShowTrustBadges] = useState(defaultDisplay.showTrustBadges);
   const [freeShippingText, setFreeShippingText] = useState(defaultDisplay.freeShippingText);
   const [showTrackOrder, setShowTrackOrder] = useState(defaultDisplay.showTrackOrder);
+  const [allowPublicCancellation, setAllowPublicCancellation] = useState(
+    settings.storefrontDisplay?.allowPublicCancellation !== false
+  );
   const [showCraftsmanshipStory, setShowCraftsmanshipStory] = useState(defaultDisplay.showCraftsmanshipStory);
   const [storyTitle, setStoryTitle] = useState(defaultDisplay.storyTitle);
   const [storyContent, setStoryContent] = useState(defaultDisplay.storyContent);
@@ -66,6 +70,7 @@ export const SettingsManager: React.FC = () => {
   const [adminPin, setAdminPin] = useState(settings.adminPin);
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const handleSaveAll = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +91,7 @@ export const SettingsManager: React.FC = () => {
         storyTitle: storyTitle.trim(),
         storyContent: storyContent.trim(),
         showTrackOrder,
+        allowPublicCancellation,
         freeShippingText: freeShippingText.trim(),
       },
       announcement: {
@@ -99,7 +105,7 @@ export const SettingsManager: React.FC = () => {
         qrCodeUrl: qrCodeUrl.trim(),
         instructions: paymentInstructions.trim(),
       },
-      adminPin: adminPin.trim() || '8899',
+      adminPin: adminPin.trim() || '889988',
     });
 
     setSavedSuccess(true);
@@ -182,6 +188,23 @@ export const SettingsManager: React.FC = () => {
                   className="rounded text-rose-900"
                 />
                 <span className="font-semibold text-neutral-800">Show 'Track Order' Feature</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer sm:col-span-3 pt-1 border-t border-neutral-200">
+                <input
+                  type="checkbox"
+                  checked={allowPublicCancellation}
+                  onChange={(e) => setAllowPublicCancellation(e.target.checked)}
+                  className="rounded text-rose-900"
+                />
+                <div className="flex-1">
+                  <span className="font-semibold text-neutral-800 block">
+                    Enable Customer Order Cancellation Requests (Pending & Confirmed Only)
+                  </span>
+                  <span className="text-[11px] text-neutral-500 font-normal">
+                    When enabled, customers can submit cancellation and refund requests while orders are in Pending or Confirmed state. Once an order is Shipped, cancellations are automatically locked.
+                  </span>
+                </div>
               </label>
             </div>
 
@@ -514,7 +537,7 @@ export const SettingsManager: React.FC = () => {
                 value={adminPin}
                 onChange={(e) => setAdminPin(e.target.value.replace(/[^0-9]/g, ''))}
                 maxLength={6}
-                placeholder="889900"
+                placeholder="889988"
                 className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-sm tracking-wider text-neutral-900"
               />
               <p className="text-[11px] text-neutral-500 mt-1">
@@ -523,19 +546,40 @@ export const SettingsManager: React.FC = () => {
             </div>
 
             <div className="pt-4 sm:pt-0">
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('Restore boutique catalog, inventory, and settings back to factory state?')) {
-                    resetToInitialData();
-                    alert('Boutique catalog has been restored to factory settings.');
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-300 text-rose-800 hover:bg-rose-50 text-xs font-semibold transition"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Restore Factory Catalog & State</span>
-              </button>
+              {confirmReset ? (
+                <div className="space-y-1.5 animate-in fade-in">
+                  <p className="text-[11px] font-bold text-rose-700">Restore factory catalog, stock & settings?</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetToInitialData();
+                        setConfirmReset(false);
+                        setSavedSuccess(true);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-rose-700 text-white hover:bg-rose-800 text-xs font-bold transition shadow-xs"
+                    >
+                      Yes, Restore Defaults
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmReset(false)}
+                      className="px-2.5 py-1.5 rounded-xl border border-neutral-300 text-neutral-600 hover:bg-neutral-100 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-300 text-rose-800 hover:bg-rose-50 text-xs font-semibold transition"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restore Factory Catalog & State</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

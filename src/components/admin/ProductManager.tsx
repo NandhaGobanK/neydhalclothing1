@@ -14,6 +14,8 @@ import {
   X,
   Upload,
   Sparkles,
+  Lock,
+  AlertCircle,
 } from 'lucide-react';
 
 export const ProductManager: React.FC = () => {
@@ -21,6 +23,7 @@ export const ProductManager: React.FC = () => {
 
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
   // Form Fields
   const [productCode, setProductCode] = useState('');
@@ -28,7 +31,11 @@ export const ProductManager: React.FC = () => {
   const [subtitle, setSubtitle] = useState('');
   const [description, setDescription] = useState('');
   const [fabric, setFabric] = useState<SareeFabric>('Kanjivaram Silk');
-  const [color, setColor] = useState<SareeColor>('Crimson Red');
+  const [selectedColorOption, setSelectedColorOption] = useState<string>('Crimson Red');
+  const [customColor, setCustomColor] = useState('');
+  // Map of SKU codes permanently given for each color for this product
+  const [assignedColorCodes, setAssignedColorCodes] = useState<Record<string, string>>({});
+
   const [price, setPrice] = useState<number>(25000);
   const [originalPrice, setOriginalPrice] = useState<number>(30000);
   const [stockStatus, setStockStatus] = useState<'in_stock' | 'out_of_stock' | 'limited'>('in_stock');
@@ -45,9 +52,11 @@ export const ProductManager: React.FC = () => {
   const [lengthMeters, setLengthMeters] = useState(6.3);
   const [occasion, setOccasion] = useState('Bridal & Wedding');
 
-  const generateSuggestedSku = (fab: SareeFabric, col: SareeColor) => {
-    const prefix = fab.substring(0, 3).toUpperCase();
-    const colPrefix = col.substring(0, 4).toUpperCase();
+  const generateSuggestedSku = (fab: string, col: string) => {
+    const cleanFab = fab.replace(/[^a-zA-Z]/g, '');
+    const cleanCol = col.replace(/[^a-zA-Z]/g, '');
+    const prefix = (cleanFab.substring(0, 3) || 'SAR').toUpperCase();
+    const colPrefix = (cleanCol.substring(0, 4) || 'COL').toUpperCase();
     const randomCode = Math.floor(100 + Math.random() * 900);
     return `${prefix}-${colPrefix}-${randomCode}`;
   };
@@ -62,7 +71,7 @@ export const ProductManager: React.FC = () => {
     'Cotton Silk',
   ];
 
-  const colors: SareeColor[] = [
+  const standardColors: SareeColor[] = [
     'Crimson Red',
     'Emerald Green',
     'Lavender',
@@ -75,12 +84,17 @@ export const ProductManager: React.FC = () => {
 
   const openAddModal = () => {
     setEditingProduct(null);
-    setProductCode(generateSuggestedSku('Kanjivaram Silk', 'Crimson Red'));
+    const initialFabric: SareeFabric = 'Kanjivaram Silk';
+    const initialColor = 'Crimson Red';
+    const initialCode = generateSuggestedSku(initialFabric, initialColor);
+    setAssignedColorCodes({ [initialColor.toLowerCase()]: initialCode });
+    setProductCode(initialCode);
+    setFabric(initialFabric);
+    setSelectedColorOption(initialColor);
+    setCustomColor('');
     setTitle('');
     setSubtitle('');
     setDescription('');
-    setFabric('Kanjivaram Silk');
-    setColor('Crimson Red');
     setPrice(28000);
     setOriginalPrice(34000);
     setStockStatus('in_stock');
@@ -99,12 +113,21 @@ export const ProductManager: React.FC = () => {
 
   const openEditModal = (prod: Product) => {
     setEditingProduct(prod);
-    setProductCode(prod.productCode || generateSuggestedSku(prod.fabric, prod.color));
+    const isStandard = standardColors.includes(prod.color as any);
+    if (isStandard) {
+      setSelectedColorOption(prod.color);
+      setCustomColor('');
+    } else {
+      setSelectedColorOption('Other');
+      setCustomColor(prod.color);
+    }
+    const codeMap = { [prod.color.toLowerCase()]: prod.productCode };
+    setAssignedColorCodes(codeMap);
+    setProductCode(prod.productCode);
     setTitle(prod.title);
     setSubtitle(prod.subtitle || '');
     setDescription(prod.description);
     setFabric(prod.fabric);
-    setColor(prod.color);
     setPrice(prod.price);
     setOriginalPrice(prod.originalPrice || prod.price);
     setStockStatus(prod.stockStatus);
@@ -119,6 +142,51 @@ export const ProductManager: React.FC = () => {
     setLengthMeters(prod.lengthMeters || 6.3);
     setOccasion(prod.occasion || 'Festive');
     setIsEditingModalOpen(true);
+  };
+
+  const handleColorDropdownChange = (val: string) => {
+    setSelectedColorOption(val);
+    if (editingProduct) {
+      // For existing products, the SKU code is permanently fixed
+      return;
+    }
+    if (val === 'Other') {
+      const colName = customColor.trim() || 'Custom Colour';
+      const key = colName.toLowerCase();
+      if (assignedColorCodes[key]) {
+        setProductCode(assignedColorCodes[key]);
+      } else {
+        const newCode = generateSuggestedSku(fabric, colName);
+        setAssignedColorCodes((prev) => ({ ...prev, [key]: newCode }));
+        setProductCode(newCode);
+      }
+    } else {
+      const key = val.toLowerCase();
+      if (assignedColorCodes[key]) {
+        setProductCode(assignedColorCodes[key]);
+      } else {
+        const newCode = generateSuggestedSku(fabric, val);
+        setAssignedColorCodes((prev) => ({ ...prev, [key]: newCode }));
+        setProductCode(newCode);
+      }
+    }
+  };
+
+  const handleCustomColorChange = (typed: string) => {
+    setCustomColor(typed);
+    if (editingProduct) {
+      // For existing products, the SKU code is permanently fixed
+      return;
+    }
+    const colName = typed.trim() || 'Custom Colour';
+    const key = colName.toLowerCase();
+    if (assignedColorCodes[key]) {
+      setProductCode(assignedColorCodes[key]);
+    } else {
+      const newCode = generateSuggestedSku(fabric, colName);
+      setAssignedColorCodes((prev) => ({ ...prev, [key]: newCode }));
+      setProductCode(newCode);
+    }
   };
 
   const handleAddImageUrl = () => {
@@ -149,7 +217,15 @@ export const ProductManager: React.FC = () => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    const finalSku = productCode.trim() || generateSuggestedSku(fabric, color);
+    const finalColor = editingProduct
+      ? editingProduct.color
+      : selectedColorOption === 'Other'
+      ? (customColor.trim() || 'Custom Colour')
+      : selectedColorOption;
+    // Once code is given for one colour of the product it cannot be changed again
+    const finalSku = editingProduct
+      ? editingProduct.productCode
+      : (productCode.trim() || assignedColorCodes[finalColor.toLowerCase()] || generateSuggestedSku(fabric, finalColor));
 
     const payload = {
       productCode: finalSku,
@@ -157,7 +233,7 @@ export const ProductManager: React.FC = () => {
       subtitle: subtitle.trim(),
       description: description.trim(),
       fabric,
-      color,
+      color: finalColor as SareeColor,
       price: Number(price),
       originalPrice: Number(originalPrice) || undefined,
       stockStatus,
@@ -324,11 +400,7 @@ export const ProductManager: React.FC = () => {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`Are you sure you want to delete "${product.title}"?`)) {
-                            deleteProduct(product.id);
-                          }
-                        }}
+                        onClick={() => setProductToDelete(product)}
                         className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition"
                         title="Delete Saree"
                       >
@@ -368,25 +440,21 @@ export const ProductManager: React.FC = () => {
                     <label className="block font-bold text-neutral-800">
                       Product Unique Code (SKU - Product & Color Wise) *
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setProductCode(generateSuggestedSku(fabric, color))}
-                      className="text-[11px] text-amber-700 hover:text-amber-800 font-semibold flex items-center gap-1 transition"
-                    >
-                      <Sparkles className="w-3 h-3 text-amber-600" />
-                      <span>Regenerate Code from Fabric & Color</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-700 text-[11px] font-semibold border border-neutral-200">
+                      <Lock className="w-3 h-3 text-neutral-500" />
+                      <span>{editingProduct ? 'Permanent SKU (Locked)' : 'Auto-Generated SKU (Locked per Colour)'}</span>
+                    </div>
                   </div>
                   <input
                     type="text"
                     value={productCode}
-                    onChange={(e) => setProductCode(e.target.value.toUpperCase())}
+                    readOnly
                     required
                     placeholder="e.g. KAN-CRIM-101"
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs uppercase text-neutral-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                    className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-100 font-mono text-xs uppercase text-neutral-900 font-bold cursor-not-allowed select-all"
                   />
                   <p className="text-[11px] text-neutral-500 mt-1">
-                    Unique SKU code for this specific drape & colorway. Used to record exact sales attribution, analytics, and stock records.
+                    Auto-generated and permanently assigned for this colour. Once a code is given for one colour of the product, it cannot be changed again.
                   </p>
                 </div>
 
@@ -417,7 +485,20 @@ export const ProductManager: React.FC = () => {
                   <label className="block font-semibold text-neutral-700 mb-1">Fabric Category *</label>
                   <select
                     value={fabric}
-                    onChange={(e) => setFabric(e.target.value as SareeFabric)}
+                    onChange={(e) => {
+                      const newFab = e.target.value as SareeFabric;
+                      setFabric(newFab);
+                      // If not editing and productCode was not yet generated, update prefix
+                      if (!editingProduct) {
+                        const activeCol = selectedColorOption === 'Other' ? (customColor.trim() || 'Custom Colour') : selectedColorOption;
+                        const key = activeCol.toLowerCase();
+                        if (!assignedColorCodes[key]) {
+                          const newCode = generateSuggestedSku(newFab, activeCol);
+                          setAssignedColorCodes((prev) => ({ ...prev, [key]: newCode }));
+                          setProductCode(newCode);
+                        }
+                      }
+                    }}
                     className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900"
                   >
                     {fabrics.map((f) => (
@@ -427,16 +508,59 @@ export const ProductManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-neutral-700 mb-1">Color Palette *</label>
-                  <select
-                    value={color}
-                    onChange={(e) => setColor(e.target.value as SareeColor)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900"
-                  >
-                    {colors.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-neutral-700">Color Palette *</label>
+                    {editingProduct && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-800 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                        <Lock className="w-3 h-3 text-rose-700" />
+                        <span>Colour Fixed (Immutable)</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {editingProduct ? (
+                    <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-100/90 text-neutral-800 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-neutral-900">{editingProduct.color}</span>
+                        <span className="text-[10px] text-neutral-500 font-mono">SKU #{editingProduct.productCode}</span>
+                      </div>
+                      <p className="text-[11px] text-neutral-500 leading-relaxed pt-0.5">
+                        The colour is permanently fixed for this saree. To offer this saree in another preferred colour, please add a new product.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={selectedColorOption}
+                        onChange={(e) => handleColorDropdownChange(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-medium"
+                      >
+                        {standardColors.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        <option value="Other">+ Other (Manual / Custom Colour)</option>
+                      </select>
+
+                      {selectedColorOption === 'Other' && (
+                        <div className="mt-2.5 animate-in fade-in slide-in-from-top-1">
+                          <label className="block font-semibold text-neutral-800 mb-1">
+                            Manual / Custom Colour Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={customColor}
+                            onChange={(e) => handleCustomColorChange(e.target.value)}
+                            placeholder="e.g. Peacock Teal, Coral Peach, Wine Purple"
+                            className="w-full p-2.5 rounded-xl border border-amber-300 bg-amber-50/40 text-neutral-900 font-medium text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                          />
+                          <p className="text-[10px] text-neutral-500 mt-1">
+                            Enter manual colour name. An immutable SKU code is auto-generated above.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 <div>
@@ -611,22 +735,127 @@ export const ProductManager: React.FC = () => {
               </div>
 
               {/* Modal Actions */}
-              <div className="pt-4 border-t border-neutral-200 flex justify-end gap-2.5">
+              <div className="pt-4 border-t border-neutral-200 flex items-center justify-between gap-2.5">
+                {editingProduct ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prod = editingProduct;
+                      setIsEditingModalOpen(false);
+                      setProductToDelete(prod);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-rose-700 hover:bg-rose-50 border border-rose-200 text-xs font-semibold transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove Saree</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold shadow-sm"
+                  >
+                    {editingProduct ? 'Save Changes' : 'Publish Saree'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Saree Removal Confirmation Modal (User Request: products be removable from sarees section) */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  <Trash2 className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Remove Saree from Catalog
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Permanently delete from boutique inventory
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setProductToDelete(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="flex items-center gap-3 p-3 bg-neutral-50 rounded-2xl border border-neutral-200">
+                <img
+                  src={productToDelete.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                  alt={productToDelete.title}
+                  className="w-14 h-16 object-cover rounded-xl bg-neutral-200 shrink-0 border border-neutral-300"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-serif font-bold text-sm text-neutral-900 truncate">
+                    {productToDelete.title}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="font-mono text-[10px] font-bold text-rose-950 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                      {productToDelete.productCode}
+                    </span>
+                    <span className="text-[11px] text-neutral-500 font-medium">
+                      {productToDelete.fabric} · {productToDelete.color}
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-neutral-900 mt-1">
+                    {formatPrice(productToDelete.price)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-rose-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-700 shrink-0" />
+                  <span>Confirm Permanent Removal</span>
+                </p>
+                <p className="text-[11px] text-rose-800 leading-relaxed">
+                  Are you sure you want to remove this saree? It will be deleted from the boutique catalog, shopping bags, and inventory records. This action cannot be undone.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
                 <button
                   type="button"
-                  onClick={() => setIsEditingModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-medium"
+                  onClick={() => setProductToDelete(null)}
+                  className="py-2.5 px-4 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-semibold transition text-center"
                 >
                   Cancel
                 </button>
                 <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold shadow-sm"
+                  type="button"
+                  onClick={() => {
+                    deleteProduct(productToDelete.id);
+                    setProductToDelete(null);
+                  }}
+                  className="py-2.5 px-4 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-sm shadow-rose-900/30"
                 >
-                  {editingProduct ? 'Save Changes' : 'Publish Saree'}
+                  <Trash2 className="w-4 h-4" />
+                  <span>Yes, Delete Saree</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

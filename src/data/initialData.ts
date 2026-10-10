@@ -2,6 +2,7 @@ import { Product, StoreSettings, Order } from '../types/store';
 
 export const INITIAL_SETTINGS: StoreSettings = {
   boutiqueName: 'Aara Heritage Saree Atelier',
+  logoUrl: '',
   tagline: 'Pure Silk & Handcrafted Heirlooms of India',
   contactPhone: '+919876543210',
   contactEmail: 'concierge@aarasarees.com',
@@ -24,39 +25,24 @@ export const INITIAL_SETTINGS: StoreSettings = {
     heroHeadline: 'Timeless Drapes, Woven for Generations.',
     heroSubheadline: 'Discover authentic handcrafted Kanjivaram bridal silks, Varanasi Kadwa brocades, and feather-light Chanderi tissue sarees. Direct from the master weavers of India to your doorstep.',
     showHeroBanner: true,
+    heroBannerImageUrl: '',
     showTrustBadges: true,
     showCraftsmanshipStory: true,
     storyTitle: 'The Heritage Loom Legacy',
     storyContent: 'Every saree in our collection is an heirloom woven with mulberry silk and authentic zari by master weavers across Kanchipuram and Varanasi.',
     showTrackOrder: true,
+    allowPublicCancellation: true,
     freeShippingText: 'Free Insured Express Delivery across India (Tamper-Proof Box)',
   },
-  adminPin: '889900', // 6-digit access PIN
-  staffMembers: [
-    {
-      id: 'staff-1',
-      name: 'Priya Sharma',
-      username: 'priya_concierge',
-      password: 'password123',
-      role: 'concierge',
-      isLocked: false,
-      phone: '+919820112233',
-      createdAt: '2026-03-01T10:00:00Z',
-    },
-    {
-      id: 'staff-2',
-      name: 'Arun Kumar',
-      username: 'arun_fulfillment',
-      password: 'password123',
-      role: 'fulfillment',
-      isLocked: false,
-      phone: '+919876554433',
-      createdAt: '2026-03-02T10:00:00Z',
-    },
-  ],
+  adminPin: '889988', // 6-digit access PIN
+  staffMembers: [],
 };
 
-export const INITIAL_PRODUCTS: Product[] = [
+// Initial state for fresh boutique login: 0 demo products (ready for owner's real sarees)
+export const INITIAL_PRODUCTS: Product[] = [];
+
+// Sample Handloom Silks library for 1-click test/demo re-seeding if ever desired by admin
+export const SAMPLE_PRODUCTS: Product[] = [
   {
     id: 'saree-kanjivaram-crimson-01',
     productCode: 'KAN-CRIM-101',
@@ -215,117 +201,4 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
 ];
 
-export const INITIAL_ORDERS: Order[] = [
-  {
-    id: 'order-1082',
-    orderNumber: 'AARA-1082',
-    createdAt: new Date(Date.now() - 3600000 * 24 * 2).toISOString(),
-    customer: {
-      name: 'Priyamvada Sharma',
-      phone: '+919820198201',
-      email: 'priyamvada.s@example.com',
-      address: 'Flat 402, Lotus Greens, Bandra West',
-      city: 'Mumbai',
-      state: 'Maharashtra',
-      pincode: '400050',
-    },
-    items: [
-      {
-        product: INITIAL_PRODUCTS[0],
-        quantity: 1,
-      },
-    ],
-    subtotal: 34500,
-    shippingFee: 0,
-    totalAmount: 34500,
-    upiTransactionId: 'UTR603918291039',
-    refundDetails: {
-      refundUpiId: 'priyamvada@okhdfcbank',
-      refundUpiPhone: '+919820198201',
-      refundStatus: 'not_required',
-    },
-    status: 'Shipped',
-    shippingDetails: {
-      courierName: 'DTDC Express',
-      trackingNumber: 'DTDC9021849102',
-      shippedAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-    },
-    assignedStaffId: 'staff-2',
-    assignedStaffName: 'Arun Kumar',
-    lastUpdatedBy: 'arun_fulfillment',
-    checkoutMethod: 'submit_order',
-    notes: 'Please add festive silk-wrapper box with handloom certificate.',
-  },
-  {
-    id: 'order-1081',
-    orderNumber: 'AARA-1081',
-    createdAt: new Date(Date.now() - 3600000 * 16).toISOString(),
-    customer: {
-      name: 'Ananya Deshmukh',
-      phone: '+919871122334',
-      email: 'ananya.d@example.com',
-      address: 'Plot 18, Jubilee Hills, Road No 36',
-      city: 'Hyderabad',
-      state: 'Telangana',
-      pincode: '500033',
-    },
-    items: [
-      {
-        product: INITIAL_PRODUCTS[1],
-        quantity: 1,
-      },
-    ],
-    subtotal: 28900,
-    shippingFee: 0,
-    totalAmount: 28900,
-    upiTransactionId: 'UTR499201948201',
-    refundDetails: {
-      refundUpiId: 'ananya.desh@icici',
-      refundUpiPhone: '+919871122334',
-      refundStatus: 'not_required',
-    },
-    status: 'Confirmed',
-    assignedStaffId: 'staff-1',
-    assignedStaffName: 'Priya Sharma',
-    lastUpdatedBy: 'priya_concierge',
-    checkoutMethod: 'whatsapp',
-  },
-  {
-    id: 'order-1080',
-    orderNumber: 'AARA-1080',
-    createdAt: new Date(Date.now() - 3600000 * 48).toISOString(),
-    customer: {
-      name: 'Dr. Radhika Nair',
-      phone: '+919447123987',
-      email: 'radhika.nair@example.com',
-      address: '24 Hill Garden, Jawahar Nagar',
-      city: 'Kochi',
-      state: 'Kerala',
-      pincode: '682020',
-    },
-    items: [
-      {
-        product: INITIAL_PRODUCTS[2],
-        quantity: 1,
-      },
-    ],
-    subtotal: 18500,
-    shippingFee: 0,
-    totalAmount: 18500,
-    upiTransactionId: 'UTR118290483921',
-    refundDetails: {
-      refundUpiId: 'radhika.nair@oksbi',
-      refundUpiPhone: '+919447123987',
-      refundStatus: 'processed',
-      refundUtr: 'REFUND-UTR-891029102',
-      processedAt: new Date(Date.now() - 3600000 * 20).toISOString(),
-    },
-    status: 'Cancelled',
-    cancellationReason: 'Customer requested cancellation due to wedding date postponement.',
-    assignedStaffId: 'staff-1',
-    assignedStaffName: 'Priya Sharma',
-    lastUpdatedBy: 'priya_concierge',
-    checkoutMethod: 'submit_order',
-    notes: 'Customer requested cancellation due to date change. Ready for refund.',
-  },
-];
+export const INITIAL_ORDERS: Order[] = [];

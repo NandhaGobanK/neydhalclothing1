@@ -30,15 +30,23 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 bg-neutral-900/95 backdrop-blur-md border-b border-neutral-800 text-white">
       {/* Main Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-8">
-        {/* Zone 1: Single text element wordmark */}
+        {/* Zone 1: Brand Logo & Wordmark */}
         <a
           href="#"
-          className="text-xl sm:text-2xl font-serif font-bold tracking-wider text-amber-100 hover:text-white transition whitespace-nowrap shrink-0 flex items-center gap-2"
+          className="text-xl sm:text-2xl font-serif font-bold tracking-wider text-amber-100 hover:text-white transition whitespace-nowrap shrink-0 flex items-center gap-3"
         >
-          <span className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-600 to-rose-700 flex items-center justify-center text-amber-100 font-serif font-bold text-sm shadow-inner">
-            आ
-          </span>
-          <span>{settings.boutiqueName}</span>
+          {settings.logoUrl ? (
+            <img
+              src={settings.logoUrl}
+              alt={settings.boutiqueName}
+              className="h-10 sm:h-12 w-auto max-w-[140px] sm:max-w-[180px] object-contain rounded-md"
+            />
+          ) : (
+            <span className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-600 to-rose-700 flex items-center justify-center text-amber-100 font-serif font-bold text-sm shadow-inner">
+              आ
+            </span>
+          )}
+          <span className="truncate max-w-[200px] sm:max-w-none">{settings.boutiqueName}</span>
         </a>
 
         {/* Zone 2: Navigation Links */}
