@@ -599,7 +599,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             requestedAt: new Date().toISOString(),
             reason: reason.trim(),
             customerPhone: phone.trim(),
-            status: 'pending',
+            status: 'pending' as const,
           },
         };
       })
@@ -615,7 +615,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           requestedAt: new Date().toISOString(),
           reason: reason.trim(),
           customerPhone: phone.trim(),
-          status: 'pending',
+          status: 'pending' as const,
         },
       },
     };

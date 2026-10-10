@@ -483,7 +483,7 @@ export const OrderManager: React.FC = () => {
                       <button
                         onClick={() => {
                           const note = prompt('Reason for declining cancellation request:', 'Order has already been packed / dispatched') || '';
-                          resolveCancellationRequest(order.id, 'rejected', note);
+                          resolveCancellationRequest(order.id, 'reject', note);
                         }}
                         className="px-2.5 py-1.5 rounded-lg border border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-700 font-semibold text-xs"
                       >
