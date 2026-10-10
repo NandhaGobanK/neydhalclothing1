@@ -1,14 +1,29 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
-import { Product, Order, StoreSettings, CartItem, OrderStatus } from '../types/store';
+import {
+  Product,
+  Order,
+  StoreSettings,
+  CartItem,
+  OrderStatus,
+  ShippingDetails,
+  StaffMember,
+} from '../types/store';
 import { INITIAL_PRODUCTS, INITIAL_ORDERS, INITIAL_SETTINGS } from '../data/initialData';
 
 const STORAGE_KEYS = {
-  PRODUCTS: 'aara_boutique_products_v1',
-  ORDERS: 'aara_boutique_orders_v1',
-  SETTINGS: 'aara_boutique_settings_v1',
-  CART: 'aara_boutique_cart_v1',
-  ADMIN_AUTH: 'aara_boutique_admin_auth_v1',
+  PRODUCTS: 'aara_boutique_products_v3',
+  ORDERS: 'aara_boutique_orders_v3',
+  SETTINGS: 'aara_boutique_settings_v3',
+  CART: 'aara_boutique_cart_v3',
+  CURRENT_USER: 'aara_boutique_user_v3',
 };
+
+export interface ActiveUser {
+  type: 'admin' | 'staff';
+  username: string;
+  name: string;
+  staffId?: string;
+}
 
 interface StoreContextType {
   // Products
@@ -34,31 +49,67 @@ interface StoreContextType {
     customer: Order['customer'];
     items: CartItem[];
     upiTransactionId: string;
-    refundUpiId: string;
-    refundUpiPhone: string;
+    refundUpiId?: string;
+    refundUpiPhone?: string;
     notes?: string;
     checkoutMethod: 'submit_order' | 'whatsapp';
   }) => Order;
-  updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  markRefundProcessed: (orderId: string, notes?: string) => void;
+  updateOrderStatus: (
+    orderId: string,
+    status: OrderStatus,
+    extra?: {
+      shippingDetails?: ShippingDetails;
+      refundUtr?: string;
+      cancellationReason?: string;
+    }
+  ) => void;
+  updateOrderShipping: (
+    orderId: string,
+    shippingDetails: { courierName: string; trackingNumber: string; notes?: string }
+  ) => void;
+  markRefundProcessed: (orderId: string, refundUtr: string, notes?: string) => void;
+  assignOrderStaff: (orderId: string, staffId: string, staffName: string) => void;
+  requestOrderCancellation: (
+    orderNumber: string,
+    phone: string,
+    reason: string
+  ) => { success: boolean; message: string; order?: Order };
+  resolveCancellationRequest: (
+    orderId: string,
+    action: 'approve' | 'reject',
+    adminNotes?: string,
+    refundUtr?: string
+  ) => void;
+  findOrdersByQuery: (query: string) => Order[];
+
+  // Staff Management
+  staffMembers: StaffMember[];
+  addStaffMember: (staff: Omit<StaffMember, 'id' | 'createdAt'>) => void;
+  updateStaffMember: (id: string, updates: Partial<StaffMember>) => void;
+  toggleStaffLock: (id: string) => void;
+  deleteStaffMember: (id: string) => void;
 
   // Settings
   settings: StoreSettings;
   updateSettings: (updates: Partial<StoreSettings>) => void;
   resetToInitialData: () => void;
 
-  // Admin Security
+  // Auth (Admin PIN or Staff Username/Password)
+  currentUser: ActiveUser | null;
   isAdminLoggedIn: boolean;
   adminLogin: (pin: string) => boolean;
+  staffLogin: (username: string, password: string) => { success: boolean; error?: string };
   adminLogout: () => void;
 
-  // Active View / Modals
+  // UI state
   activeProductModal: Product | null;
   setActiveProductModal: (product: Product | null) => void;
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
   isCheckoutOpen: boolean;
   setIsCheckoutOpen: (open: boolean) => void;
+  isTrackOrderOpen: boolean;
+  setIsTrackOrderOpen: (open: boolean) => void;
   lastPlacedOrder: Order | null;
   setLastPlacedOrder: (order: Order | null) => void;
   currentView: 'store' | 'admin';
@@ -71,7 +122,18 @@ function loadFromStorage<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (typeof fallback === 'object' && fallback !== null && !Array.isArray(fallback)) {
+      return {
+        ...fallback,
+        ...parsed,
+        storefrontDisplay: {
+          ...(fallback as any).storefrontDisplay,
+          ...(parsed as any).storefrontDisplay,
+        },
+      };
+    }
+    return parsed;
   } catch (err) {
     console.error(`Error loading key ${key} from storage:`, err);
     return fallback;
@@ -103,25 +165,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     loadFromStorage(STORAGE_KEYS.CART, [])
   );
 
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() =>
-    loadFromStorage(STORAGE_KEYS.ADMIN_AUTH, false)
+  const [currentUser, setCurrentUser] = useState<ActiveUser | null>(() =>
+    loadFromStorage(STORAGE_KEYS.CURRENT_USER, null)
   );
 
   // App UI State
   const [activeProductModal, setActiveProductModal] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [isTrackOrderOpen, setIsTrackOrderOpen] = useState(false);
   const [lastPlacedOrder, setLastPlacedOrder] = useState<Order | null>(null);
-  
-  // Navigation: check window.location.hash for '#admin'
+
   const [currentView, setCurrentView] = useState<'store' | 'admin'>(() => {
-    if (typeof window !== 'undefined' && window.location.hash === '#admin') {
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#admin')) {
       return 'admin';
     }
     return 'store';
   });
 
-  // Keep state saved to localStorage
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.PRODUCTS, products);
   }, [products]);
@@ -139,23 +200,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [cart]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.ADMIN_AUTH, isAdminLoggedIn);
-  }, [isAdminLoggedIn]);
+    saveToStorage(STORAGE_KEYS.CURRENT_USER, currentUser);
+  }, [currentUser]);
 
   // Handle URL hash changes
   useEffect(() => {
     const handleHashChange = () => {
-      if (window.location.hash === '#admin') {
+      if (window.location.hash.startsWith('#admin')) {
         setCurrentView('admin');
+      } else if (window.location.hash.startsWith('#track')) {
+        setCurrentView('store');
+        setIsTrackOrderOpen(true);
       } else {
         setCurrentView('store');
       }
     };
+    handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Sync state between browser tabs/windows
+  // Multi-tab sync
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.PRODUCTS && e.newValue) {
@@ -164,18 +229,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setOrders(JSON.parse(e.newValue));
       } else if (e.key === STORAGE_KEYS.SETTINGS && e.newValue) {
         setSettings(JSON.parse(e.newValue));
-      } else if (e.key === STORAGE_KEYS.ADMIN_AUTH && e.newValue) {
-        setIsAdminLoggedIn(JSON.parse(e.newValue));
+      } else if (e.key === STORAGE_KEYS.CURRENT_USER && e.newValue) {
+        setCurrentUser(JSON.parse(e.newValue));
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Public products: Only products enabled by the admin
   const publicProducts = useMemo(() => {
     return products.filter((p) => p.isVisible);
   }, [products]);
+
+  const staffMembers = useMemo(() => {
+    return settings.staffMembers || [];
+  }, [settings.staffMembers]);
 
   // Cart operations
   const addToCart = (product: Product, quantity = 1) => {
@@ -220,10 +288,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return cart.reduce((count, item) => count + item.quantity, 0);
   }, [cart]);
 
-  // Product management
+  // Product management with auto SKU generation
   const addProduct = (productData: Omit<Product, 'id' | 'createdAt'>): Product => {
+    const prefix = productData.fabric.substring(0, 3).toUpperCase();
+    const colPrefix = productData.color.substring(0, 4).toUpperCase();
+    const randomCode = Math.floor(100 + Math.random() * 900);
+    const generatedSku = productData.productCode?.trim() || `${prefix}-${colPrefix}-${randomCode}`;
+
     const newProduct: Product = {
       ...productData,
+      productCode: generatedSku,
       id: `saree-${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
@@ -235,7 +309,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setProducts((prev) =>
       prev.map((prod) => (prod.id === id ? { ...prod, ...updates } : prod))
     );
-    // Also update modal if currently viewing it
     if (activeProductModal && activeProductModal.id === id) {
       setActiveProductModal((prev) => (prev ? { ...prev, ...updates } : null));
     }
@@ -255,6 +328,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
   };
 
+  // Staff Management
+  const addStaffMember = (staffData: Omit<StaffMember, 'id' | 'createdAt'>) => {
+    const newStaff: StaffMember = {
+      ...staffData,
+      id: `staff-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    setSettings((prev) => ({
+      ...prev,
+      staffMembers: [...(prev.staffMembers || []), newStaff],
+    }));
+  };
+
+  const updateStaffMember = (id: string, updates: Partial<StaffMember>) => {
+    setSettings((prev) => ({
+      ...prev,
+      staffMembers: (prev.staffMembers || []).map((s) => (s.id === id ? { ...s, ...updates } : s)),
+    }));
+  };
+
+  const toggleStaffLock = (id: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      staffMembers: (prev.staffMembers || []).map((s) =>
+        s.id === id ? { ...s, isLocked: !s.isLocked } : s
+      ),
+    }));
+  };
+
+  const deleteStaffMember = (id: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      staffMembers: (prev.staffMembers || []).map((s) => s).filter((s) => s.id !== id),
+    }));
+  };
+
   // Order management
   const placeOrder = ({
     customer,
@@ -268,16 +377,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     customer: Order['customer'];
     items: CartItem[];
     upiTransactionId: string;
-    refundUpiId: string;
-    refundUpiPhone: string;
+    refundUpiId?: string;
+    refundUpiPhone?: string;
     notes?: string;
     checkoutMethod: 'submit_order' | 'whatsapp';
   }): Order => {
-    const subtotal = items.reduce(
-      (sum, item) => sum + item.product.price * item.quantity,
-      0
-    );
+    const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
     const orderNumber = `AARA-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Auto-assign to first active concierge staff if available
+    const availableStaff = (settings.staffMembers || []).find((s) => !s.isLocked);
 
     const newOrder: Order = {
       id: `order-${Date.now()}`,
@@ -286,17 +395,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       customer,
       items,
       subtotal,
-      shippingFee: 0, // Free express insured delivery
+      shippingFee: 0,
       totalAmount: subtotal,
       upiTransactionId: upiTransactionId.trim(),
       refundDetails: {
-        refundUpiId: refundUpiId.trim(),
-        refundUpiPhone: refundUpiPhone.trim(),
+        refundUpiId: refundUpiId ? refundUpiId.trim() : undefined,
+        refundUpiPhone: refundUpiPhone ? refundUpiPhone.trim() : undefined,
         refundStatus: 'not_required',
       },
       status: 'Pending',
       checkoutMethod,
       notes,
+      assignedStaffId: availableStaff?.id,
+      assignedStaffName: availableStaff?.name,
+      lastUpdatedBy: currentUser?.username || 'system',
     };
 
     setOrders((prev) => [newOrder, ...prev]);
@@ -305,44 +417,279 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return newOrder;
   };
 
-  const updateOrderStatus = (orderId: string, status: OrderStatus) => {
+  const updateOrderStatus = (
+    orderId: string,
+    status: OrderStatus,
+    extra?: {
+      shippingDetails?: ShippingDetails;
+      refundUtr?: string;
+      cancellationReason?: string;
+    }
+  ) => {
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
-        
-        // If order becomes Cancelled or Rejected, flag refundStatus as pending
-        let nextRefundStatus = ord.refundDetails.refundStatus;
-        if ((status === 'Cancelled' || status === 'Rejected') && nextRefundStatus === 'not_required') {
-          nextRefundStatus = 'pending';
+
+        const isNowCancelled = status === 'Cancelled' || status === 'Rejected';
+
+        let nextRefundStatus = ord.refundDetails?.refundStatus || 'not_required';
+        if (isNowCancelled) {
+          if (nextRefundStatus === 'not_required') {
+            nextRefundStatus = 'pending';
+          }
+        } else {
+          // If reactivated to Shipped/Confirmed/Delivered/Pending, refund is not required
+          nextRefundStatus = 'not_required';
         }
-        
+
+        const nextShippingDetails = extra?.shippingDetails || ord.shippingDetails;
+        const nextRefundUtr = extra?.refundUtr || ord.refundDetails?.refundUtr;
+        const nextReason = isNowCancelled
+          ? extra?.cancellationReason || ord.cancellationReason || 'Cancelled by boutique concierge'
+          : undefined;
+
+        // If resuming an order that had pending cancellation request, mark resolved
+        let nextCancelRequest = ord.cancellationRequest;
+        if (!isNowCancelled && nextCancelRequest && nextCancelRequest.status === 'pending') {
+          nextCancelRequest = {
+            ...nextCancelRequest,
+            status: 'rejected',
+            adminDecisionNotes: `Order resumed: set to ${status}`,
+          };
+        } else if (isNowCancelled && nextCancelRequest && nextCancelRequest.status === 'pending') {
+          nextCancelRequest = {
+            ...nextCancelRequest,
+            status: 'approved',
+            adminDecisionNotes: nextReason,
+          };
+        }
+
         return {
           ...ord,
           status,
+          shippingDetails: nextShippingDetails,
+          cancellationReason: nextReason,
+          cancellationRequest: nextCancelRequest,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           refundDetails: {
             ...ord.refundDetails,
             refundStatus: nextRefundStatus,
+            refundUtr: isNowCancelled ? nextRefundUtr : undefined,
+            processedAt: isNowCancelled && nextRefundUtr ? new Date().toISOString() : ord.refundDetails?.processedAt,
           },
         };
       })
     );
   };
 
-  const markRefundProcessed = (orderId: string, notes?: string) => {
+  const updateOrderShipping = (
+    orderId: string,
+    shippingDetails: { courierName: string; trackingNumber: string; notes?: string }
+  ) => {
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+
+        // Clear any old cancellation request/reason since order is now actively dispatched
+        let nextCancelRequest = ord.cancellationRequest;
+        if (nextCancelRequest && nextCancelRequest.status === 'pending') {
+          nextCancelRequest = {
+            ...nextCancelRequest,
+            status: 'rejected',
+            adminDecisionNotes: 'Shipment dispatched to customer',
+          };
+        }
+
+        return {
+          ...ord,
+          status: 'Shipped',
+          cancellationReason: undefined,
+          cancellationRequest: nextCancelRequest,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          refundDetails: {
+            ...ord.refundDetails,
+            refundStatus: 'not_required',
+          },
+          shippingDetails: {
+            courierName: shippingDetails.courierName.trim(),
+            trackingNumber: shippingDetails.trackingNumber.trim(),
+            shippedAt: new Date().toISOString(),
+            notes: shippingDetails.notes?.trim(),
+          },
+        };
+      })
+    );
+  };
+
+  const markRefundProcessed = (orderId: string, refundUtr: string, notes?: string) => {
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
         return {
           ...ord,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           refundDetails: {
             ...ord.refundDetails,
             refundStatus: 'processed',
+            refundUtr: refundUtr.trim(),
             processedAt: new Date().toISOString(),
             notes: notes || 'Refund processed via banking app',
           },
         };
       })
     );
+  };
+
+  const assignOrderStaff = (orderId: string, staffId: string, staffName: string) => {
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+        return {
+          ...ord,
+          assignedStaffId: staffId,
+          assignedStaffName: staffName,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+        };
+      })
+    );
+  };
+
+  // Customer Cancellation Request
+  const requestOrderCancellation = (orderNumber: string, phone: string, reason: string) => {
+    const cleanOrderNum = orderNumber.trim().toUpperCase();
+    const cleanPhoneDigits = phone.replace(/[^0-9]/g, '');
+
+    const targetOrder = orders.find(
+      (o) =>
+        o.orderNumber.toUpperCase() === cleanOrderNum &&
+        o.customer.phone.replace(/[^0-9]/g, '').includes(cleanPhoneDigits.slice(-10))
+    );
+
+    if (!targetOrder) {
+      return {
+        success: false,
+        message: 'No order found matching this Order Number and Mobile Number combination.',
+      };
+    }
+
+    if (targetOrder.status === 'Cancelled' || targetOrder.status === 'Rejected') {
+      return {
+        success: false,
+        message: `Order #${targetOrder.orderNumber} is already ${targetOrder.status.toLowerCase()}.`,
+        order: targetOrder,
+      };
+    }
+
+    if (targetOrder.status === 'Delivered') {
+      return {
+        success: false,
+        message: 'Order has already been delivered. Please contact our concierge directly on WhatsApp for returns.',
+        order: targetOrder,
+      };
+    }
+
+    // Update order with cancellation request
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== targetOrder.id) return ord;
+        return {
+          ...ord,
+          cancellationRequest: {
+            requested: true,
+            requestedAt: new Date().toISOString(),
+            reason: reason.trim(),
+            customerPhone: phone.trim(),
+            status: 'pending',
+          },
+        };
+      })
+    );
+
+    return {
+      success: true,
+      message: 'Cancellation request recorded successfully. Our atelier team will review and process your refund.',
+      order: {
+        ...targetOrder,
+        cancellationRequest: {
+          requested: true,
+          requestedAt: new Date().toISOString(),
+          reason: reason.trim(),
+          customerPhone: phone.trim(),
+          status: 'pending',
+        },
+      },
+    };
+  };
+
+  const resolveCancellationRequest = (
+    orderId: string,
+    action: 'approve' | 'reject',
+    adminNotes?: string,
+    refundUtr?: string
+  ) => {
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+
+        if (action === 'approve') {
+          return {
+            ...ord,
+            status: 'Cancelled',
+            cancellationReason: ord.cancellationRequest?.reason || 'Customer requested cancellation approved',
+            cancellationRequest: {
+              ...(ord.cancellationRequest || {
+                requested: true,
+                requestedAt: new Date().toISOString(),
+                reason: 'Customer requested',
+                customerPhone: ord.customer.phone,
+              }),
+              status: 'approved',
+              adminDecisionNotes: adminNotes,
+            },
+            refundDetails: {
+              ...ord.refundDetails,
+              refundStatus: refundUtr ? 'processed' : 'pending',
+              refundUtr: refundUtr || ord.refundDetails?.refundUtr,
+              processedAt: refundUtr ? new Date().toISOString() : undefined,
+              notes: adminNotes || 'Approved customer cancellation request',
+            },
+            lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          };
+        } else {
+          return {
+            ...ord,
+            cancellationRequest: {
+              ...(ord.cancellationRequest || {
+                requested: true,
+                requestedAt: new Date().toISOString(),
+                reason: 'Customer requested',
+                customerPhone: ord.customer.phone,
+              }),
+              status: 'rejected',
+              adminDecisionNotes: adminNotes,
+            },
+            lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          };
+        }
+      })
+    );
+  };
+
+  const findOrdersByQuery = (query: string): Order[] => {
+    if (!query.trim()) return [];
+    const clean = query.trim().toLowerCase();
+    const cleanNumeric = query.replace(/[^0-9]/g, '');
+
+    return orders.filter((o) => {
+      const matchOrderNum = o.orderNumber.toLowerCase() === clean || o.orderNumber.toLowerCase().includes(clean);
+      const matchName = o.customer.name.toLowerCase().includes(clean);
+      const matchUtr = o.upiTransactionId.toLowerCase() === clean || o.upiTransactionId.toLowerCase().includes(clean);
+      const matchPhone =
+        cleanNumeric.length >= 4 &&
+        o.customer.phone.replace(/[^0-9]/g, '').includes(cleanNumeric);
+
+      return matchOrderNum || matchName || matchPhone || matchUtr;
+    });
   };
 
   // Settings
@@ -358,6 +705,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         ...prev.payment,
         ...(updates.payment || {}),
       },
+      storefrontDisplay: {
+        ...prev.storefrontDisplay,
+        ...(updates.storefrontDisplay || {}),
+      },
     }));
   };
 
@@ -369,18 +720,54 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     localStorage.clear();
   };
 
-  // Admin authentication
+  // Auth: 6-Digit PIN or Staff Credentials
   const adminLogin = (pin: string): boolean => {
-    if (pin.trim() === settings.adminPin.trim()) {
-      setIsAdminLoggedIn(true);
+    const cleanPin = pin.trim();
+    if (cleanPin.length === 6 && cleanPin === settings.adminPin.trim()) {
+      const user: ActiveUser = {
+        type: 'admin',
+        username: 'master_admin',
+        name: 'Store Owner',
+      };
+      setCurrentUser(user);
       return true;
     }
     return false;
   };
 
-  const adminLogout = () => {
-    setIsAdminLoggedIn(false);
+  const staffLogin = (username: string, password: string): { success: boolean; error?: string } => {
+    const u = username.trim().toLowerCase();
+    const p = password.trim();
+
+    const staff = (settings.staffMembers || []).find((s) => s.username.toLowerCase() === u);
+
+    if (!staff) {
+      return { success: false, error: 'Staff account not found' };
+    }
+
+    if (staff.isLocked) {
+      return { success: false, error: 'This staff account has been locked by the owner.' };
+    }
+
+    if (staff.password !== p) {
+      return { success: false, error: 'Incorrect password.' };
+    }
+
+    const user: ActiveUser = {
+      type: 'staff',
+      username: staff.username,
+      name: staff.name,
+      staffId: staff.id,
+    };
+    setCurrentUser(user);
+    return { success: true };
   };
+
+  const adminLogout = () => {
+    setCurrentUser(null);
+  };
+
+  const isAdminLoggedIn = !!currentUser;
 
   return (
     <StoreContext.Provider
@@ -401,12 +788,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         orders,
         placeOrder,
         updateOrderStatus,
+        updateOrderShipping,
         markRefundProcessed,
+        assignOrderStaff,
+        requestOrderCancellation,
+        resolveCancellationRequest,
+        findOrdersByQuery,
+        staffMembers,
+        addStaffMember,
+        updateStaffMember,
+        toggleStaffLock,
+        deleteStaffMember,
         settings,
         updateSettings,
         resetToInitialData,
+        currentUser,
         isAdminLoggedIn,
         adminLogin,
+        staffLogin,
         adminLogout,
         activeProductModal,
         setActiveProductModal,
@@ -414,6 +813,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setIsCartOpen,
         isCheckoutOpen,
         setIsCheckoutOpen,
+        isTrackOrderOpen,
+        setIsTrackOrderOpen,
         lastPlacedOrder,
         setLastPlacedOrder,
         currentView,

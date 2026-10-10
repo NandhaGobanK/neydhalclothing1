@@ -23,21 +23,57 @@ export function generateUpiUri(
 }
 
 /**
- * Builds standard SVG QR-like matrix visual or fetches direct QR code image URL
+ * Builds standard QR image URL using reliable high-performance QR service
  */
 export function getUpiQrCodeImageUrl(upiId: string, payeeName: string, amount: number, orderNumber?: string): string {
   const upiUri = generateUpiUri(upiId, payeeName, amount, orderNumber);
-  // Uses reliable high-performance QR server API for crisp scan
-  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(upiUri)}&margin=10`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(upiUri)}&margin=12`;
 }
 
 /**
- * Generates structured WhatsApp message for dual checkout
+ * Helper to download QR code image to user's device
+ */
+export async function downloadQrCode(imageUrl: string, filename = 'boutique-upi-qr.png') {
+  try {
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    const a = document.createElement('a');
+    a.href = imageUrl;
+    a.target = '_blank';
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+
+/**
+ * Generates structured WhatsApp message for initial customer order submission
  */
 export function formatWhatsAppOrderMessage(order: Order, settings: StoreSettings): string {
   const itemsText = order.items
-    .map((item, index) => `${index + 1}. *${item.product.title}* (${item.product.fabric}) - Qty: ${item.quantity} × ${formatPrice(item.product.price)}`)
+    .map(
+      (item, index) =>
+        `${index + 1}. *${item.product.title}* [SKU: ${item.product.productCode}] (${item.product.fabric} - ${item.product.color}) - Qty: ${item.quantity} × ${formatPrice(item.product.price)}`
+    )
     .join('\n');
+
+  const refundInfo = order.refundDetails?.refundUpiId
+    ? `\n🔁 *CUSTOMER REFUND UPI DETAILS:*\nUPI ID: *${order.refundDetails.refundUpiId}*\nUPI Mobile: *${order.refundDetails.refundUpiPhone || order.customer.phone}*`
+    : '';
+
+  const customerComments = order.notes?.trim()
+    ? `\n💬 *Customer Comments / Instructions:*\n"${order.notes.trim()}"\n`
+    : '';
 
   const message = `🛍️ *NEW HANDLOOM ORDER RESERVATION*
 Boutique: *${settings.boutiqueName}*
@@ -49,36 +85,173 @@ ${itemsText}
 
 💰 *TOTAL AMOUNT:* ${formatPrice(order.totalAmount)}
 💳 *PAYMENT TRANSACTION ID (UTR):* ${order.upiTransactionId}
-Store UPI Paid To: ${settings.payment.upiId}
+Store UPI: ${settings.payment.upiId}
 
 📦 *SHIPPING ADDRESS:*
 Name: *${order.customer.name}*
 Phone: *${order.customer.phone}*
 Email: ${order.customer.email}
 Address: ${order.customer.address}, ${order.customer.city}, ${order.customer.state} - ${order.customer.pincode}
+${customerComments}${refundInfo}
 
-🔁 *CUSTOMER REFUND UPI DETAILS (In case of order cancellation):*
-Refund UPI ID: *${order.refundDetails.refundUpiId}*
-Refund UPI Phone: *${order.refundDetails.refundUpiPhone}*
-
-${order.notes ? `📝 *Customer Notes:* ${order.notes}\n` : ''}
-_Kindly verify the payment transaction and confirm my boutique dispatch dispatch tracking._`;
+_Kindly verify the payment transaction and confirm my order reservation._`;
 
   return message;
 }
 
 /**
- * Generates structured WhatsApp refund message for store owner
+ * Generates stage-specific WhatsApp notification messages for customers
+ */
+export function formatWhatsAppStageUpdateMessage(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl = window.location.origin
+): string {
+  const itemsSummary = order.items
+    .map((item) => `${item.product.title} [${item.product.productCode}] (Qty: ${item.quantity})`)
+    .join(', ');
+
+  const trackingLink = `${storeUrl}/#track?order=${encodeURIComponent(order.orderNumber)}&phone=${encodeURIComponent(order.customer.phone)}`;
+
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Attending Concierge:* ${order.assignedStaffName}${order.lastUpdatedBy ? ` (@${order.lastUpdatedBy})` : ''}`
+    : order.lastUpdatedBy && order.lastUpdatedBy !== 'system'
+    ? `\n👤 *Handled by Staff:* @${order.lastUpdatedBy}`
+    : '';
+
+  switch (order.status) {
+    case 'Pending':
+      return `Namaste ${order.customer.name},
+
+Thank you for choosing *${settings.boutiqueName}*.
+We have received your saree reservation request:
+• Order Reference: *#${order.orderNumber}*
+• Items: ${itemsSummary}
+• Total Amount: *${formatPrice(order.totalAmount)}*
+• Payment UTR: *${order.upiTransactionId}*
+
+Our atelier team is currently verifying your payment transaction. You can check your order status anytime here:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName}`;
+
+    case 'Confirmed':
+      return `Namaste ${order.customer.name},
+
+✨ Great news! Your order *#${order.orderNumber}* has been *CONFIRMED* by *${settings.boutiqueName}*.
+
+• Order: *#${order.orderNumber}*
+• Items: ${itemsSummary}
+• Payment UTR: *${order.upiTransactionId}* (Verified)
+
+Your pure silk heirloom is being inspected and packed in our signature tamper-proof box. We will notify you once dispatched!
+
+Track status:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName}`;
+
+    case 'Shipped':
+      const courier = order.shippingDetails?.courierName || 'Registered Express Courier';
+      const trackingId = order.shippingDetails?.trackingNumber || 'Tracking ID Assigned';
+
+      return `Namaste ${order.customer.name},
+
+📦 Your handloom saree order *#${order.orderNumber}* has been *DISPATCHED*!
+
+• Courier Partner: *${courier}*
+• Tracking / Consignment ID: *${trackingId}*
+• Items: ${itemsSummary}
+
+_Please note: As our shipments are insured and artisan-direct, you can monitor your order status on our boutique website using your order number or phone number:_
+🔗 ${trackingLink}${staffSignature}
+
+Delivery is typically completed within 2–5 business days.
+Warm regards,
+${settings.boutiqueName}`;
+
+    case 'Delivered':
+      return `Namaste ${order.customer.name},
+
+🎉 Your order *#${order.orderNumber}* has been *DELIVERED*!
+
+We hope you cherish the craftsmanship and texture of your handloom drape. If you'd like to share photos or tag us on Instagram, find us at *${settings.instagramHandle}*.${staffSignature}
+
+Thank you for supporting authentic Indian weavers.
+Warm regards,
+${settings.boutiqueName}`;
+
+    case 'Cancelled':
+    case 'Rejected':
+      const reasonNotice = order.cancellationReason
+        ? `\n• *Reason for ${order.status}:* ${order.cancellationReason}`
+        : '';
+      const refundUtrText = order.refundDetails?.refundUtr
+        ? `\n• *Refund Transaction UTR ID:* *${order.refundDetails.refundUtr}*`
+        : '';
+      const refundUpi = order.refundDetails?.refundUpiId ? `\n• Refunded to UPI: *${order.refundDetails.refundUpiId}*` : '';
+      const refundPhone = order.refundDetails?.refundUpiPhone ? ` (Phone: ${order.refundDetails.refundUpiPhone})` : '';
+
+      return `Namaste ${order.customer.name},
+
+Regarding your order *#${order.orderNumber}* at *${settings.boutiqueName}*:
+
+Your order has been marked as *${order.status.toUpperCase()}*.${reasonNotice}
+${order.refundDetails?.refundStatus === 'processed' ? `Your refund has been processed:` : `Your refund is initiated:`}
+• Refund Amount: *${formatPrice(order.totalAmount)}*${refundUtrText}${refundUpi}${refundPhone}${staffSignature}
+
+If you have any questions, our concierge team is always available here on WhatsApp.
+Warm regards,
+${settings.boutiqueName}`;
+
+    default:
+      return `Namaste ${order.customer.name}, Update on your order #${order.orderNumber} at ${settings.boutiqueName}. Current Status: ${order.status}. Track: ${trackingLink}${staffSignature}`;
+  }
+}
+
+/**
+ * Generates structured WhatsApp message for Customer Cancellation Request
+ */
+export function formatWhatsAppCustomerCancellationRequest(
+  order: Order,
+  reason: string,
+  settings: StoreSettings
+): string {
+  return `Namaste ${settings.boutiqueName},
+
+I would like to request *CANCELLATION* for my saree order:
+• Order Number: *#${order.orderNumber}*
+• Registered Phone: *${order.customer.phone}*
+• Customer Name: *${order.customer.name}*
+• Total Order Value: *${formatPrice(order.totalAmount)}*
+• Reason for Cancellation: *${reason}*
+
+${order.refundDetails?.refundUpiId ? `Refund to my UPI: *${order.refundDetails.refundUpiId}*` : ''}
+
+Kindly process the cancellation and refund at your earliest convenience. Thank you.`;
+}
+
+/**
+ * Generates structured WhatsApp refund message for store owner with mandatory Refund UTR
  */
 export function formatWhatsAppRefundMessage(order: Order, settings: StoreSettings): string {
+  const utrNotice = order.refundDetails?.refundUtr
+    ? `\n• *Refund Transaction UTR ID:* *${order.refundDetails.refundUtr}*`
+    : '';
+  const reasonText = order.cancellationReason
+    ? `\n• Reason: ${order.cancellationReason}`
+    : '';
+
   return `Namaste ${order.customer.name},
 
 Regarding your order *#${order.orderNumber}* at *${settings.boutiqueName}* for ${formatPrice(order.totalAmount)}:
 
-We have noted the order status update (${order.status}). Your refund has been initiated to your provided UPI details:
-• UPI ID: *${order.refundDetails.refundUpiId}*
-• Registered Phone: *${order.refundDetails.refundUpiPhone}*
+Your refund has been successfully completed:${reasonText}${utrNotice}
 • Refund Amount: *${formatPrice(order.totalAmount)}*
+• Sent to UPI: *${order.refundDetails?.refundUpiId || 'Customer UPI'}*
+• Phone: *${order.refundDetails?.refundUpiPhone || order.customer.phone}*
 
 Thank you for your gracious understanding.
 Warm regards,

@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { formatPrice, generateUpiUri, getUpiQrCodeImageUrl, formatWhatsAppOrderMessage, openWhatsApp } from '../../utils/upi';
+import {
+  formatPrice,
+  getUpiQrCodeImageUrl,
+  formatWhatsAppOrderMessage,
+  openWhatsApp,
+  downloadQrCode,
+} from '../../utils/upi';
 import {
   X,
-  QrCode,
   Copy,
   Check,
-  Smartphone,
   ShieldCheck,
   AlertCircle,
   MessageSquare,
   Send,
-  ArrowRight,
+  Download,
   Info,
 } from 'lucide-react';
 
@@ -37,21 +41,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
   const [upiTransactionId, setUpiTransactionId] = useState('');
   const [refundUpiId, setRefundUpiId] = useState('');
   const [refundUpiPhone, setRefundUpiPhone] = useState('');
-  const [sameAsPhone, setSameAsPhone] = useState(true);
+  const [sameAsPhone, setSameAsPhone] = useState(false);
 
   // UI helpers
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showQrExpanded, setShowQrExpanded] = useState(false);
-
-  // Auto-fill refund phone if checkbox active
-  const handlePhoneChange = (val: string) => {
-    setPhone(val);
-    if (sameAsPhone) {
-      setRefundUpiPhone(val);
-    }
-  };
+  const [isDownloadingQr, setIsDownloadingQr] = useState(false);
+  const [showWhatsAppFallback, setShowWhatsAppFallback] = useState(false);
 
   const handleCopyUpiId = () => {
     navigator.clipboard.writeText(settings.payment.upiId);
@@ -59,19 +56,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
     setTimeout(() => setCopiedUpi(false), 2000);
   };
 
-  const upiIntentUri = generateUpiUri(
-    settings.payment.upiId,
-    settings.payment.payeeName,
-    cartTotal,
-    undefined,
-    `Saree Reservation (${cart.length} items)`
-  );
-
   const qrImageUrl = settings.payment.qrCodeUrl || getUpiQrCodeImageUrl(
     settings.payment.upiId,
     settings.payment.payeeName,
     cartTotal
   );
+
+  const handleDownloadQr = async () => {
+    setIsDownloadingQr(true);
+    try {
+      await downloadQrCode(qrImageUrl, `aara-saree-upi-qr-${cartTotal}.png`);
+    } catch (err) {
+      console.error('Error downloading QR code:', err);
+    } finally {
+      setIsDownloadingQr(false);
+    }
+  };
 
   const validateForm = (): boolean => {
     if (!name.trim()) {
@@ -91,19 +91,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
       return false;
     }
     if (!upiTransactionId.trim() || upiTransactionId.trim().length < 6) {
-      setErrorMsg('Please enter your Prepaid Payment Transaction ID / UTR from your UPI app.');
-      return false;
-    }
-    if (!refundUpiId.trim() || !refundUpiId.includes('@')) {
-      setErrorMsg('Please provide a valid Refund UPI ID (e.g. name@okhdfcbank or phone@upi) for refund safety.');
-      return false;
-    }
-    const finalRefundPhone = sameAsPhone ? phone.trim() : refundUpiPhone.trim();
-    if (!finalRefundPhone || finalRefundPhone.length < 10) {
-      setErrorMsg('Please provide your UPI-linked mobile phone number for potential refunds.');
+      setErrorMsg('Please enter your Prepaid Payment Transaction ID / UTR from your UPI payment app.');
       return false;
     }
 
+    // Refund details are optional now as per request!
     setErrorMsg('');
     return true;
   };
@@ -127,9 +119,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
         },
         items: cart,
         upiTransactionId: upiTransactionId.trim(),
-        refundUpiId: refundUpiId.trim(),
-        refundUpiPhone: finalRefundPhone,
-        notes: notes.trim(),
+        refundUpiId: refundUpiId.trim() || undefined,
+        refundUpiPhone: finalRefundPhone || undefined,
+        notes: notes.trim() || undefined,
         checkoutMethod: method,
       });
 
@@ -142,7 +134,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
       onSuccess();
     } catch (err) {
       setIsSubmitting(false);
-      setErrorMsg('Unable to place order. Please try again.');
+      setErrorMsg('Submission encountered an issue. You can send this order directly via WhatsApp below.');
+      setShowWhatsAppFallback(true);
     }
   };
 
@@ -225,7 +218,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                 <input
                   type="tel"
                   value={phone}
-                  onChange={(e) => handlePhoneChange(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    if (sameAsPhone) setRefundUpiPhone(e.target.value);
+                  }}
                   placeholder="10-digit mobile number"
                   className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 text-neutral-900"
                 />
@@ -288,32 +284,34 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-neutral-700 font-medium mb-1">Gift Note / Blouse Stitching Notes (Optional)</label>
+                <label className="block text-neutral-700 font-medium mb-1">
+                  Customer Comments / Special Instructions (Optional)
+                </label>
                 <input
                   type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Any special packing request or notes for the boutique owner"
+                  placeholder="e.g. Gift packing request, blouse border stitching instructions, delivery timings..."
                   className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 text-neutral-900"
                 />
               </div>
             </div>
           </div>
 
-          {/* Section 3: Prepaid UPI Payment Step */}
+          {/* Section 3: Prepaid UPI Payment Step with Downloadable QR Code */}
           <div className="pt-4 border-t border-neutral-200">
             <h3 className="font-serif text-base sm:text-lg font-bold text-neutral-900 mb-2 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-rose-950 text-amber-200 text-xs flex items-center justify-center font-sans font-bold">2</span>
               <span>Prepaid UPI Payment (Pay Before Submitting)</span>
             </h3>
 
-            <p className="text-xs text-neutral-500 mb-4">
-              All sarees are exclusive single-piece handlooms. Please transfer <strong className="text-neutral-900 font-semibold">{formatPrice(cartTotal)}</strong> using the boutique's official UPI ID or QR code below.
+            <p className="text-xs text-neutral-500 mb-4 leading-relaxed">
+              Scan or download the QR code below, pay <strong className="text-neutral-900 font-semibold">{formatPrice(cartTotal)}</strong> in your UPI banking app (Google Pay, PhonePe, Paytm, BHIM), and enter the 12-digit transaction UTR number.
             </p>
 
             <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 sm:p-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                {/* QR Code visual */}
+                {/* QR Code visual with Download button */}
                 <div className="flex flex-col items-center text-center p-3 bg-white rounded-xl border border-amber-200 shadow-xs">
                   <div className="relative group">
                     <img
@@ -323,12 +321,24 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                       className="w-44 h-44 object-contain rounded-lg"
                     />
                   </div>
-                  <p className="text-[11px] text-neutral-500 mt-2 font-medium">
-                    Scan with Google Pay, PhonePe, Paytm, BHIM
+
+                  {/* Download QR Button (Requested by user) */}
+                  <button
+                    type="button"
+                    onClick={handleDownloadQr}
+                    disabled={isDownloadingQr}
+                    className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>{isDownloadingQr ? 'Downloading...' : 'Download QR Code'}</span>
+                  </button>
+
+                  <p className="text-[11px] text-neutral-500 mt-1.5 font-medium">
+                    Save to gallery and scan in GPay / PhonePe
                   </p>
                 </div>
 
-                {/* Direct UPI ID & Mobile App Intent */}
+                {/* Direct UPI ID coordinates */}
                 <div className="space-y-3">
                   <div>
                     <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide">
@@ -367,14 +377,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                     </p>
                   </div>
 
-                  {/* Mobile Direct Pay Intent */}
-                  <a
-                    href={upiIntentUri}
-                    className="w-full py-2.5 px-3 rounded-xl bg-rose-950 hover:bg-rose-900 text-amber-200 text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition"
-                  >
-                    <Smartphone className="w-4 h-4 text-amber-300" />
-                    <span>Pay {formatPrice(cartTotal)} on UPI App</span>
-                  </a>
+                  <div className="p-2.5 rounded-xl bg-white border border-amber-200 text-[11px] text-neutral-600 space-y-1">
+                    <p className="font-semibold text-neutral-800">Quick Payment Steps:</p>
+                    <p>1. Tap <strong>Download QR Code</strong> or Copy the UPI ID.</p>
+                    <p>2. Open Google Pay, PhonePe, or Paytm and complete payment.</p>
+                    <p>3. Copy the 12-digit UTR number from receipt & paste below.</p>
+                  </div>
                 </div>
               </div>
 
@@ -397,26 +405,27 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
             </div>
           </div>
 
-          {/* Section 4: Mandatory Refund Details Capture */}
+          {/* Section 4: Refund Details (Now Optional as per user request) */}
           <div className="pt-4 border-t border-neutral-200">
-            <h3 className="font-serif text-base sm:text-lg font-bold text-neutral-900 mb-1 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-emerald-800 text-emerald-100 text-xs flex items-center justify-center font-sans font-bold">3</span>
-              <span>Customer Refund Details (Safeguard in Case of Cancellation)</span>
-            </h3>
-
-            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200/80 mb-3 text-xs text-emerald-950 flex items-start gap-2.5">
-              <Info className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-emerald-900">100% Refund Assurance Guarantee</p>
-                <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
-                  In the event of cancellation or if this single-edition handloom piece becomes unavailable, your payment will be refunded immediately to this account.
-                </p>
-              </div>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-serif text-base sm:text-lg font-bold text-neutral-900 flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-emerald-800 text-emerald-100 text-xs flex items-center justify-center font-sans font-bold">3</span>
+                <span>Customer Refund Details (Optional)</span>
+              </h3>
+              <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                Optional
+              </span>
             </div>
+
+            <p className="text-xs text-neutral-500 mb-3">
+              Optional details to expedite an instant refund to your bank in case of cancellation or unavailability.
+            </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-neutral-700 font-bold mb-1">Your Refund UPI ID *</label>
+                <label className="block text-neutral-700 font-medium mb-1">
+                  Your Refund UPI ID (Optional)
+                </label>
                 <input
                   type="text"
                   value={refundUpiId}
@@ -427,37 +436,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-neutral-700 font-bold">Refund UPI Mobile Phone *</label>
-                  <label className="flex items-center gap-1 text-[11px] text-neutral-500 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={sameAsPhone}
-                      onChange={(e) => {
-                        setSameAsPhone(e.target.checked);
-                        if (e.target.checked) setRefundUpiPhone(phone);
-                      }}
-                      className="rounded text-rose-900"
-                    />
-                    <span>Same as shipping</span>
-                  </label>
-                </div>
+                <label className="block text-neutral-700 font-medium mb-1">
+                  Refund UPI Mobile Phone (Optional)
+                </label>
                 <input
                   type="tel"
-                  disabled={sameAsPhone}
-                  value={sameAsPhone ? phone : refundUpiPhone}
+                  value={refundUpiPhone}
                   onChange={(e) => setRefundUpiPhone(e.target.value)}
-                  placeholder="10-digit mobile linked to your UPI"
-                  className={`w-full p-2.5 rounded-xl border border-neutral-300 text-xs focus:outline-hidden ${
-                    sameAsPhone ? 'bg-neutral-100 text-neutral-600' : 'bg-white text-neutral-900'
-                  }`}
+                  placeholder="Mobile number linked to your UPI"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-xs focus:outline-hidden"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Modal Footer with Dual Checkout Options */}
+        {/* Modal Footer with Primary Submit Order & Fallback WhatsApp option */}
         <div className="p-4 sm:p-6 border-t border-neutral-200 bg-neutral-50 shrink-0">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-left w-full sm:w-auto">
@@ -467,28 +461,43 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
-              {/* Option A: Submit Order directly */}
-              <button
-                type="button"
-                onClick={() => handleCheckout('submit_order')}
-                disabled={isSubmitting}
-                className="py-3 px-5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition whitespace-nowrap"
-              >
-                <Send className="w-4 h-4" />
-                <span>Submit Order</span>
-              </button>
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                {/* Fallback WhatsApp button - only shown if Submit Order failed or toggled */}
+                {showWhatsAppFallback && (
+                  <button
+                    type="button"
+                    onClick={() => handleCheckout('whatsapp')}
+                    disabled={isSubmitting}
+                    className="flex-1 sm:flex-none py-3 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition whitespace-nowrap animate-in fade-in"
+                  >
+                    <MessageSquare className="w-4 h-4 fill-white" />
+                    <span>Send Order via WhatsApp</span>
+                  </button>
+                )}
 
-              {/* Option B: Send Order via WhatsApp */}
-              <button
-                type="button"
-                onClick={() => handleCheckout('whatsapp')}
-                disabled={isSubmitting}
-                className="py-3 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition whitespace-nowrap"
-              >
-                <MessageSquare className="w-4 h-4 fill-white" />
-                <span>Send Order via WhatsApp</span>
-              </button>
+                {/* Primary Button: Submit Order */}
+                <button
+                  type="button"
+                  onClick={() => handleCheckout('submit_order')}
+                  disabled={isSubmitting}
+                  className="flex-1 sm:flex-none py-3 px-6 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition whitespace-nowrap"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>{isSubmitting ? 'Recording Order...' : 'Submit Order'}</span>
+                </button>
+              </div>
+
+              {/* Discreet option to reveal WhatsApp if user has trouble */}
+              {!showWhatsAppFallback && (
+                <button
+                  type="button"
+                  onClick={() => setShowWhatsAppFallback(true)}
+                  className="text-[11px] text-neutral-500 hover:text-emerald-700 underline transition"
+                >
+                  Submit Order not working? Send via WhatsApp instead
+                </button>
+              )}
             </div>
           </div>
         </div>

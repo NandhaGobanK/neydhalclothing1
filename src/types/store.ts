@@ -19,6 +19,7 @@ export type SareeColor =
 
 export interface Product {
   id: string;
+  productCode: string; // Unique SKU code per product and color (e.g. KAN-CRIM-101)
   title: string;
   subtitle: string;
   description: string;
@@ -47,6 +48,7 @@ export interface CartItem {
 
 export type OrderStatus =
   | 'Pending'
+  | 'Confirmed'
   | 'Shipped'
   | 'Delivered'
   | 'Cancelled'
@@ -62,12 +64,41 @@ export interface CustomerDetails {
   pincode: string;
 }
 
+export interface ShippingDetails {
+  courierName: string;
+  trackingNumber: string;
+  shippedAt?: string;
+  estimatedDelivery?: string;
+  notes?: string;
+}
+
 export interface RefundDetails {
-  refundUpiId: string;
-  refundUpiPhone: string;
+  refundUpiId?: string;
+  refundUpiPhone?: string;
   refundStatus: 'pending' | 'processed' | 'not_required';
+  refundUtr?: string; // UTR reference generated upon refund
   processedAt?: string;
   notes?: string;
+}
+
+export interface CancellationRequest {
+  requested: boolean;
+  requestedAt: string;
+  reason: string;
+  customerPhone: string;
+  status: 'pending' | 'approved' | 'rejected';
+  adminDecisionNotes?: string;
+}
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  username: string;
+  password: string;
+  role: 'manager' | 'concierge' | 'fulfillment';
+  isLocked: boolean;
+  phone: string;
+  createdAt: string;
 }
 
 export interface Order {
@@ -81,9 +112,15 @@ export interface Order {
   totalAmount: number;
   upiTransactionId: string;
   refundDetails: RefundDetails;
+  shippingDetails?: ShippingDetails;
   status: OrderStatus;
   checkoutMethod: 'submit_order' | 'whatsapp';
   notes?: string;
+  cancellationReason?: string; // Explanation when cancelled or rejected
+  cancellationRequest?: CancellationRequest; // Customer requested cancellation
+  assignedStaffId?: string; // Staff member assigned to handle this order
+  assignedStaffName?: string;
+  lastUpdatedBy?: string; // Staff username who made the last change
 }
 
 export type StoreTheme = 'maroon' | 'emerald' | 'sapphire' | 'rosewood' | 'gold';
@@ -101,6 +138,18 @@ export interface PaymentSettings {
   instructions: string;
 }
 
+export interface StorefrontDisplaySettings {
+  heroHeadline: string;
+  heroSubheadline: string;
+  showHeroBanner: boolean;
+  showTrustBadges: boolean;
+  showCraftsmanshipStory: boolean;
+  storyTitle: string;
+  storyContent: string;
+  showTrackOrder: boolean;
+  freeShippingText: string;
+}
+
 export interface StoreSettings {
   boutiqueName: string;
   tagline: string;
@@ -112,5 +161,7 @@ export interface StoreSettings {
   theme: StoreTheme;
   announcement: AnnouncementSettings;
   payment: PaymentSettings;
-  adminPin: string;
+  storefrontDisplay: StorefrontDisplaySettings;
+  adminPin: string; // 6-digit access PIN
+  staffMembers: StaffMember[];
 }

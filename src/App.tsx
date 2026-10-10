@@ -8,6 +8,8 @@ import { ProductDetailModal } from './components/storefront/ProductDetailModal';
 import { CartDrawer } from './components/storefront/CartDrawer';
 import { CheckoutModal } from './components/storefront/CheckoutModal';
 import { OrderSuccessModal } from './components/storefront/OrderSuccessModal';
+import { TrackOrderModal } from './components/storefront/TrackOrderModal';
+import { OrderCancellationModal } from './components/storefront/OrderCancellationModal';
 import { Footer } from './components/storefront/Footer';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminAuthModal } from './components/admin/AdminAuthModal';
@@ -22,6 +24,8 @@ function MainAppContent() {
     setActiveProductModal,
     isCheckoutOpen,
     setIsCheckoutOpen,
+    isTrackOrderOpen,
+    setIsTrackOrderOpen,
     lastPlacedOrder,
     setLastPlacedOrder,
   } = useStore();
@@ -118,6 +122,18 @@ function MainAppContent() {
               onClose={() => setIsCheckoutOpen(false)}
               onSuccess={() => {
                 setIsCheckoutOpen(false);
+              }}
+            />
+          )}
+
+          {/* Track Order Modal (Public lookup with Phone or Order Number) */}
+          {isTrackOrderOpen && (
+            <TrackOrderModal
+              onClose={() => {
+                setIsTrackOrderOpen(false);
+                if (window.location.hash.startsWith('#track')) {
+                  window.location.hash = '';
+                }
               }}
             />
           )}

@@ -7,7 +7,7 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
-  const { settings, isAdminLoggedIn } = useStore();
+  const { settings, isAdminLoggedIn, setIsTrackOrderOpen } = useStore();
 
   return (
     <footer className="bg-neutral-950 text-neutral-400 border-t border-neutral-800 text-xs mt-16">
@@ -67,6 +67,14 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
               <li>Free Express Insured Dispatch</li>
               <li>Prepaid UPI Order Protection</li>
               <li>Instant UPI Refund on Cancellation</li>
+              <li className="pt-1">
+                <button
+                  onClick={() => setIsTrackOrderOpen(true)}
+                  className="text-amber-300 hover:text-white underline font-medium"
+                >
+                  Track Your Order Status →
+                </button>
+              </li>
             </ul>
 
             <div className="pt-3">

@@ -13,12 +13,14 @@ import {
   Upload,
   RotateCcw,
   Sparkles,
+  LayoutTemplate,
+  Eye,
 } from 'lucide-react';
 
 export const SettingsManager: React.FC = () => {
   const { settings, updateSettings, resetToInitialData } = useStore();
 
-  // Form local state
+  // Boutique Info
   const [boutiqueName, setBoutiqueName] = useState(settings.boutiqueName);
   const [tagline, setTagline] = useState(settings.tagline);
   const [contactPhone, setContactPhone] = useState(settings.contactPhone);
@@ -26,6 +28,29 @@ export const SettingsManager: React.FC = () => {
   const [instagramHandle, setInstagramHandle] = useState(settings.instagramHandle);
   const [storeAddress, setStoreAddress] = useState(settings.storeAddress);
   const [theme, setTheme] = useState<StoreTheme>(settings.theme);
+
+  // Storefront Public Front Display Controls (Prompt requirement: Things what to show on public front should be editable from admin side)
+  const defaultDisplay = settings.storefrontDisplay || {
+    heroHeadline: 'Timeless Drapes, Woven for Generations.',
+    heroSubheadline: 'Discover authentic handcrafted Kanjivaram bridal silks, Varanasi Kadwa brocades, and feather-light Chanderi tissue sarees. Direct from the master weavers of India to your doorstep.',
+    showHeroBanner: true,
+    showTrustBadges: true,
+    showCraftsmanshipStory: true,
+    storyTitle: 'The Heritage Loom Legacy',
+    storyContent: 'Every saree in our collection is an heirloom woven with mulberry silk and authentic zari by master weavers across Kanchipuram and Varanasi.',
+    showTrackOrder: true,
+    freeShippingText: 'Free Insured Express Delivery across India (Tamper-Proof Box)',
+  };
+
+  const [heroHeadline, setHeroHeadline] = useState(defaultDisplay.heroHeadline);
+  const [heroSubheadline, setHeroSubheadline] = useState(defaultDisplay.heroSubheadline);
+  const [showHeroBanner, setShowHeroBanner] = useState(defaultDisplay.showHeroBanner);
+  const [showTrustBadges, setShowTrustBadges] = useState(defaultDisplay.showTrustBadges);
+  const [freeShippingText, setFreeShippingText] = useState(defaultDisplay.freeShippingText);
+  const [showTrackOrder, setShowTrackOrder] = useState(defaultDisplay.showTrackOrder);
+  const [showCraftsmanshipStory, setShowCraftsmanshipStory] = useState(defaultDisplay.showCraftsmanshipStory);
+  const [storyTitle, setStoryTitle] = useState(defaultDisplay.storyTitle);
+  const [storyContent, setStoryContent] = useState(defaultDisplay.storyContent);
 
   // Announcement Comments Board
   const [announcementEnabled, setAnnouncementEnabled] = useState(settings.announcement.enabled);
@@ -52,6 +77,17 @@ export const SettingsManager: React.FC = () => {
       instagramHandle: instagramHandle.trim(),
       storeAddress: storeAddress.trim(),
       theme,
+      storefrontDisplay: {
+        heroHeadline: heroHeadline.trim(),
+        heroSubheadline: heroSubheadline.trim(),
+        showHeroBanner,
+        showTrustBadges,
+        showCraftsmanshipStory,
+        storyTitle: storyTitle.trim(),
+        storyContent: storyContent.trim(),
+        showTrackOrder,
+        freeShippingText: freeShippingText.trim(),
+      },
       announcement: {
         enabled: announcementEnabled,
         text: announcementText.trim(),
@@ -92,7 +128,7 @@ export const SettingsManager: React.FC = () => {
             Store & Settings Manager
           </h2>
           <p className="text-xs text-neutral-500 mt-0.5">
-            Configure boutique profile, live announcements, and checkout UPI credentials
+            Customize what shows on public storefront, payment QR code, announcements, and theme
           </p>
         </div>
 
@@ -105,7 +141,136 @@ export const SettingsManager: React.FC = () => {
       </div>
 
       <form onSubmit={handleSaveAll} className="space-y-6">
-        {/* Section 1: Storefront Announcement / Comments Board */}
+        {/* Section 1: Public Storefront Content & Visibility Controls (User Request) */}
+        <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
+          <div className="flex items-center gap-2 mb-2 text-rose-950 font-serif font-bold text-base sm:text-lg">
+            <LayoutTemplate className="w-5 h-5 text-amber-600" />
+            <h3>Public Storefront Display & Content Controls</h3>
+          </div>
+          <p className="text-xs text-neutral-500 mb-4">
+            Edit text headlines, customize customer-facing banners, and toggle sections visible on the public storefront.
+          </p>
+
+          <div className="space-y-4 text-xs">
+            {/* Toggles Strip */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-200">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showHeroBanner}
+                  onChange={(e) => setShowHeroBanner(e.target.checked)}
+                  className="rounded text-rose-900"
+                />
+                <span className="font-semibold text-neutral-800">Show Hero Banner</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showTrustBadges}
+                  onChange={(e) => setShowTrustBadges(e.target.checked)}
+                  className="rounded text-rose-900"
+                />
+                <span className="font-semibold text-neutral-800">Show Trust Badges Strip</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showTrackOrder}
+                  onChange={(e) => setShowTrackOrder(e.target.checked)}
+                  className="rounded text-rose-900"
+                />
+                <span className="font-semibold text-neutral-800">Show 'Track Order' Feature</span>
+              </label>
+            </div>
+
+            {/* Hero Headlines */}
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Public Hero Title / Headline *
+                </label>
+                <input
+                  type="text"
+                  value={heroHeadline}
+                  onChange={(e) => setHeroHeadline(e.target.value)}
+                  placeholder="e.g. Timeless Drapes, Woven for Generations."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Public Hero Subtitle / Description *
+                </label>
+                <textarea
+                  rows={2}
+                  value={heroSubheadline}
+                  onChange={(e) => setHeroSubheadline(e.target.value)}
+                  placeholder="e.g. Discover authentic handcrafted Kanjivaram bridal silks..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Free Shipping / Delivery Badge Copy
+                </label>
+                <input
+                  type="text"
+                  value={freeShippingText}
+                  onChange={(e) => setFreeShippingText(e.target.value)}
+                  placeholder="e.g. Free Insured Express Delivery across India (Tamper-Proof Box)"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                />
+              </div>
+            </div>
+
+            {/* Craftsmanship Section Controls */}
+            <div className="pt-2 border-t border-neutral-200 space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="craftStory"
+                  checked={showCraftsmanshipStory}
+                  onChange={(e) => setShowCraftsmanshipStory(e.target.checked)}
+                  className="rounded text-rose-900 cursor-pointer"
+                />
+                <label htmlFor="craftStory" className="font-bold text-neutral-800 cursor-pointer">
+                  Show 'About Our Looms & Heritage' Story Section on Public Storefront
+                </label>
+              </div>
+
+              {showCraftsmanshipStory && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6">
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">Story Section Title</label>
+                    <input
+                      type="text"
+                      value={storyTitle}
+                      onChange={(e) => setStoryTitle(e.target.value)}
+                      placeholder="e.g. The Heritage Loom Legacy"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">Story Text Narrative</label>
+                    <textarea
+                      rows={2}
+                      value={storyContent}
+                      onChange={(e) => setStoryContent(e.target.value)}
+                      placeholder="e.g. Every saree in our collection is an heirloom..."
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Storefront Announcement / Comments Board */}
         <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
           <div className="flex items-center gap-2 mb-2 text-rose-950 font-serif font-bold text-base sm:text-lg">
             <Megaphone className="w-5 h-5 text-amber-600" />
@@ -142,7 +307,6 @@ export const SettingsManager: React.FC = () => {
               />
             </div>
 
-            {/* Live Preview of Announcement */}
             {announcementEnabled && announcementText && (
               <div className="pt-2">
                 <span className="text-[11px] font-semibold text-neutral-400 uppercase">Live Storefront Preview:</span>
@@ -155,14 +319,14 @@ export const SettingsManager: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 2: Payment Configuration (UPI ID & QR Code) */}
+        {/* Section 3: Payment Configuration (UPI ID & Downloadable QR Code) */}
         <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
           <div className="flex items-center gap-2 mb-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
             <CreditCard className="w-5 h-5 text-amber-600" />
             <h3>Payment Configuration (Prepaid UPI)</h3>
           </div>
           <p className="text-xs text-neutral-500 mb-4">
-            Customers will see these exact UPI payment coordinates and QR code during checkout before submitting their orders.
+            Customers will see these exact UPI payment coordinates and downloadable QR code during checkout before submitting their orders.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -209,13 +373,13 @@ export const SettingsManager: React.FC = () => {
                 </label>
               </div>
               <p className="text-[11px] text-neutral-500">
-                If left empty, a crisp live UPI QR code is automatically generated matching your UPI ID and Payee Name dynamically.
+                Customers can tap "Download QR Code" on the checkout page to save it directly to their mobile photo gallery.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Section 3: Boutique Profile & Contact Information */}
+        {/* Section 4: Boutique Profile & Contact Information */}
         <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
           <div className="flex items-center gap-2 mb-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
             <Building className="w-5 h-5 text-amber-600" />
@@ -292,7 +456,7 @@ export const SettingsManager: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 4: Store Theme & Color Palette */}
+        {/* Section 5: Store Theme & Color Palette */}
         <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
           <div className="flex items-center gap-2 mb-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
             <Palette className="w-5 h-5 text-amber-600" />
@@ -330,7 +494,7 @@ export const SettingsManager: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 5: Security PIN & Reset Operations */}
+        {/* Section 6: Security PIN & Reset Operations */}
         <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
           <div className="flex items-center gap-2 mb-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
             <Key className="w-5 h-5 text-amber-600" />
@@ -343,31 +507,34 @@ export const SettingsManager: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs items-center">
             <div>
               <label className="block font-bold text-neutral-800 mb-1">
-                Admin Access PIN (4-6 Digits)
+                Admin Master PIN (6 Digits)
               </label>
               <input
                 type="text"
                 value={adminPin}
-                onChange={(e) => setAdminPin(e.target.value)}
+                onChange={(e) => setAdminPin(e.target.value.replace(/[^0-9]/g, ''))}
                 maxLength={6}
-                placeholder="8899"
+                placeholder="889900"
                 className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-sm tracking-wider text-neutral-900"
               />
+              <p className="text-[11px] text-neutral-500 mt-1">
+                Owner master security PIN required to unlock the Admin Console.
+              </p>
             </div>
 
             <div className="pt-4 sm:pt-0">
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm('Reset boutique catalog, orders, and settings back to original initial data?')) {
+                  if (confirm('Restore boutique catalog, inventory, and settings back to factory state?')) {
                     resetToInitialData();
-                    alert('Boutique catalog has been restored to default demo state.');
+                    alert('Boutique catalog has been restored to factory settings.');
                   }
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-300 text-rose-800 hover:bg-rose-50 text-xs font-semibold transition"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset Demo Catalog & Orders</span>
+                <span>Restore Factory Catalog & State</span>
               </button>
             </div>
           </div>

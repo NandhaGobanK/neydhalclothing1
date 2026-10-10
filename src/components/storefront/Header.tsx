@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { ShoppingBag, Lock, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, Lock, ShieldCheck, Truck } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface HeaderProps {
@@ -14,7 +14,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectCategory,
   selectedCategory = 'all',
 }) => {
-  const { settings, cartCount, setIsCartOpen, isAdminLoggedIn } = useStore();
+  const { settings, cartCount, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen } = useStore();
 
   const categories = [
     { id: 'all', label: 'All Sarees' },
@@ -23,6 +23,8 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'Chanderi Tissue', label: 'Chanderi' },
     { id: 'Pure Georgette', label: 'Georgette' },
   ];
+
+  const showTrackOrder = settings.storefrontDisplay?.showTrackOrder !== false;
 
   return (
     <header className="sticky top-0 z-40 bg-neutral-900/95 backdrop-blur-md border-b border-neutral-800 text-white">
@@ -54,10 +56,30 @@ export const Header: React.FC<HeaderProps> = ({
               {cat.label}
             </button>
           ))}
+
+          {showTrackOrder && (
+            <button
+              onClick={() => setIsTrackOrderOpen(true)}
+              className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 text-neutral-300 flex items-center gap-1.5"
+            >
+              <Truck className="w-4 h-4 text-amber-400" />
+              <span>Track Order</span>
+            </button>
+          )}
         </nav>
 
-        {/* Zone 3: Actions (PWA install, Cart bag, Discreet Admin) */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Zone 3: Actions (Track Order on mobile/desktop, PWA install, Cart bag, Discreet Admin) */}
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          {showTrackOrder && (
+            <button
+              onClick={() => setIsTrackOrderOpen(true)}
+              className="lg:hidden p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-amber-200 text-xs font-medium flex items-center gap-1 transition"
+              title="Track Order Status"
+            >
+              <Truck className="w-4 h-4" />
+            </button>
+          )}
+
           <PWAInstallButton variant="header" />
 
           {/* Cart Bag Button */}
@@ -115,6 +137,16 @@ export const Header: React.FC<HeaderProps> = ({
             {cat.label}
           </button>
         ))}
+
+        {showTrackOrder && (
+          <button
+            onClick={() => setIsTrackOrderOpen(true)}
+            className="px-3 py-1 rounded-full text-xs whitespace-nowrap bg-neutral-800 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-medium"
+          >
+            <Truck className="w-3 h-3" />
+            <span>Track Order</span>
+          </button>
+        )}
       </div>
     </header>
   );

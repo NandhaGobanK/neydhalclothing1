@@ -23,6 +23,7 @@ export const ProductManager: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Form Fields
+  const [productCode, setProductCode] = useState('');
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [description, setDescription] = useState('');
@@ -43,6 +44,13 @@ export const ProductManager: React.FC = () => {
   const [blousePieceIncluded, setBlousePieceIncluded] = useState(true);
   const [lengthMeters, setLengthMeters] = useState(6.3);
   const [occasion, setOccasion] = useState('Bridal & Wedding');
+
+  const generateSuggestedSku = (fab: SareeFabric, col: SareeColor) => {
+    const prefix = fab.substring(0, 3).toUpperCase();
+    const colPrefix = col.substring(0, 4).toUpperCase();
+    const randomCode = Math.floor(100 + Math.random() * 900);
+    return `${prefix}-${colPrefix}-${randomCode}`;
+  };
 
   const fabrics: SareeFabric[] = [
     'Kanjivaram Silk',
@@ -67,6 +75,7 @@ export const ProductManager: React.FC = () => {
 
   const openAddModal = () => {
     setEditingProduct(null);
+    setProductCode(generateSuggestedSku('Kanjivaram Silk', 'Crimson Red'));
     setTitle('');
     setSubtitle('');
     setDescription('');
@@ -90,6 +99,7 @@ export const ProductManager: React.FC = () => {
 
   const openEditModal = (prod: Product) => {
     setEditingProduct(prod);
+    setProductCode(prod.productCode || generateSuggestedSku(prod.fabric, prod.color));
     setTitle(prod.title);
     setSubtitle(prod.subtitle || '');
     setDescription(prod.description);
@@ -139,7 +149,10 @@ export const ProductManager: React.FC = () => {
     e.preventDefault();
     if (!title.trim()) return;
 
+    const finalSku = productCode.trim() || generateSuggestedSku(fabric, color);
+
     const payload = {
+      productCode: finalSku,
       title: title.trim(),
       subtitle: subtitle.trim(),
       description: description.trim(),
@@ -196,6 +209,7 @@ export const ProductManager: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-500 uppercase tracking-wider font-semibold">
               <tr>
+                <th className="py-3 px-3">Unique Code / SKU</th>
                 <th className="py-3 px-4">Saree</th>
                 <th className="py-3 px-4">Fabric & Color</th>
                 <th className="py-3 px-4">Price</th>
@@ -207,6 +221,13 @@ export const ProductManager: React.FC = () => {
             <tbody className="divide-y divide-neutral-100">
               {products.map((product) => (
                 <tr key={product.id} className="hover:bg-neutral-50/50 transition">
+                  {/* SKU Unique Code */}
+                  <td className="py-3 px-3">
+                    <span className="font-mono text-xs font-bold text-rose-950 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                      {product.productCode}
+                    </span>
+                  </td>
+
                   {/* Saree Image & Title */}
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-3">
@@ -342,6 +363,33 @@ export const ProductManager: React.FC = () => {
             {/* Modal Form Body */}
             <form onSubmit={handleSaveProduct} className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-neutral-800">
+                      Product Unique Code (SKU - Product & Color Wise) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setProductCode(generateSuggestedSku(fabric, color))}
+                      className="text-[11px] text-amber-700 hover:text-amber-800 font-semibold flex items-center gap-1 transition"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-600" />
+                      <span>Regenerate Code from Fabric & Color</span>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={productCode}
+                    onChange={(e) => setProductCode(e.target.value.toUpperCase())}
+                    required
+                    placeholder="e.g. KAN-CRIM-101"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs uppercase text-neutral-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                  />
+                  <p className="text-[11px] text-neutral-500 mt-1">
+                    Unique SKU code for this specific drape & colorway. Used to record exact sales attribution, analytics, and stock records.
+                  </p>
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="block font-bold text-neutral-800 mb-1">Saree Name / Title *</label>
                   <input

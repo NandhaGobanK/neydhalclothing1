@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { OrderManager } from './OrderManager';
 import { ProductManager } from './ProductManager';
+import { AnalyticsManager } from './AnalyticsManager';
+import { StaffManager } from './StaffManager';
 import { SettingsManager } from './SettingsManager';
 import {
   ShoppingBag,
@@ -11,6 +13,8 @@ import {
   ExternalLink,
   ShieldCheck,
   RotateCcw,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -19,7 +23,7 @@ interface AdminLayoutProps {
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => {
   const { settings, adminLogout, orders } = useStore();
-  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'settings'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'analytics' | 'staff' | 'settings'>('orders');
 
   const pendingRefundsCount = orders.filter(
     (o) =>
@@ -58,7 +62,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
           <nav className="hidden md:flex items-center gap-1 bg-neutral-900 p-1 rounded-xl border border-neutral-800">
             <button
               onClick={() => setActiveTab('orders')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                 activeTab === 'orders'
                   ? 'bg-white text-neutral-950 shadow-xs'
                   : 'text-neutral-400 hover:text-white'
@@ -75,26 +79,50 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
 
             <button
               onClick={() => setActiveTab('products')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                 activeTab === 'products'
                   ? 'bg-white text-neutral-950 shadow-xs'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
               <Package className="w-3.5 h-3.5" />
-              <span>Saree Inventory</span>
+              <span>Sarees</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                activeTab === 'analytics'
+                  ? 'bg-white text-neutral-950 shadow-xs'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+              <span>Sales Analytics</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('staff')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                activeTab === 'staff'
+                  ? 'bg-white text-neutral-950 shadow-xs'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Staff & Ledger</span>
             </button>
 
             <button
               onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                 activeTab === 'settings'
                   ? 'bg-white text-neutral-950 shadow-xs'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
               <Settings className="w-3.5 h-3.5" />
-              <span>Store & Settings</span>
+              <span>Settings</span>
             </button>
           </nav>
 
@@ -120,10 +148,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
         </div>
 
         {/* Mobile Navigation Strip */}
-        <div className="md:hidden flex items-center justify-around border-t border-neutral-800 bg-neutral-900/90 px-2 py-2">
+        <div className="md:hidden flex items-center justify-around border-t border-neutral-800 bg-neutral-900/90 px-2 py-2 overflow-x-auto">
           <button
             onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
               activeTab === 'orders' ? 'bg-white text-neutral-950' : 'text-neutral-400'
             }`}
           >
@@ -138,7 +166,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
 
           <button
             onClick={() => setActiveTab('products')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
               activeTab === 'products' ? 'bg-white text-neutral-950' : 'text-neutral-400'
             }`}
           >
@@ -147,8 +175,28 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
           </button>
 
           <button
+            onClick={() => setActiveTab('analytics')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
+              activeTab === 'analytics' ? 'bg-white text-neutral-950' : 'text-neutral-400'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+            <span>Analytics</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('staff')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
+              activeTab === 'staff' ? 'bg-white text-neutral-950' : 'text-neutral-400'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Staff</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
               activeTab === 'settings' ? 'bg-white text-neutral-950' : 'text-neutral-400'
             }`}
           >
@@ -162,6 +210,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'orders' && <OrderManager />}
         {activeTab === 'products' && <ProductManager />}
+        {activeTab === 'analytics' && <AnalyticsManager />}
+        {activeTab === 'staff' && <StaffManager />}
         {activeTab === 'settings' && <SettingsManager />}
       </main>
     </div>

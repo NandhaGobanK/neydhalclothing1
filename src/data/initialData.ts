@@ -17,15 +17,49 @@ export const INITIAL_SETTINGS: StoreSettings = {
   payment: {
     upiId: 'aarasarees@okhdfcbank',
     payeeName: 'Aara Heritage Sarees LLP',
-    qrCodeUrl: '', // Will dynamically generate or allow custom upload
+    qrCodeUrl: '',
     instructions: 'Scan using any UPI app (Google Pay, PhonePe, Paytm, BHIM) and enter the 12-digit UTR/Transaction ID below to verify your handloom reservation.',
   },
-  adminPin: '8899',
+  storefrontDisplay: {
+    heroHeadline: 'Timeless Drapes, Woven for Generations.',
+    heroSubheadline: 'Discover authentic handcrafted Kanjivaram bridal silks, Varanasi Kadwa brocades, and feather-light Chanderi tissue sarees. Direct from the master weavers of India to your doorstep.',
+    showHeroBanner: true,
+    showTrustBadges: true,
+    showCraftsmanshipStory: true,
+    storyTitle: 'The Heritage Loom Legacy',
+    storyContent: 'Every saree in our collection is an heirloom woven with mulberry silk and authentic zari by master weavers across Kanchipuram and Varanasi.',
+    showTrackOrder: true,
+    freeShippingText: 'Free Insured Express Delivery across India (Tamper-Proof Box)',
+  },
+  adminPin: '889900', // 6-digit access PIN
+  staffMembers: [
+    {
+      id: 'staff-1',
+      name: 'Priya Sharma',
+      username: 'priya_concierge',
+      password: 'password123',
+      role: 'concierge',
+      isLocked: false,
+      phone: '+919820112233',
+      createdAt: '2026-03-01T10:00:00Z',
+    },
+    {
+      id: 'staff-2',
+      name: 'Arun Kumar',
+      username: 'arun_fulfillment',
+      password: 'password123',
+      role: 'fulfillment',
+      isLocked: false,
+      phone: '+919876554433',
+      createdAt: '2026-03-02T10:00:00Z',
+    },
+  ],
 };
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'saree-kanjivaram-crimson-01',
+    productCode: 'KAN-CRIM-101',
     title: 'Maharani Shrimant Kanjivaram Silk Saree',
     subtitle: 'Pure Mulberry Silk with 3G Pure Gold Zari Temple Pallu',
     description: 'Woven over 28 artisan days in Kanchipuram, this heirloom bridal crimson Kanjivaram features majestic elephant and peacock motifs along the double-korvai borders. Handcrafted with authentic mulberry silk and tested 24-karat gold dipped zari.',
@@ -40,7 +74,7 @@ export const INITIAL_PRODUCTS: Product[] = [
       '/src/assets/images/saree_kanjivaram_crimson_1791651781402.jpg',
       '/src/assets/images/hero_saree_atelier_1791651761357.jpg',
     ],
-    videoUrl: 'https://www.youtube.com/watch?v=0hW73jL76bY', // Handloom weaving demo
+    videoUrl: 'https://www.youtube.com/watch?v=0hW73jL76bY',
     weaveDetails: 'Double-Korvai Interlocking Handloom with 3-ply mulberry warp',
     borderType: 'Contrast 9-inch Temple Gopuram Border in pure gold zari',
     blousePieceIncluded: true,
@@ -51,6 +85,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'saree-banarasi-emerald-02',
+    productCode: 'BAN-EMER-202',
     title: 'Varanasi Royal Kadwa Emerald Brocade',
     subtitle: 'Fine Katan Silk with Meenakari Floral Jaal',
     description: 'An extraordinary Banarasi drape crafted on authentic wooden pit looms along the banks of Varanasi. Features intricate antique gold zari hunting motifs, interlocking lotus floral vine (jaal), and contrasting gulab butas.',
@@ -65,7 +100,7 @@ export const INITIAL_PRODUCTS: Product[] = [
       '/src/assets/images/saree_banarasi_emerald_1791651794836.jpg',
       '/src/assets/images/hero_saree_atelier_1791651761357.jpg',
     ],
-    videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    videoUrl: 'https://www.youtube.com/watch?v=0hW73jL76bY',
     weaveDetails: 'Kadwa Hand-Woven with individual meena threads on Katan silk',
     borderType: 'Intricate Shikargah Border with scalloped edges',
     blousePieceIncluded: true,
@@ -76,6 +111,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'saree-chanderi-lavender-03',
+    productCode: 'CHA-LAV-303',
     title: 'Lilac Gossamer Chanderi Tissue Silk',
     subtitle: 'Feather-Light Mulberry with Roopa Kalabattu Silver Zari',
     description: 'Subtle, gossamer sheen that glistens softly under evening light. Handspun in Madhya Pradesh using heritage gossamer tissue techniques with miniature silver ashrafi buttis and an ethereal sheer pallu.',
@@ -101,6 +137,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'saree-organza-ivory-04',
+    productCode: 'ORG-IVOR-404',
     title: 'Noor Hand-Painted Ivory Organza Silk',
     subtitle: 'Translucent Silk Organza with Gold Gota Patti Work',
     description: 'Elegance personified in sheer ivory silk organza, embellished with hand-cut gota patti appliqué and delicate zardozi detailing along the fluid perimeter. Ideal for contemporary cocktail celebrations.',
@@ -126,6 +163,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'saree-georgette-royal-05',
+    productCode: 'GEO-ROY-505',
     title: 'Surya Mukhi Pure Banarasi Khaddi Georgette',
     subtitle: 'Flowing Crinkled Silk with Antique Matte Gold Jaal',
     description: 'Fluid, body-hugging pure khaddi georgette saree steeped in royal indigo blue with all-over antique gold leaf bootas and a sweeping zari pallu that drapes like liquid silk.',
@@ -151,6 +189,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'saree-kanjivaram-pink-06',
+    productCode: 'KAN-PINK-606',
     title: 'Kalyani Dual-Tone Rani Pink Kanjivaram',
     subtitle: 'Korvai Weave with Vanki Motif & Contrast Emerald Border',
     description: 'Vibrant and festive dual-tone shot pink silk with iridescent reflections. The body sparkles with intricate rudraksha beads woven in gold thread, framed by an eye-catching contrast emerald green pallu.',
@@ -206,6 +245,14 @@ export const INITIAL_ORDERS: Order[] = [
       refundStatus: 'not_required',
     },
     status: 'Shipped',
+    shippingDetails: {
+      courierName: 'DTDC Express',
+      trackingNumber: 'DTDC9021849102',
+      shippedAt: new Date(Date.now() - 3600000 * 24).toISOString(),
+    },
+    assignedStaffId: 'staff-2',
+    assignedStaffName: 'Arun Kumar',
+    lastUpdatedBy: 'arun_fulfillment',
     checkoutMethod: 'submit_order',
     notes: 'Please add festive silk-wrapper box with handloom certificate.',
   },
@@ -237,7 +284,10 @@ export const INITIAL_ORDERS: Order[] = [
       refundUpiPhone: '+919871122334',
       refundStatus: 'not_required',
     },
-    status: 'Pending',
+    status: 'Confirmed',
+    assignedStaffId: 'staff-1',
+    assignedStaffName: 'Priya Sharma',
+    lastUpdatedBy: 'priya_concierge',
     checkoutMethod: 'whatsapp',
   },
   {
@@ -266,9 +316,15 @@ export const INITIAL_ORDERS: Order[] = [
     refundDetails: {
       refundUpiId: 'radhika.nair@oksbi',
       refundUpiPhone: '+919447123987',
-      refundStatus: 'pending',
+      refundStatus: 'processed',
+      refundUtr: 'REFUND-UTR-891029102',
+      processedAt: new Date(Date.now() - 3600000 * 20).toISOString(),
     },
     status: 'Cancelled',
+    cancellationReason: 'Customer requested cancellation due to wedding date postponement.',
+    assignedStaffId: 'staff-1',
+    assignedStaffName: 'Priya Sharma',
+    lastUpdatedBy: 'priya_concierge',
     checkoutMethod: 'submit_order',
     notes: 'Customer requested cancellation due to date change. Ready for refund.',
   },
