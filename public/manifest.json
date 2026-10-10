@@ -1,0 +1,38 @@
+{
+  "id": "/",
+  "name": "Aara Heritage Saree Boutique",
+  "short_name": "Aara Sarees",
+  "description": "Exquisite handcrafted Kanjivaram, Banarasi, and Chanderi sarees with instant UPI payment and direct boutique concierge.",
+  "theme_color": "#831843",
+  "background_color": "#fafafa",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Aara Heritage Saree Boutique",
+  "description": "Exquisite handcrafted Kanjivaram, Banarasi, and Chanderi sarees with instant UPI payment and direct boutique concierge.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
