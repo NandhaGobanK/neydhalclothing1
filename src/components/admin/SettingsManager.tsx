@@ -1314,37 +1314,6 @@ export const SettingsManager: React.FC = () => {
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                 />
               </div>
-
-              {/* Custom Store Domain & Production Link Routing (User Request) */}
-              <div className="sm:col-span-2 p-4 rounded-xl border border-amber-300/80 bg-gradient-to-br from-amber-50/60 to-orange-50/30 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-neutral-900 text-xs">
-                      Custom Store Domain / Production URL (Vercel / Custom Domain)
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-amber-900 font-bold px-2 py-0.5 rounded-full bg-amber-200/80 border border-amber-300">
-                    Share Links & Live Tracking
-                  </span>
-                </div>
-                <input
-                  type="text"
-                  disabled={!canEditProfile}
-                  value={customStoreDomain}
-                  onChange={(e) => setCustomStoreDomain(e.target.value)}
-                  placeholder="e.g. https://aara-heritage.vercel.app or https://yourdomain.com"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 bg-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
-                />
-                <p className="text-[11px] text-neutral-600 leading-relaxed">
-                  🌐 <strong>Domain Configuration Guide:</strong> When deployed to Vercel or your own custom domain, leave blank to automatically use the visitor's browser domain, or enter your official URL here. Once saved, all <strong>Product Share Links</strong>, <strong>Live Order Tracking links</strong>, and <strong>Automated WhatsApp Notifications</strong> will always use this production domain instead of the preview URL!
-                </p>
-                <div className="pt-1 flex items-center justify-between text-[11px] text-neutral-500 font-mono border-t border-amber-200/60">
-                  <span>Effective Store Base URL:</span>
-                  <span className="font-bold text-amber-950">
-                    {customStoreDomain.trim() || (typeof window !== 'undefined' ? window.location.origin : '')}
-                  </span>
-                </div>
-              </div>
             </div>
           </div>
         )}
