@@ -67,14 +67,6 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
                 <span>Explore Boutique Catalog</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
-
-              <button
-                onClick={() => setIsTrackOrderOpen(true)}
-                className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 font-medium text-sm transition-colors whitespace-nowrap"
-              >
-                <Truck className="w-4 h-4 text-amber-400" />
-                <span>Track My Order</span>
-              </button>
             </div>
           </div>
 

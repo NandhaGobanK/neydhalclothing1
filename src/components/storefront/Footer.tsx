@@ -76,14 +76,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
               <li>Free Express Insured Dispatch</li>
               <li>Prepaid UPI Order Protection</li>
               <li>Instant UPI Refund on Cancellation</li>
-              <li className="pt-1">
-                <button
-                  onClick={() => setIsTrackOrderOpen(true)}
-                  className="text-amber-300 hover:text-white underline font-medium"
-                >
-                  Track Your Order Status →
-                </button>
-              </li>
             </ul>
 
             <div className="pt-3">

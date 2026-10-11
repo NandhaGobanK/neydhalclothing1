@@ -92,6 +92,18 @@ export interface CancellationRequest {
   adminDecisionNotes?: string;
 }
 
+export interface StaffSectionPermissions {
+  orders: { canView: boolean; canEdit: boolean };
+  products: { canView: boolean; canEdit: boolean };
+  analytics: { canView: boolean };
+  staff: { canView: boolean; canEdit: boolean };
+  settingsStorefront: { canView: boolean; canEdit: boolean };
+  settingsAnnouncement: { canView: boolean; canEdit: boolean };
+  settingsPayment: { canView: boolean; canEdit: boolean };
+  settingsProfile: { canView: boolean; canEdit: boolean };
+  settingsChatTemplates: { canView: boolean; canEdit: boolean };
+}
+
 export interface StaffMember {
   id: string;
   name: string;
@@ -101,6 +113,17 @@ export interface StaffMember {
   isLocked: boolean;
   phone: string;
   createdAt: string;
+  permissions?: StaffSectionPermissions;
+}
+
+export interface OrderStatusChatTemplates {
+  pending: string;
+  confirmed: string;
+  shipped: string;
+  delivered: string;
+  cancelled: string;
+  rejected: string;
+  refunded: string;
 }
 
 export interface Order {
@@ -169,4 +192,6 @@ export interface StoreSettings {
   storefrontDisplay: StorefrontDisplaySettings;
   adminPin: string; // 6-digit access PIN
   staffMembers: StaffMember[];
+  chatTemplates: OrderStatusChatTemplates;
+  defaultStaffPermissions?: StaffSectionPermissions;
 }

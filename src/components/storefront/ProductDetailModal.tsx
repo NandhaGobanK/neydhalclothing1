@@ -182,12 +182,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
             <div>
               {/* Category & Status */}
               <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2 text-xs text-neutral-500">
+                <div className="flex items-center gap-2 text-xs text-neutral-500 flex-wrap">
                   <span className="text-amber-800 font-bold uppercase tracking-wider text-[11px]">
                     {product.fabric}
                   </span>
                   <span aria-hidden="true">·</span>
                   <span>{product.color}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="font-mono text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded shadow-2xs">
+                    Code: {product.productCode}
+                  </span>
                 </div>
                 <button
                   onClick={handleShare}
@@ -233,6 +237,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
 
               {/* Artisan Specification Table */}
               <div className="bg-neutral-50 rounded-2xl p-4 border border-neutral-200/80 mb-6 space-y-2.5 text-xs">
+                <div className="flex justify-between py-1 border-b border-neutral-200/60 items-center">
+                  <span className="text-neutral-500 font-medium">Unique Product Code</span>
+                  <span className="font-mono font-bold text-neutral-950 bg-white border border-neutral-300 px-2 py-0.5 rounded text-[11px]">
+                    {product.productCode}
+                  </span>
+                </div>
                 <div className="flex justify-between py-1 border-b border-neutral-200/60">
                   <span className="text-neutral-500">Weave Technique</span>
                   <span className="font-medium text-neutral-900 text-right">{product.weaveDetails}</span>

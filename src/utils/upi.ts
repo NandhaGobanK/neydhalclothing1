@@ -99,6 +99,60 @@ _Kindly verify the payment transaction and confirm my order reservation._`;
   return message;
 }
 
+export function applyTemplateTokens(
+  template: string,
+  order: Order,
+  settings: StoreSettings,
+  storeUrl = window.location.origin
+): string {
+  const itemsSummary = order.items
+    .map((item) => `${item.product.title} [${item.product.productCode}] (Qty: ${item.quantity})`)
+    .join(', ');
+
+  const trackingLink = `${storeUrl}/#track?order=${encodeURIComponent(order.orderNumber)}&phone=${encodeURIComponent(order.customer.phone)}`;
+
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Attending Concierge:* ${order.assignedStaffName}${order.lastUpdatedBy ? ` (@${order.lastUpdatedBy})` : ''}`
+    : order.lastUpdatedBy && order.lastUpdatedBy !== 'system'
+    ? `\n👤 *Handled by Staff:* @${order.lastUpdatedBy}`
+    : '';
+
+  const courier = order.shippingDetails?.courierName || 'DTDC Express';
+  const trackingId = order.shippingDetails?.trackingNumber || 'Pending';
+  const reason = order.cancellationReason || '';
+  const reasonNotice = reason ? `\n• *Reason for ${order.status}:* ${reason}` : '';
+  const refundStatusNotice =
+    order.refundDetails?.refundStatus === 'processed'
+      ? 'Your refund has been processed:'
+      : 'Your refund is initiated:';
+  const refundUtr = order.refundDetails?.refundUtr || '';
+  const refundUtrText = refundUtr ? `\n• *Refund Transaction UTR ID:* *${refundUtr}*` : '';
+  const refundUpi = order.refundDetails?.refundUpiId || order.customer.phone;
+  const refundUpiText = order.refundDetails?.refundUpiId
+    ? `\n• Refunded to UPI: *${order.refundDetails.refundUpiId}*`
+    : '';
+
+  return template
+    .replace(/\{customerName\}/g, order.customer.name)
+    .replace(/\{boutiqueName\}/g, settings.boutiqueName)
+    .replace(/\{orderNumber\}/g, order.orderNumber)
+    .replace(/\{itemsSummary\}/g, itemsSummary)
+    .replace(/\{totalAmount\}/g, formatPrice(order.totalAmount))
+    .replace(/\{upiTransactionId\}/g, order.upiTransactionId)
+    .replace(/\{trackingLink\}/g, trackingLink)
+    .replace(/\{courierName\}/g, courier)
+    .replace(/\{trackingNumber\}/g, trackingId)
+    .replace(/\{reasonNotice\}/g, reasonNotice)
+    .replace(/\{reason\}/g, reason)
+    .replace(/\{refundStatusNotice\}/g, refundStatusNotice)
+    .replace(/\{refundUtrText\}/g, refundUtrText)
+    .replace(/\{refundUtr\}/g, refundUtr)
+    .replace(/\{refundUpiText\}/g, refundUpiText)
+    .replace(/\{refundUpi\}/g, refundUpi)
+    .replace(/\{staffSignature\}/g, staffSignature)
+    .replace(/\{instagramHandle\}/g, settings.instagramHandle);
+}
+
 /**
  * Generates stage-specific WhatsApp notification messages for customers
  */
@@ -107,6 +161,13 @@ export function formatWhatsAppStageUpdateMessage(
   settings: StoreSettings,
   storeUrl = window.location.origin
 ): string {
+  const statusKey = order.status.toLowerCase() as keyof typeof settings.chatTemplates;
+  const customTemplate = settings.chatTemplates?.[statusKey];
+
+  if (customTemplate && customTemplate.trim()) {
+    return applyTemplateTokens(customTemplate, order, settings, storeUrl);
+  }
+
   const itemsSummary = order.items
     .map((item) => `${item.product.title} [${item.product.productCode}] (Qty: ${item.quantity})`)
     .join(', ');
@@ -237,6 +298,10 @@ Kindly process the cancellation and refund at your earliest convenience. Thank y
  * Generates structured WhatsApp refund message for store owner with mandatory Refund UTR
  */
 export function formatWhatsAppRefundMessage(order: Order, settings: StoreSettings): string {
+  if (settings.chatTemplates?.refunded && settings.chatTemplates.refunded.trim()) {
+    return applyTemplateTokens(settings.chatTemplates.refunded, order, settings);
+  }
+
   const utrNotice = order.refundDetails?.refundUtr
     ? `\n• *Refund Transaction UTR ID:* *${order.refundDetails.refundUtr}*`
     : '';

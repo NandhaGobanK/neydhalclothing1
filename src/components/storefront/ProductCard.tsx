@@ -84,11 +84,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
 
       {/* Details Area */}
       <div className="p-4 flex flex-col flex-1">
-        {/* Unboxed Metadata with · separator (Zero-pill rule) */}
-        <div className="flex items-center gap-2 text-xs text-neutral-500 mb-1.5 font-medium">
-          <span className="text-amber-800 uppercase tracking-wider text-[11px] font-semibold">{product.fabric}</span>
-          <span aria-hidden="true">·</span>
-          <span>{product.color}</span>
+        {/* Metadata with Unique Product Code */}
+        <div className="flex items-center justify-between text-xs text-neutral-500 mb-1.5 font-medium">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="text-amber-800 uppercase tracking-wider text-[11px] font-semibold">{product.fabric}</span>
+            <span aria-hidden="true">·</span>
+            <span className="truncate">{product.color}</span>
+          </div>
+          <span className="font-mono text-[10px] font-semibold text-neutral-600 bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded tracking-wider shrink-0" title={`Unique Code: ${product.productCode}`}>
+            {product.productCode}
+          </span>
         </div>
 
         <h3 className="font-serif text-base sm:text-lg font-bold text-neutral-900 line-clamp-1 group-hover:text-rose-900 transition-colors">

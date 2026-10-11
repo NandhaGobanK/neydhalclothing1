@@ -22,7 +22,9 @@ import {
 } from 'lucide-react';
 
 export const StaffManager: React.FC = () => {
-  const { staffMembers, addStaffMember, updateStaffMember, toggleStaffLock, deleteStaffMember, orders } = useStore();
+  const { staffMembers, addStaffMember, updateStaffMember, toggleStaffLock, deleteStaffMember, orders, currentUser, currentPermissions } = useStore();
+  const isAdmin = currentUser?.type === 'admin';
+  const canEditStaff = isAdmin || currentPermissions?.staff?.canEdit !== false;
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
@@ -110,13 +112,19 @@ export const StaffManager: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={openAddModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Add Staff Member</span>
-        </button>
+        {canEditStaff ? (
+          <button
+            onClick={openAddModal}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Add Staff Member</span>
+          </button>
+        ) : (
+          <div className="px-3 py-1.5 rounded-xl bg-neutral-200 text-neutral-600 text-xs font-medium">
+            Staff View-Only
+          </div>
+        )}
       </div>
 
       {/* Staff Members List Cards */}

@@ -36,7 +36,11 @@ export const OrderManager: React.FC = () => {
     resolveCancellationRequest,
     staffMembers,
     settings,
+    currentUser,
+    currentPermissions,
   } = useStore();
+  const isAdmin = currentUser?.type === 'admin';
+  const canEditOrders = isAdmin || currentPermissions?.orders?.canEdit !== false;
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedStaffFilter, setSelectedStaffFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');

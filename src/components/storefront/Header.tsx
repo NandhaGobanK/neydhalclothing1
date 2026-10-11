@@ -145,16 +145,6 @@ export const Header: React.FC<HeaderProps> = ({
             {cat.label}
           </button>
         ))}
-
-        {showTrackOrder && (
-          <button
-            onClick={() => setIsTrackOrderOpen(true)}
-            className="px-3 py-1 rounded-full text-xs whitespace-nowrap bg-neutral-800 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-medium"
-          >
-            <Truck className="w-3 h-3" />
-            <span>Track Order</span>
-          </button>
-        )}
       </div>
     </header>
   );

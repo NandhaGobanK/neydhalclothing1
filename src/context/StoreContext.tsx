@@ -7,8 +7,15 @@ import {
   OrderStatus,
   ShippingDetails,
   StaffMember,
+  StaffSectionPermissions,
 } from '../types/store';
-import { INITIAL_PRODUCTS, INITIAL_ORDERS, INITIAL_SETTINGS } from '../data/initialData';
+import {
+  INITIAL_PRODUCTS,
+  INITIAL_ORDERS,
+  INITIAL_SETTINGS,
+  DEFAULT_STAFF_PERMISSIONS,
+  DEFAULT_CHAT_TEMPLATES,
+} from '../data/initialData';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'aara_boutique_products_v3',
@@ -97,6 +104,7 @@ interface StoreContextType {
   // Auth (Admin PIN or Staff Username/Password)
   currentUser: ActiveUser | null;
   isAdminLoggedIn: boolean;
+  currentPermissions: StaffSectionPermissions;
   adminLogin: (pin: string) => boolean;
   staffLogin: (username: string, password: string) => { success: boolean; error?: string };
   adminLogout: () => void;
@@ -161,6 +169,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const loaded = loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
     const updated: StoreSettings = {
       ...loaded,
+      chatTemplates: {
+        ...DEFAULT_CHAT_TEMPLATES,
+        ...(loaded.chatTemplates || {}),
+      },
+      defaultStaffPermissions: {
+        ...DEFAULT_STAFF_PERMISSIONS,
+        ...(loaded.defaultStaffPermissions || {}),
+      },
       storefrontDisplay: {
         ...loaded.storefrontDisplay,
         allowPublicCancellation: loaded.storefrontDisplay?.allowPublicCancellation ?? true,
@@ -775,22 +791,26 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Settings
   const updateSettings = (updates: Partial<StoreSettings>) => {
-    setSettings((prev) => ({
-      ...prev,
-      ...updates,
-      announcement: {
-        ...prev.announcement,
-        ...(updates.announcement || {}),
-      },
-      payment: {
-        ...prev.payment,
-        ...(updates.payment || {}),
-      },
-      storefrontDisplay: {
-        ...prev.storefrontDisplay,
-        ...(updates.storefrontDisplay || {}),
-      },
-    }));
+    setSettings((prev) => {
+      // Non-admin staff cannot alter master adminPin
+      const safeUpdates = currentUser?.type === 'admin' ? updates : { ...updates, adminPin: prev.adminPin };
+      return {
+        ...prev,
+        ...safeUpdates,
+        announcement: {
+          ...prev.announcement,
+          ...(safeUpdates.announcement || {}),
+        },
+        payment: {
+          ...prev.payment,
+          ...(safeUpdates.payment || {}),
+        },
+        storefrontDisplay: {
+          ...prev.storefrontDisplay,
+          ...(safeUpdates.storefrontDisplay || {}),
+        },
+      };
+    });
   };
 
   const resetToInitialData = () => {
@@ -850,6 +870,40 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const isAdminLoggedIn = !!currentUser;
 
+  const currentPermissions = useMemo<StaffSectionPermissions>(() => {
+    if (!currentUser) {
+      return DEFAULT_STAFF_PERMISSIONS;
+    }
+    if (currentUser.type === 'admin') {
+      return {
+        orders: { canView: true, canEdit: true },
+        products: { canView: true, canEdit: true },
+        analytics: { canView: true },
+        staff: { canView: true, canEdit: true },
+        settingsStorefront: { canView: true, canEdit: true },
+        settingsAnnouncement: { canView: true, canEdit: true },
+        settingsPayment: { canView: true, canEdit: true },
+        settingsProfile: { canView: true, canEdit: true },
+        settingsChatTemplates: { canView: true, canEdit: true },
+      };
+    }
+    const staff = (settings.staffMembers || []).find(
+      (s) => s.id === currentUser.staffId || s.username === currentUser.username
+    );
+    return staff?.permissions || settings.defaultStaffPermissions || DEFAULT_STAFF_PERMISSIONS;
+  }, [currentUser, settings]);
+
+  const exposedSettings = useMemo<StoreSettings>(() => {
+    if (currentUser?.type === 'admin') {
+      return settings;
+    }
+    // Admin password details should be permanently not visible to staff members
+    return {
+      ...settings,
+      adminPin: '******',
+    };
+  }, [settings, currentUser]);
+
   return (
     <StoreContext.Provider
       value={{
@@ -880,11 +934,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateStaffMember,
         toggleStaffLock,
         deleteStaffMember,
-        settings,
+        settings: exposedSettings,
         updateSettings,
         resetToInitialData,
         currentUser,
         isAdminLoggedIn,
+        currentPermissions,
         adminLogin,
         staffLogin,
         adminLogout,

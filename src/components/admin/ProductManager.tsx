@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Product, SareeFabric, SareeColor } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
@@ -16,14 +16,22 @@ import {
   Sparkles,
   Lock,
   AlertCircle,
+  Copy,
+  Search,
 } from 'lucide-react';
 
 export const ProductManager: React.FC = () => {
-  const { products, addProduct, updateProduct, deleteProduct, toggleProductVisibility } = useStore();
+  const { products, addProduct, updateProduct, deleteProduct, toggleProductVisibility, currentPermissions } = useStore();
 
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [tableSearchQuery, setTableSearchQuery] = useState('');
+  const [copiedSku, setCopiedSku] = useState<string | null>(null);
+
+  // Auto Generate & Confirmation States (Prompt: Auto generate enabled on add, can be disabled once colour confirmed)
+  const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(true);
+  const [isColorConfirmed, setIsColorConfirmed] = useState(false);
 
   // Form Fields
   const [productCode, setProductCode] = useState('');
@@ -52,13 +60,104 @@ export const ProductManager: React.FC = () => {
   const [lengthMeters, setLengthMeters] = useState(6.3);
   const [occasion, setOccasion] = useState('Bridal & Wedding');
 
-  const generateSuggestedSku = (fab: string, col: string) => {
+  // Guaranteed Unique SKU Generator
+  const generateGuaranteedUniqueSku = (fab: string, col: string) => {
     const cleanFab = fab.replace(/[^a-zA-Z]/g, '');
     const cleanCol = col.replace(/[^a-zA-Z]/g, '');
     const prefix = (cleanFab.substring(0, 3) || 'SAR').toUpperCase();
     const colPrefix = (cleanCol.substring(0, 4) || 'COL').toUpperCase();
-    const randomCode = Math.floor(100 + Math.random() * 900);
-    return `${prefix}-${colPrefix}-${randomCode}`;
+    let candidate = '';
+    let attempts = 0;
+    do {
+      const randomCode = Math.floor(100 + Math.random() * 900);
+      candidate = `AARA-${prefix}-${colPrefix}-${randomCode}`;
+      attempts++;
+    } while (
+      products.some((p) => p.productCode.toUpperCase() === candidate && p.id !== editingProduct?.id) &&
+      attempts < 50
+    );
+    return candidate;
+  };
+
+  const autoFillSareeDetails = (fab: SareeFabric, col: string) => {
+    const colorDesc = col || 'Festive';
+    let suggestedTitle = '';
+    let suggestedSubtitle = '';
+    let suggestedDesc = '';
+    let suggestedWeave = '';
+    let suggestedBorder = '';
+    let suggestedPrice = 28500;
+    let suggestedOriginal = 34000;
+
+    switch (fab) {
+      case 'Kanjivaram Silk':
+        suggestedTitle = `Royal ${colorDesc} Shrimant Kanjivaram Bridal Silk`;
+        suggestedSubtitle = 'Pure Mulberry Silk with Tested Gold Zari Temple Pallu';
+        suggestedDesc = `Individually hand-woven over 24 artisan days in Kanchipuram, this heirloom ${colorDesc.toLowerCase()} drape features classic interlocking temple gopuram borders and delicate peacock motifs. Certified pure silk mark.`;
+        suggestedWeave = 'Authentic 3-ply mulberry double-korvai handloom with gold zari';
+        suggestedBorder = 'Traditional 8-inch contrast Korvai border with Mayil motifs';
+        suggestedPrice = 32500;
+        suggestedOriginal = 39000;
+        break;
+      case 'Banarasi Brocade':
+        suggestedTitle = `Varanasi Kadwa ${colorDesc} Floral Brocade`;
+        suggestedSubtitle = 'Fine Katan Silk with Meenakari Floral Jaal';
+        suggestedDesc = `Artisan-crafted on heritage pit looms along the banks of Varanasi. Features intricate antique gold zari hunting motifs, interlocking lotus vines, and vivid ${colorDesc.toLowerCase()} butas.`;
+        suggestedWeave = 'Kadwa hand-woven with individual meena threads on pure Katan silk';
+        suggestedBorder = 'Intricate Shikargah border with scalloped edges';
+        suggestedPrice = 29500;
+        suggestedOriginal = 36000;
+        break;
+      case 'Chanderi Tissue':
+        suggestedTitle = `Gossamer ${colorDesc} Chanderi Tissue Silk`;
+        suggestedSubtitle = 'Feather-Light Mulberry with Roopa Kalabattu Silver Zari';
+        suggestedDesc = `Ethereal sheer texture woven with fine gossamer silk and silver zari threads. Glistens gracefully under evening light, finished with delicate ashrafi buttis.`;
+        suggestedWeave = 'Traditional pit-loom extra weft hand-interlace';
+        suggestedBorder = 'Delicate 3-inch Zari Pasa border';
+        suggestedPrice = 18500;
+        suggestedOriginal = 22000;
+        break;
+      case 'Organza Silk':
+        suggestedTitle = `Noor ${colorDesc} Hand-Embellished Organza Silk`;
+        suggestedSubtitle = 'Translucent Crisp Organza with Gold Gota Work';
+        suggestedDesc = `Fluid sheer silk organza drape adorned with hand-cut gota patti motifs and fine needlework along the perimeter. Ideal for contemporary cocktail celebrations.`;
+        suggestedWeave = 'Crisp hand-twisted organza yarns with artisan hand needle embroidery';
+        suggestedBorder = 'Hand-scalloped floral gota patti lace border';
+        suggestedPrice = 16800;
+        suggestedOriginal = 19500;
+        break;
+      case 'Pure Georgette':
+        suggestedTitle = `Banarasi Khaddi ${colorDesc} Pure Georgette`;
+        suggestedSubtitle = 'High-Twist Silk with Antique Matte Gold Jaal';
+        suggestedDesc = `Body-hugging crinkled pure georgette saree steeped in rich ${colorDesc.toLowerCase()} with all-over antique gold leaf bootas and a sweeping zari pallu that drapes effortlessly.`;
+        suggestedWeave = 'Khaddi Georgette high-twist silk warp with antique tilla motifs';
+        suggestedBorder = 'Broad paisley border with gold fringe hem';
+        suggestedPrice = 24500;
+        suggestedOriginal = 29000;
+        break;
+      default:
+        suggestedTitle = `Handcrafted ${colorDesc} ${fab} Saree`;
+        suggestedSubtitle = 'Artisan-Woven Pure Silk Drape';
+        suggestedDesc = `A majestic handcrafted ${fab.toLowerCase()} saree in radiant ${colorDesc.toLowerCase()}, woven by master artisans with authentic zari detailing.`;
+        suggestedWeave = 'Traditional artisan handloom interlace';
+        suggestedBorder = 'Contrast zari border with ornate selvedge';
+        suggestedPrice = 22000;
+        suggestedOriginal = 26500;
+    }
+
+    setTitle(suggestedTitle);
+    setSubtitle(suggestedSubtitle);
+    setDescription(suggestedDesc);
+    setWeaveDetails(suggestedWeave);
+    setBorderType(suggestedBorder);
+    setPrice(suggestedPrice);
+    setOriginalPrice(suggestedOriginal);
+  };
+
+  const copySkuToClipboard = (sku: string) => {
+    navigator.clipboard.writeText(sku);
+    setCopiedSku(sku);
+    setTimeout(() => setCopiedSku(null), 2000);
   };
 
   const fabrics: SareeFabric[] = [
@@ -84,27 +183,23 @@ export const ProductManager: React.FC = () => {
 
   const openAddModal = () => {
     setEditingProduct(null);
+    setAutoGenerateEnabled(true);
+    setIsColorConfirmed(false);
     const initialFabric: SareeFabric = 'Kanjivaram Silk';
     const initialColor = 'Crimson Red';
-    const initialCode = generateSuggestedSku(initialFabric, initialColor);
+    const initialCode = generateGuaranteedUniqueSku(initialFabric, initialColor);
     setAssignedColorCodes({ [initialColor.toLowerCase()]: initialCode });
     setProductCode(initialCode);
     setFabric(initialFabric);
     setSelectedColorOption(initialColor);
     setCustomColor('');
-    setTitle('');
-    setSubtitle('');
-    setDescription('');
-    setPrice(28000);
-    setOriginalPrice(34000);
+    autoFillSareeDetails(initialFabric, initialColor);
     setStockStatus('in_stock');
     setStockCount(3);
     setIsVisible(true);
     setImages(['/src/assets/images/saree_kanjivaram_crimson_1791651781402.jpg']);
     setImageUrlInput('');
     setVideoUrl('https://www.youtube.com/watch?v=0hW73jL76bY');
-    setWeaveDetails('Hand-interlocked Korvai weave with pure zari');
-    setBorderType('Contrast 8-inch Temple Gopuram border');
     setBlousePieceIncluded(true);
     setLengthMeters(6.3);
     setOccasion('Wedding & Reception');
@@ -113,6 +208,8 @@ export const ProductManager: React.FC = () => {
 
   const openEditModal = (prod: Product) => {
     setEditingProduct(prod);
+    setAutoGenerateEnabled(false);
+    setIsColorConfirmed(true);
     const isStandard = standardColors.includes(prod.color as any);
     if (isStandard) {
       setSelectedColorOption(prod.color);
@@ -144,48 +241,46 @@ export const ProductManager: React.FC = () => {
     setIsEditingModalOpen(true);
   };
 
+  const handleConfirmColor = () => {
+    setIsColorConfirmed(true);
+    setAutoGenerateEnabled(false); // Can be disabled once colour has been chosen and confirmed
+  };
+
   const handleColorDropdownChange = (val: string) => {
     setSelectedColorOption(val);
-    if (editingProduct) {
-      // For existing products, the SKU code is permanently fixed
+    if (editingProduct || isColorConfirmed) {
       return;
     }
-    if (val === 'Other') {
-      const colName = customColor.trim() || 'Custom Colour';
-      const key = colName.toLowerCase();
-      if (assignedColorCodes[key]) {
-        setProductCode(assignedColorCodes[key]);
-      } else {
-        const newCode = generateSuggestedSku(fabric, colName);
-        setAssignedColorCodes((prev) => ({ ...prev, [key]: newCode }));
-        setProductCode(newCode);
-      }
-    } else {
-      const key = val.toLowerCase();
-      if (assignedColorCodes[key]) {
-        setProductCode(assignedColorCodes[key]);
-      } else {
-        const newCode = generateSuggestedSku(fabric, val);
-        setAssignedColorCodes((prev) => ({ ...prev, [key]: newCode }));
-        setProductCode(newCode);
-      }
+    const colName = val === 'Other' ? (customColor.trim() || 'Custom Colour') : val;
+    const key = colName.toLowerCase();
+    let currentCode = assignedColorCodes[key];
+    if (!currentCode) {
+      currentCode = generateGuaranteedUniqueSku(fabric, colName);
+      setAssignedColorCodes((prev) => ({ ...prev, [key]: currentCode }));
+    }
+    setProductCode(currentCode);
+
+    if (autoGenerateEnabled) {
+      autoFillSareeDetails(fabric, colName);
     }
   };
 
   const handleCustomColorChange = (typed: string) => {
     setCustomColor(typed);
-    if (editingProduct) {
-      // For existing products, the SKU code is permanently fixed
+    if (editingProduct || isColorConfirmed) {
       return;
     }
     const colName = typed.trim() || 'Custom Colour';
     const key = colName.toLowerCase();
-    if (assignedColorCodes[key]) {
-      setProductCode(assignedColorCodes[key]);
-    } else {
-      const newCode = generateSuggestedSku(fabric, colName);
-      setAssignedColorCodes((prev) => ({ ...prev, [key]: newCode }));
-      setProductCode(newCode);
+    let currentCode = assignedColorCodes[key];
+    if (!currentCode) {
+      currentCode = generateGuaranteedUniqueSku(fabric, colName);
+      setAssignedColorCodes((prev) => ({ ...prev, [key]: currentCode }));
+    }
+    setProductCode(currentCode);
+
+    if (autoGenerateEnabled && typed.trim().length > 2) {
+      autoFillSareeDetails(fabric, typed.trim());
     }
   };
 
@@ -225,7 +320,7 @@ export const ProductManager: React.FC = () => {
     // Once code is given for one colour of the product it cannot be changed again
     const finalSku = editingProduct
       ? editingProduct.productCode
-      : (productCode.trim() || assignedColorCodes[finalColor.toLowerCase()] || generateSuggestedSku(fabric, finalColor));
+      : (productCode.trim() || assignedColorCodes[finalColor.toLowerCase()] || generateGuaranteedUniqueSku(fabric, finalColor));
 
     const payload = {
       productCode: finalSku,
@@ -257,6 +352,20 @@ export const ProductManager: React.FC = () => {
     setIsEditingModalOpen(false);
   };
 
+  const canEditProducts = currentPermissions?.products?.canEdit !== false;
+
+  const filteredProducts = useMemo(() => {
+    if (!tableSearchQuery.trim()) return products;
+    const q = tableSearchQuery.toLowerCase().trim();
+    return products.filter(
+      (p) =>
+        p.productCode.toLowerCase().includes(q) ||
+        p.title.toLowerCase().includes(q) ||
+        p.fabric.toLowerCase().includes(q) ||
+        p.color.toLowerCase().includes(q)
+    );
+  }, [products, tableSearchQuery]);
+
   return (
     <div className="space-y-6">
       {/* Top Bar */}
@@ -270,13 +379,39 @@ export const ProductManager: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={openAddModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-sm transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Saree</span>
-        </button>
+        {canEditProducts ? (
+          <button
+            onClick={openAddModal}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-sm transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Saree</span>
+          </button>
+        ) : (
+          <div className="px-3 py-1.5 rounded-xl bg-neutral-200 text-neutral-600 text-xs font-medium">
+            Staff View-Only (Adding Sarees Restricted)
+          </div>
+        )}
+      </div>
+
+      {/* Search & Filter Bar */}
+      <div className="bg-white p-3 rounded-2xl border border-neutral-200 shadow-xs flex items-center gap-2.5">
+        <Search className="w-4 h-4 text-neutral-400 shrink-0 ml-1" />
+        <input
+          type="text"
+          value={tableSearchQuery}
+          onChange={(e) => setTableSearchQuery(e.target.value)}
+          placeholder="Search by Unique Saree Code (e.g. AARA-KAN-CRIM-101) or Saree Name..."
+          className="flex-1 bg-transparent text-xs text-neutral-900 focus:outline-hidden"
+        />
+        {tableSearchQuery && (
+          <button
+            onClick={() => setTableSearchQuery('')}
+            className="text-[11px] text-neutral-400 hover:text-neutral-700 px-2 py-0.5 rounded"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {/* Saree Inventory Table */}
@@ -295,13 +430,27 @@ export const ProductManager: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {products.map((product) => (
+              {filteredProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-neutral-50/50 transition">
                   {/* SKU Unique Code */}
                   <td className="py-3 px-3">
-                    <span className="font-mono text-xs font-bold text-rose-950 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
-                      {product.productCode}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs font-bold text-rose-950 bg-rose-50 px-2 py-1 rounded-md border border-rose-200">
+                        {product.productCode}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copySkuToClipboard(product.productCode)}
+                        className="p-1 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition"
+                        title="Copy Unique Code"
+                      >
+                        {copiedSku === product.productCode ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </td>
 
                   {/* Saree Image & Title */}
@@ -367,12 +516,13 @@ export const ProductManager: React.FC = () => {
                   {/* Visibility Toggle Button */}
                   <td className="py-3 px-4">
                     <button
-                      onClick={() => toggleProductVisibility(product.id)}
+                      onClick={() => canEditProducts && toggleProductVisibility(product.id)}
+                      disabled={!canEditProducts}
                       className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition ${
                         product.isVisible
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
                           : 'bg-neutral-100 text-neutral-500 border border-neutral-300 hover:bg-neutral-200'
-                      }`}
+                      } ${!canEditProducts ? 'cursor-not-allowed opacity-80' : ''}`}
                       title="Click to toggle public storefront display"
                     >
                       {product.isVisible ? (
@@ -392,20 +542,32 @@ export const ProductManager: React.FC = () => {
                   {/* Actions */}
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => openEditModal(product)}
-                        className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition"
-                        title="Edit Saree Details"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setProductToDelete(product)}
-                        className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition"
-                        title="Delete Saree"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {canEditProducts ? (
+                        <>
+                          <button
+                            onClick={() => openEditModal(product)}
+                            className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition"
+                            title="Edit Saree Details"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setProductToDelete(product)}
+                            className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition"
+                            title="Delete Saree"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => openEditModal(product)}
+                          className="px-2 py-1 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 text-[11px] font-medium"
+                          title="View Saree Details"
+                        >
+                          View Details
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -434,27 +596,104 @@ export const ProductManager: React.FC = () => {
 
             {/* Modal Form Body */}
             <form onSubmit={handleSaveProduct} className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="sm:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-bold text-neutral-800">
-                      Product Unique Code (SKU - Product & Color Wise) *
-                    </label>
-                    <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-700 text-[11px] font-semibold border border-neutral-200">
-                      <Lock className="w-3 h-3 text-neutral-500" />
-                      <span>{editingProduct ? 'Permanent SKU (Locked)' : 'Auto-Generated SKU (Locked per Colour)'}</span>
+              {/* Auto Generate Mode Banner (Prompt: Auto generate option has to be enabled while adding the product. It can be disabled once the colour has been chosen and confirmed.) */}
+              {!editingProduct && (
+                <div
+                  className={`p-3.5 rounded-2xl border transition-all ${
+                    autoGenerateEnabled
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-950'
+                      : 'bg-neutral-50 border-neutral-200 text-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-1.5 rounded-xl ${autoGenerateEnabled ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-200 text-neutral-500'}`}>
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs">
+                            {autoGenerateEnabled ? 'Auto Generate Option: Enabled' : 'Auto Generate Option: Disabled'}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              autoGenerateEnabled
+                                ? 'bg-amber-200 text-amber-900'
+                                : 'bg-neutral-200 text-neutral-700'
+                            }`}
+                          >
+                            {autoGenerateEnabled ? 'Active on Add' : 'Locked'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-600 mt-0.5">
+                          {autoGenerateEnabled
+                            ? 'Unique product code and handloom details are generated automatically. This can be disabled once the colour has been chosen and confirmed.'
+                            : 'Auto generation has been disabled. Saree code and details are preserved.'}
+                        </p>
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setAutoGenerateEnabled(!autoGenerateEnabled)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition shrink-0 ${
+                        autoGenerateEnabled
+                          ? 'bg-amber-500 hover:bg-amber-400 text-neutral-950 border-amber-600 font-bold shadow-2xs'
+                          : 'bg-white hover:bg-neutral-100 text-neutral-700 border-neutral-300'
+                      }`}
+                    >
+                      {autoGenerateEnabled ? 'Disable Auto' : 'Enable Auto'}
+                    </button>
                   </div>
-                  <input
-                    type="text"
-                    value={productCode}
-                    readOnly
-                    required
-                    placeholder="e.g. KAN-CRIM-101"
-                    className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-100 font-mono text-xs uppercase text-neutral-900 font-bold cursor-not-allowed select-all"
-                  />
-                  <p className="text-[11px] text-neutral-500 mt-1">
-                    Auto-generated and permanently assigned for this colour. Once a code is given for one colour of the product, it cannot be changed again.
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Unique Product Code Card */}
+                <div className="sm:col-span-2 p-3.5 rounded-2xl bg-neutral-900 text-white border border-neutral-800">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-300 font-serif font-bold text-xs uppercase tracking-wider">
+                        Unique Product Tracking Code (SKU) *
+                      </span>
+                      <span className="text-[10px] bg-emerald-900/80 text-emerald-300 px-2 py-0.5 rounded-md font-semibold border border-emerald-700/60">
+                        {editingProduct ? 'Immutable' : 'Guaranteed Unique'}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => copySkuToClipboard(productCode)}
+                      className="text-[11px] text-neutral-300 hover:text-white flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1 rounded-lg border border-neutral-700 transition"
+                      title="Copy Unique Code"
+                    >
+                      {copiedSku === productCode ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <span className="text-emerald-400">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Copy Code</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-base sm:text-lg font-bold tracking-wider text-amber-200 select-all">
+                      {productCode}
+                    </span>
+                    <span className="text-[11px] text-neutral-400">
+                      {editingProduct
+                        ? 'Permanently locked for this saree'
+                        : isColorConfirmed
+                        ? 'Confirmed & Locked for this colour'
+                        : 'Auto-updating with colour selection'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Each product has a unique code to easily track the saree across inventory, customer receipts, and logistics.
                   </p>
                 </div>
 
@@ -488,21 +727,30 @@ export const ProductManager: React.FC = () => {
                     onChange={(e) => {
                       const newFab = e.target.value as SareeFabric;
                       setFabric(newFab);
-                      // If not editing and productCode was not yet generated, update prefix
-                      if (!editingProduct) {
-                        const activeCol = selectedColorOption === 'Other' ? (customColor.trim() || 'Custom Colour') : selectedColorOption;
+                      if (!editingProduct && !isColorConfirmed) {
+                        const activeCol =
+                          selectedColorOption === 'Other'
+                            ? customColor.trim() || 'Custom Colour'
+                            : selectedColorOption;
                         const key = activeCol.toLowerCase();
-                        if (!assignedColorCodes[key]) {
-                          const newCode = generateSuggestedSku(newFab, activeCol);
+                        let newCode = assignedColorCodes[key];
+                        if (!newCode) {
+                          newCode = generateGuaranteedUniqueSku(newFab, activeCol);
                           setAssignedColorCodes((prev) => ({ ...prev, [key]: newCode }));
-                          setProductCode(newCode);
+                        }
+                        setProductCode(newCode);
+
+                        if (autoGenerateEnabled) {
+                          autoFillSareeDetails(newFab, activeCol);
                         }
                       }
                     }}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-medium"
                   >
                     {fabrics.map((f) => (
-                      <option key={f} value={f}>{f}</option>
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -510,12 +758,17 @@ export const ProductManager: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block font-semibold text-neutral-700">Color Palette *</label>
-                    {editingProduct && (
+                    {editingProduct ? (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-800 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
                         <Lock className="w-3 h-3 text-rose-700" />
                         <span>Colour Fixed (Immutable)</span>
                       </span>
-                    )}
+                    ) : isColorConfirmed ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span>Colour Confirmed</span>
+                      </span>
+                    ) : null}
                   </div>
 
                   {editingProduct ? (
@@ -528,38 +781,65 @@ export const ProductManager: React.FC = () => {
                         The colour is permanently fixed for this saree. To offer this saree in another preferred colour, please add a new product.
                       </p>
                     </div>
-                  ) : (
-                    <>
+                  ) : !isColorConfirmed ? (
+                    <div className="space-y-2">
                       <select
                         value={selectedColorOption}
                         onChange={(e) => handleColorDropdownChange(e.target.value)}
                         className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-medium"
                       >
                         {standardColors.map((c) => (
-                          <option key={c} value={c}>{c}</option>
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
                         ))}
                         <option value="Other">+ Other (Manual / Custom Colour)</option>
                       </select>
 
                       {selectedColorOption === 'Other' && (
-                        <div className="mt-2.5 animate-in fade-in slide-in-from-top-1">
-                          <label className="block font-semibold text-neutral-800 mb-1">
-                            Manual / Custom Colour Name *
-                          </label>
+                        <div className="animate-in fade-in slide-in-from-top-1">
                           <input
                             type="text"
                             required
                             value={customColor}
                             onChange={(e) => handleCustomColorChange(e.target.value)}
                             placeholder="e.g. Peacock Teal, Coral Peach, Wine Purple"
-                            className="w-full p-2.5 rounded-xl border border-amber-300 bg-amber-50/40 text-neutral-900 font-medium text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                            className="w-full p-2 rounded-xl border border-amber-300 bg-amber-50/40 text-neutral-900 font-medium text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
                           />
-                          <p className="text-[10px] text-neutral-500 mt-1">
-                            Enter manual colour name. An immutable SKU code is auto-generated above.
-                          </p>
                         </div>
                       )}
-                    </>
+
+                      {/* Explicit button to confirm colour and disable auto generation */}
+                      <button
+                        type="button"
+                        onClick={handleConfirmColor}
+                        className="w-full py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Confirm Colour & Lock Unique Code</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-emerald-300 bg-emerald-50/70 text-emerald-950 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                          <span className="font-bold text-xs">
+                            Colour Confirmed: {selectedColorOption === 'Other' ? (customColor || 'Custom Colour') : selectedColorOption}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsColorConfirmed(false)}
+                          className="text-[11px] font-semibold text-emerald-800 underline hover:text-emerald-950"
+                        >
+                          Change Colour
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-emerald-800/80">
+                        Unique tracking code <span className="font-mono font-bold">#{productCode}</span> has been confirmed for this colour. Auto-generation has been disabled.
+                      </p>
+                    </div>
                   )}
                 </div>
 

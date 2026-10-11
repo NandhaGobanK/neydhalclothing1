@@ -1,4 +1,117 @@
-import { Product, StoreSettings, Order } from '../types/store';
+import {
+  Product,
+  StoreSettings,
+  Order,
+  OrderStatusChatTemplates,
+  StaffSectionPermissions,
+} from '../types/store';
+
+export const DEFAULT_CHAT_TEMPLATES: OrderStatusChatTemplates = {
+  pending: `Namaste {customerName},
+
+Thank you for choosing *{boutiqueName}*.
+We have received your saree reservation request:
+• Order Reference: *#{orderNumber}*
+• Items: {itemsSummary}
+• Total Amount: *{totalAmount}*
+• Payment UTR: *{upiTransactionId}*
+
+Our atelier team is currently verifying your payment transaction. You can check your order status anytime here:
+🔗 {trackingLink}{staffSignature}
+
+Warm regards,
+{boutiqueName}`,
+
+  confirmed: `Namaste {customerName},
+
+✨ Great news! Your order *#{orderNumber}* has been *CONFIRMED* by *{boutiqueName}*.
+
+• Order: *#{orderNumber}*
+• Items: {itemsSummary}
+• Payment UTR: *{upiTransactionId}* (Verified)
+
+Your pure silk heirloom is being inspected and packed in our signature tamper-proof box. We will notify you once dispatched!
+
+Track status:
+🔗 {trackingLink}{staffSignature}
+
+Warm regards,
+{boutiqueName}`,
+
+  shipped: `Namaste {customerName},
+
+📦 Your handloom saree order *#{orderNumber}* has been *DISPATCHED*!
+
+• Courier Partner: *{courierName}*
+• Tracking / Consignment ID: *{trackingNumber}*
+• Items: {itemsSummary}
+
+_Please note: As our shipments are insured and artisan-direct, you can monitor your order status on our boutique website using your order number or phone number:_
+🔗 {trackingLink}{staffSignature}
+
+Delivery is typically completed within 2–5 business days.
+Warm regards,
+{boutiqueName}`,
+
+  delivered: `Namaste {customerName},
+
+🎉 Your order *#{orderNumber}* has been *DELIVERED*!
+
+We hope you cherish the craftsmanship and texture of your handloom drape. If you'd like to share photos or tag us on Instagram, find us at *{instagramHandle}*.{staffSignature}
+
+Thank you for supporting authentic Indian weavers.
+Warm regards,
+{boutiqueName}`,
+
+  cancelled: `Namaste {customerName},
+
+Regarding your order *#{orderNumber}* at *{boutiqueName}*:
+
+Your order has been marked as *CANCELLED*.{reasonNotice}
+{refundStatusNotice}
+• Refund Amount: *{totalAmount}*{refundUtrText}{refundUpiText}{staffSignature}
+
+If you have any questions, our concierge team is always available here on WhatsApp.
+Warm regards,
+{boutiqueName}`,
+
+  rejected: `Namaste {customerName},
+
+Regarding your order *#{orderNumber}* at *{boutiqueName}*:
+
+Your order reservation has been *REJECTED*.{reasonNotice}
+{refundStatusNotice}
+• Refund Amount: *{totalAmount}*{refundUtrText}{refundUpiText}{staffSignature}
+
+If you have any questions, our concierge team is always available here on WhatsApp.
+Warm regards,
+{boutiqueName}`,
+
+  refunded: `Namaste {customerName},
+
+Regarding your order *#{orderNumber}* at *{boutiqueName}* for {totalAmount}:
+
+Your refund has been successfully completed:{reasonNotice}
+• Refund Transaction UTR ID: *{refundUtr}*
+• Refund Amount: *{totalAmount}*
+• Sent to UPI: *{refundUpi}*
+
+Thank you for your gracious understanding.
+Warm regards,
+{boutiqueName} Concierge`,
+};
+
+export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
+  orders: { canView: true, canEdit: true },
+  products: { canView: true, canEdit: false },
+  analytics: { canView: false },
+  staff: { canView: false, canEdit: false },
+  settingsStorefront: { canView: false, canEdit: false },
+  settingsAnnouncement: { canView: true, canEdit: false },
+  settingsPayment: { canView: false, canEdit: false },
+  settingsProfile: { canView: true, canEdit: false },
+  settingsChatTemplates: { canView: true, canEdit: false },
+};
 
 export const INITIAL_SETTINGS: StoreSettings = {
   boutiqueName: 'Aara Heritage Saree Atelier',
@@ -36,6 +149,8 @@ export const INITIAL_SETTINGS: StoreSettings = {
   },
   adminPin: '889988', // 6-digit access PIN
   staffMembers: [],
+  chatTemplates: DEFAULT_CHAT_TEMPLATES,
+  defaultStaffPermissions: DEFAULT_STAFF_PERMISSIONS,
 };
 
 // Initial state for fresh boutique login: 0 demo products (ready for owner's real sarees)

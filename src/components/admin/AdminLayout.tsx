@@ -22,8 +22,33 @@ interface AdminLayoutProps {
 }
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => {
-  const { settings, adminLogout, orders } = useStore();
-  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'analytics' | 'staff' | 'settings'>('orders');
+  const { settings, adminLogout, orders, currentUser, currentPermissions } = useStore();
+  const isAdmin = currentUser?.type === 'admin';
+
+  // Determine allowed tabs based on permissions
+  const canSeeOrders = isAdmin || currentPermissions?.orders?.canView !== false;
+  const canSeeProducts = isAdmin || currentPermissions?.products?.canView !== false;
+  const canSeeAnalytics = isAdmin || currentPermissions?.analytics?.canView !== false;
+  const canSeeStaff = isAdmin || currentPermissions?.staff?.canView !== false;
+  const canSeeSettings =
+    isAdmin ||
+    currentPermissions?.settingsStorefront?.canView !== false ||
+    currentPermissions?.settingsAnnouncement?.canView !== false ||
+    currentPermissions?.settingsPayment?.canView !== false ||
+    currentPermissions?.settingsProfile?.canView !== false ||
+    currentPermissions?.settingsChatTemplates?.canView !== false;
+
+  const defaultTab = canSeeOrders
+    ? 'orders'
+    : canSeeProducts
+    ? 'products'
+    : canSeeAnalytics
+    ? 'analytics'
+    : canSeeStaff
+    ? 'staff'
+    : 'settings';
+
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'analytics' | 'staff' | 'settings'>(defaultTab);
 
   const pendingRefundsCount = orders.filter(
     (o) =>
@@ -51,8 +76,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                 <h1 className="font-serif text-base sm:text-lg font-bold text-white">
                   {settings.boutiqueName}
                 </h1>
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider">
-                  Admin Console
+                <span className={`px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-wider ${
+                  isAdmin
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                }`}>
+                  {isAdmin ? 'Admin Console' : `Staff: @${currentUser?.username}`}
                 </span>
               </div>
             </div>
@@ -60,70 +89,80 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
 
           {/* Navigation Tabs (Desktop) */}
           <nav className="hidden md:flex items-center gap-1 bg-neutral-900 p-1 rounded-xl border border-neutral-800">
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'orders'
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Orders ({orders.length})</span>
-              {pendingRefundsCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] flex items-center justify-center font-bold">
-                  {pendingRefundsCount}
-                </span>
-              )}
-            </button>
+            {canSeeOrders && (
+              <button
+                onClick={() => setActiveTab('orders')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  activeTab === 'orders'
+                    ? 'bg-white text-neutral-950 shadow-xs'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Orders ({orders.length})</span>
+                {pendingRefundsCount > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] flex items-center justify-center font-bold">
+                    {pendingRefundsCount}
+                  </span>
+                )}
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'products'
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <Package className="w-3.5 h-3.5" />
-              <span>Sarees</span>
-            </button>
+            {canSeeProducts && (
+              <button
+                onClick={() => setActiveTab('products')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  activeTab === 'products'
+                    ? 'bg-white text-neutral-950 shadow-xs'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Sarees</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'analytics'
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-              <span>Sales Analytics</span>
-            </button>
+            {canSeeAnalytics && (
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  activeTab === 'analytics'
+                    ? 'bg-white text-neutral-950 shadow-xs'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                <span>Sales Analytics</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('staff')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'staff'
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Staff & Ledger</span>
-            </button>
+            {canSeeStaff && (
+              <button
+                onClick={() => setActiveTab('staff')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  activeTab === 'staff'
+                    ? 'bg-white text-neutral-950 shadow-xs'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Staff & Ledger</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'settings'
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Settings</span>
-            </button>
+            {canSeeSettings && (
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  activeTab === 'settings'
+                    ? 'bg-white text-neutral-950 shadow-xs'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Settings</span>
+              </button>
+            )}
           </nav>
 
           {/* Quick Actions */}
@@ -149,60 +188,70 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
 
         {/* Mobile Navigation Strip */}
         <div className="md:hidden flex items-center justify-around border-t border-neutral-800 bg-neutral-900/90 px-2 py-2 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
-              activeTab === 'orders' ? 'bg-white text-neutral-950' : 'text-neutral-400'
-            }`}
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Orders</span>
-            {pendingRefundsCount > 0 && (
-              <span className="w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] flex items-center justify-center font-bold">
-                {pendingRefundsCount}
-              </span>
-            )}
-          </button>
+          {canSeeOrders && (
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
+                activeTab === 'orders' ? 'bg-white text-neutral-950' : 'text-neutral-400'
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Orders</span>
+              {pendingRefundsCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] flex items-center justify-center font-bold">
+                  {pendingRefundsCount}
+                </span>
+              )}
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('products')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
-              activeTab === 'products' ? 'bg-white text-neutral-950' : 'text-neutral-400'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Sarees</span>
-          </button>
+          {canSeeProducts && (
+            <button
+              onClick={() => setActiveTab('products')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
+                activeTab === 'products' ? 'bg-white text-neutral-950' : 'text-neutral-400'
+              }`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>Sarees</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
-              activeTab === 'analytics' ? 'bg-white text-neutral-950' : 'text-neutral-400'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-            <span>Analytics</span>
-          </button>
+          {canSeeAnalytics && (
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
+                activeTab === 'analytics' ? 'bg-white text-neutral-950' : 'text-neutral-400'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+              <span>Analytics</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('staff')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
-              activeTab === 'staff' ? 'bg-white text-neutral-950' : 'text-neutral-400'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Staff</span>
-          </button>
+          {canSeeStaff && (
+            <button
+              onClick={() => setActiveTab('staff')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
+                activeTab === 'staff' ? 'bg-white text-neutral-950' : 'text-neutral-400'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Staff</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
-              activeTab === 'settings' ? 'bg-white text-neutral-950' : 'text-neutral-400'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Settings</span>
-          </button>
+          {canSeeSettings && (
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${
+                activeTab === 'settings' ? 'bg-white text-neutral-950' : 'text-neutral-400'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Settings</span>
+            </button>
+          )}
         </div>
       </header>
 
