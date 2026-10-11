@@ -232,11 +232,44 @@ export const SettingsManager: React.FC = () => {
     setTimeout(() => setBrandingSaveSuccess(false), 3000);
   };
 
+  const templateTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const templateSelectionRef = React.useRef<{ start: number; end: number }>({ start: 0, end: 0 });
+
+  const handleSaveTemplateSelection = () => {
+    if (templateTextareaRef.current) {
+      templateSelectionRef.current = {
+        start: templateTextareaRef.current.selectionStart ?? 0,
+        end: templateTextareaRef.current.selectionEnd ?? 0,
+      };
+    }
+  };
+
   const handleInsertToken = (token: string) => {
+    const textarea = templateTextareaRef.current;
+    const current = chatTemplates[activeChatTab] || '';
+    const { start, end } = templateSelectionRef.current;
+
+    const selStart = Math.min(Math.max(0, start), current.length);
+    const selEnd = Math.min(Math.max(0, end), current.length);
+
+    const before = current.substring(0, selStart);
+    const after = current.substring(selEnd);
+
+    const updatedText = before + token + after;
     setChatTemplates((prev) => ({
       ...prev,
-      [activeChatTab]: (prev[activeChatTab] || '') + ' ' + token,
+      [activeChatTab]: updatedText,
     }));
+
+    const newCursor = selStart + token.length;
+    templateSelectionRef.current = { start: newCursor, end: newCursor };
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(newCursor, newCursor);
+      }
+    }, 0);
   };
 
   const handleResetSingleTemplate = (key: keyof OrderStatusChatTemplates) => {
@@ -846,15 +879,20 @@ export const SettingsManager: React.FC = () => {
 
               {/* Textarea */}
               <textarea
+                ref={templateTextareaRef}
                 rows={7}
                 disabled={!canEditChatTemplates}
                 value={chatTemplates[activeChatTab] || ''}
-                onChange={(e) =>
+                onChange={(e) => {
                   setChatTemplates({
                     ...chatTemplates,
                     [activeChatTab]: e.target.value,
-                  })
-                }
+                  });
+                  handleSaveTemplateSelection();
+                }}
+                onSelect={handleSaveTemplateSelection}
+                onClick={handleSaveTemplateSelection}
+                onKeyUp={handleSaveTemplateSelection}
                 className="w-full p-3 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
               />
 
@@ -1214,6 +1252,9 @@ export const SettingsManager: React.FC = () => {
                   onChange={(e) => setBoutiqueName(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                 />
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  ✨ Changing your store name updates the header, browser title, and installed PWA app title in real-time.
+                </p>
               </div>
 
               <div>

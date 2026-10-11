@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { ProductCard } from './ProductCard';
-import { Product, SareeFabric, SareeColor } from '../../types/store';
-import { Search, SlidersHorizontal, X, Sparkles } from 'lucide-react';
+import { Product } from '../../types/store';
+import { Search, SlidersHorizontal, X, Sparkles, ArrowUpDown } from 'lucide-react';
 
 interface ProductGridProps {
   onOpenDetails: (product: Product) => void;
@@ -20,36 +20,28 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedColor, setSelectedColor] = useState<string>('all');
   const [priceRange, setPriceRange] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc'>('featured');
+  const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'newest' | 'name-asc' | 'name-desc'>('featured');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  // Available unique fabrics and colors
-  const fabrics: SareeFabric[] = [
-    'Kanjivaram Silk',
-    'Banarasi Brocade',
-    'Chanderi Tissue',
-    'Organza Silk',
-    'Pure Georgette',
-  ];
-
-  const colors: SareeColor[] = [
-    'Crimson Red',
-    'Emerald Green',
-    'Lavender',
-    'Royal Blue',
-    'Mustard Gold',
-    'Rani Pink',
-    'Ivory Cream',
-  ];
-
-  const allAvailableColors = useMemo(() => {
-    const list = [...colors];
+  // Available unique fabrics and colors ONLY from products published from the admin page
+  const publishedFabrics = useMemo(() => {
+    const set = new Set<string>();
     publicProducts.forEach((p) => {
-      if (p.color && !list.includes(p.color as any)) {
-        list.push(p.color as any);
+      if (p.fabric && p.fabric.trim()) {
+        set.add(p.fabric.trim());
       }
     });
-    return list;
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [publicProducts]);
+
+  const publishedColors = useMemo(() => {
+    const set = new Set<string>();
+    publicProducts.forEach((p) => {
+      if (p.color && p.color.trim()) {
+        set.add(p.color.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [publicProducts]);
 
   const filteredProducts = useMemo(() => {
@@ -63,10 +55,12 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         if (selectedColor !== 'all' && p.color !== selectedColor) {
           return false;
         }
-        // Price Range
-        if (priceRange === 'under-20k' && p.price >= 20000) return false;
-        if (priceRange === '20k-30k' && (p.price < 20000 || p.price > 30000)) return false;
-        if (priceRange === 'above-30k' && p.price <= 30000) return false;
+        // Price Range: 0-100, 100-500, 500-1000, 1000-2000, 2000+
+        if (priceRange === '0-100' && (p.price < 0 || p.price > 100)) return false;
+        if (priceRange === '100-500' && (p.price < 100 || p.price > 500)) return false;
+        if (priceRange === '500-1000' && (p.price < 500 || p.price > 1000)) return false;
+        if (priceRange === '1000-2000' && (p.price < 1000 || p.price > 2000)) return false;
+        if (priceRange === 'above-2000' && p.price <= 2000) return false;
         // Search Query
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
@@ -82,6 +76,11 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
       .sort((a, b) => {
         if (sortBy === 'price-asc') return a.price - b.price;
         if (sortBy === 'price-desc') return b.price - a.price;
+        if (sortBy === 'newest') {
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        }
+        if (sortBy === 'name-asc') return a.title.localeCompare(b.title);
+        if (sortBy === 'name-desc') return b.title.localeCompare(a.title);
         return (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0);
       });
   }, [publicProducts, selectedCategory, selectedColor, priceRange, searchQuery, sortBy]);
@@ -118,7 +117,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         </div>
 
         {/* Search & Sort Controls */}
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex items-center gap-3 w-full md:w-auto flex-wrap sm:flex-nowrap">
           {/* Search Box */}
           <div className="relative flex-1 md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
@@ -140,15 +139,21 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
           </div>
 
           {/* Sort Dropdown */}
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="py-2 px-3 text-xs sm:text-sm rounded-xl bg-white border border-neutral-300 text-neutral-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500/50"
-          >
-            <option value="featured">Featured First</option>
-            <option value="price-asc">Price: Low to High</option>
-            <option value="price-desc">Price: High to Low</option>
-          </select>
+          <div className="flex items-center gap-1.5 bg-white border border-neutral-300 rounded-xl px-2.5 py-1.5 shadow-xs shrink-0">
+            <ArrowUpDown className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="text-xs sm:text-sm bg-transparent text-neutral-800 font-medium focus:outline-hidden cursor-pointer"
+            >
+              <option value="featured">Featured First</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+              <option value="newest">Newest Arrivals</option>
+              <option value="name-asc">Name: A to Z</option>
+              <option value="name-desc">Name: Z to A</option>
+            </select>
+          </div>
 
           {/* Mobile Filter Toggle */}
           <button
@@ -168,79 +173,85 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
 
       {/* Filter Bar (Segmented button tabs) */}
       <div className={`space-y-4 mb-8 ${showMobileFilters ? 'block' : 'hidden md:block'}`}>
-        {/* Fabric Filter */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-neutral-100 rounded-xl">
-          <span className="text-[11px] font-semibold text-neutral-500 uppercase px-2">Fabric:</span>
-          <button
-            onClick={() => onSelectCategory?.('all')}
-            className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
-              selectedCategory === 'all'
-                ? 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/60'
-            }`}
-          >
-            All Fabrics
-          </button>
-          {fabrics.map((fabric) => (
+        {/* Fabric Filter - Only published fabrics */}
+        {publishedFabrics.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-neutral-100 rounded-xl">
+            <span className="text-[11px] font-semibold text-neutral-500 uppercase px-2">Fabric:</span>
             <button
-              key={fabric}
-              onClick={() => onSelectCategory?.(fabric)}
-              className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
-                selectedCategory === fabric
+              onClick={() => onSelectCategory?.('all')}
+              className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                selectedCategory === 'all'
                   ? 'bg-neutral-900 text-white shadow-xs'
                   : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/60'
               }`}
             >
-              {fabric}
+              All Fabrics
             </button>
-          ))}
-        </div>
-
-        {/* Color & Price Row */}
-        <div className="flex flex-wrap items-center gap-4 text-xs">
-          {/* Colors */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-neutral-500 font-medium">Color:</span>
-            <button
-              onClick={() => setSelectedColor('all')}
-              className={`px-2.5 py-1 rounded-md border text-xs ${
-                selectedColor === 'all'
-                  ? 'border-neutral-900 bg-neutral-900 text-white font-medium'
-                  : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
-              }`}
-            >
-              All Colors
-            </button>
-            {allAvailableColors.map((color) => (
+            {publishedFabrics.map((fabric) => (
               <button
-                key={color}
-                onClick={() => setSelectedColor(color)}
-                className={`px-2.5 py-1 rounded-md border text-xs ${
-                  selectedColor === color
-                    ? 'border-rose-900 bg-rose-50 text-rose-900 font-medium'
-                    : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
+                key={fabric}
+                onClick={() => onSelectCategory?.(fabric)}
+                className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                  selectedCategory === fabric
+                    ? 'bg-neutral-900 text-white shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/60'
                 }`}
               >
-                {color}
+                {fabric}
               </button>
             ))}
           </div>
+        )}
 
-          {/* Price Range */}
+        {/* Color & Price Row */}
+        <div className="flex flex-wrap items-center gap-4 text-xs">
+          {/* Colors - Only published colors */}
+          {publishedColors.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-neutral-500 font-medium">Color:</span>
+              <button
+                onClick={() => setSelectedColor('all')}
+                className={`px-2.5 py-1 rounded-md border text-xs cursor-pointer ${
+                  selectedColor === 'all'
+                    ? 'border-neutral-900 bg-neutral-900 text-white font-medium'
+                    : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
+                }`}
+              >
+                All Colors
+              </button>
+              {publishedColors.map((color) => (
+                <button
+                  key={color}
+                  onClick={() => setSelectedColor(color)}
+                  className={`px-2.5 py-1 rounded-md border text-xs cursor-pointer ${
+                    selectedColor === color
+                      ? 'border-rose-900 bg-rose-50 text-rose-900 font-medium'
+                      : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
+                  }`}
+                >
+                  {color}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Price Range: 0-100, 100-500, 500-1000, 1000-2000 */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-neutral-500 font-medium">Price:</span>
             {[
               { id: 'all', label: 'Any Price' },
-              { id: 'under-20k', label: 'Under ₹20,000' },
-              { id: '20k-30k', label: '₹20k - ₹30k' },
-              { id: 'above-30k', label: 'Above ₹30,000' },
+              { id: '0-100', label: '0 - 100' },
+              { id: '100-500', label: '100 - 500' },
+              { id: '500-1000', label: '500 - 1000' },
+              { id: '1000-2000', label: '1000 - 2000' },
+              { id: 'above-2000', label: '2000+' },
             ].map((p) => (
               <button
                 key={p.id}
                 onClick={() => setPriceRange(p.id)}
-                className={`px-2.5 py-1 rounded-md border text-xs ${
+                className={`px-2.5 py-1 rounded-md border text-xs transition cursor-pointer ${
                   priceRange === p.id
-                    ? 'border-amber-700 bg-amber-50 text-amber-900 font-medium'
+                    ? 'border-amber-700 bg-amber-50 text-amber-900 font-bold shadow-xs'
                     : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
                 }`}
               >
@@ -252,7 +263,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
           {activeFilterCount > 0 && (
             <button
               onClick={resetFilters}
-              className="text-xs text-rose-700 hover:text-rose-900 underline font-medium ml-auto"
+              className="text-xs text-rose-700 hover:text-rose-900 underline font-medium ml-auto cursor-pointer"
             >
               Reset all filters
             </button>

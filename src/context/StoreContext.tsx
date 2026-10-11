@@ -19,6 +19,7 @@ import {
   INITIAL_REVIEWS,
 } from '../data/initialData';
 import { googleSignOut, setCachedAccessToken } from '../utils/firebaseAuth';
+import { syncPWAAndDocumentMetadata } from '../utils/dynamicManifest';
 import {
   collection,
   doc,
@@ -265,6 +266,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.SETTINGS, settings);
+    syncPWAAndDocumentMetadata(settings);
   }, [settings]);
 
   useEffect(() => {

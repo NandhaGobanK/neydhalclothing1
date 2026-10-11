@@ -185,10 +185,10 @@ export const StaffManager: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 flex items-center gap-2">
-            <Users className="w-6 h-6 text-amber-600" />
+            <Users className="w-6 h-6 text-amber-600 shrink-0" />
             <span>Staff Portal & Google Authentication</span>
           </h2>
           <p className="text-xs text-neutral-500 mt-0.5">
@@ -199,10 +199,10 @@ export const StaffManager: React.FC = () => {
         <div className="flex items-center flex-wrap gap-2">
           <button
             onClick={handleCopyPortalLink}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-700 text-xs font-semibold shadow-xs transition"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-700 text-xs font-semibold shadow-xs transition cursor-pointer"
             title="Copy portal URL to send to your team"
           >
-            {copiedLink ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-neutral-500" />}
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-neutral-500" />}
             <span>{copiedLink ? 'Portal Link Copied!' : 'Copy Portal Link'}</span>
           </button>
 
@@ -220,27 +220,27 @@ export const StaffManager: React.FC = () => {
               }
             }}
             disabled={isSyncingDB}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-semibold shadow-xs transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-semibold shadow-xs transition cursor-pointer"
             title="Sync all staff records to the dedicated /staff collection in Firestore"
           >
-            <Server className="w-4 h-4 text-emerald-700" />
+            <Server className="w-3.5 h-3.5 text-emerald-700" />
             <span>{isSyncingDB ? 'Syncing DB...' : dbSyncSuccess || 'Sync to Database'}</span>
           </button>
 
           <button
             onClick={() => setShowHostingModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100/80 text-amber-900 text-xs font-semibold shadow-xs transition"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100/80 text-amber-900 text-xs font-semibold shadow-xs transition cursor-pointer"
           >
-            <Globe className="w-4 h-4 text-amber-700" />
-            <span>Free Hosting & Setup Guide</span>
+            <Globe className="w-3.5 h-3.5 text-amber-700" />
+            <span>Hosting & Setup Guide</span>
           </button>
 
           {canEditStaff ? (
             <button
               onClick={openAddModal}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
             >
-              <UserPlus className="w-4 h-4" />
+              <UserPlus className="w-3.5 h-3.5" />
               <span>Add Staff Member</span>
             </button>
           ) : (

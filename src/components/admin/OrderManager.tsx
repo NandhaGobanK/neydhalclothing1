@@ -80,6 +80,17 @@ export const OrderManager: React.FC = () => {
   const [messageModalCopied, setMessageModalCopied] = useState(false);
   const [messageModalCategory, setMessageModalCategory] = useState<'all' | 'essential' | 'customer' | 'shipping' | 'refund' | 'store'>('all');
   const [updateOrderStatusOnSend, setUpdateOrderStatusOnSend] = useState(false);
+  const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const messageSelectionRef = React.useRef<{ start: number; end: number }>({ start: 0, end: 0 });
+
+  const handleSaveMessageSelection = () => {
+    if (messageTextareaRef.current) {
+      messageSelectionRef.current = {
+        start: messageTextareaRef.current.selectionStart ?? 0,
+        end: messageTextareaRef.current.selectionEnd ?? 0,
+      };
+    }
+  };
 
   // Google Sheets Sync States
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
@@ -292,6 +303,7 @@ export const OrderManager: React.FC = () => {
     const orderWithStage: Order = stageOverride && stageOverride !== order.status ? { ...order, status: stageOverride } : order;
     const initialText = formatWhatsAppStageUpdateMessage(orderWithStage, settings);
     setMessageModalText(initialText);
+    messageSelectionRef.current = { start: initialText.length, end: initialText.length };
   };
 
   const handleSwitchMessageModalStage = (newStage: OrderStatus) => {
@@ -300,6 +312,7 @@ export const OrderManager: React.FC = () => {
     const orderWithStage: Order = { ...messageModalOrder, status: newStage };
     const text = formatWhatsAppStageUpdateMessage(orderWithStage, settings);
     setMessageModalText(text);
+    messageSelectionRef.current = { start: text.length, end: text.length };
   };
 
   const handleResetModalMessageToTemplate = () => {
@@ -307,14 +320,32 @@ export const OrderManager: React.FC = () => {
     const orderWithStage: Order = { ...messageModalOrder, status: messageModalStage };
     const text = formatWhatsAppStageUpdateMessage(orderWithStage, settings);
     setMessageModalText(text);
+    messageSelectionRef.current = { start: text.length, end: text.length };
   };
 
   const handleInsertDynamicVariable = (val: string) => {
-    setMessageModalText((prev) => {
-      if (!prev) return val;
-      const spacer = prev.endsWith(' ') || prev.endsWith('\n') ? '' : ' ';
-      return prev + spacer + val;
-    });
+    const textarea = messageTextareaRef.current;
+    const current = messageModalText;
+    const { start, end } = messageSelectionRef.current;
+
+    const selStart = Math.min(Math.max(0, start), current.length);
+    const selEnd = Math.min(Math.max(0, end), current.length);
+
+    const before = current.substring(0, selStart);
+    const after = current.substring(selEnd);
+
+    const updatedText = before + val + after;
+    setMessageModalText(updatedText);
+
+    const newCursor = selStart + val.length;
+    messageSelectionRef.current = { start: newCursor, end: newCursor };
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(newCursor, newCursor);
+      }
+    }, 0);
   };
 
   const handleSendCustomWhatsApp = () => {
@@ -1363,9 +1394,16 @@ export const OrderManager: React.FC = () => {
                   </div>
 
                   <textarea
+                    ref={messageTextareaRef}
                     rows={8}
                     value={messageModalText}
-                    onChange={(e) => setMessageModalText(e.target.value)}
+                    onChange={(e) => {
+                      setMessageModalText(e.target.value);
+                      handleSaveMessageSelection();
+                    }}
+                    onSelect={handleSaveMessageSelection}
+                    onClick={handleSaveMessageSelection}
+                    onKeyUp={handleSaveMessageSelection}
                     placeholder="Enter or customize the automated notification..."
                     className="w-full p-3.5 rounded-2xl border border-neutral-300 font-mono text-xs text-neutral-900 bg-white leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-emerald-500/40 shadow-inner"
                   />

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Download, Smartphone, X, Check } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
+import { useStore } from '../../context/StoreContext';
 
 interface PWAInstallButtonProps {
   className?: string;
@@ -11,6 +12,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   className = '',
   variant = 'header',
 }) => {
+  const { settings } = useStore();
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   const [justInstalled, setJustInstalled] = useState(false);
@@ -36,13 +38,15 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     return null;
   }
 
+  const boutiqueTitle = settings.boutiqueName || 'Boutique';
+
   return (
     <>
       {variant === 'header' ? (
         <button
           onClick={handleInstallClick}
           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20 transition-colors whitespace-nowrap shrink-0 ${className}`}
-          title="Install Saree Boutique App"
+          title={`Install ${boutiqueTitle} App`}
         >
           <Smartphone className="w-3.5 h-3.5 text-amber-300" />
           <span>{isIOS ? 'Install on Phone' : 'Install App'}</span>
@@ -54,7 +58,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               <Download className="w-4 h-4" />
             </div>
             <div>
-              <p className="font-semibold text-white">Install Saree Boutique App</p>
+              <p className="font-semibold text-white">Install {boutiqueTitle} App</p>
               <p className="text-amber-200/80 text-[11px]">Instant 1-tap catalog access & offline shopping</p>
             </div>
           </div>
@@ -74,9 +78,13 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-900 font-bold text-sm">
-                  Aa
+                  {settings.logoUrl ? (
+                    <img src={settings.logoUrl} alt="Logo" className="w-6 h-6 object-contain rounded-full" />
+                  ) : (
+                    <span>{boutiqueTitle.slice(0, 2)}</span>
+                  )}
                 </div>
-                <h3 className="font-serif text-lg font-bold text-neutral-900">Install on iPhone</h3>
+                <h3 className="font-serif text-lg font-bold text-neutral-900">Install {boutiqueTitle}</h3>
               </div>
               <button
                 onClick={() => setShowIOSGuide(false)}
@@ -87,7 +95,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             </div>
 
             <p className="text-xs text-neutral-600 mb-4 leading-relaxed">
-              Add our boutique directly to your home screen for instant shopping without opening a browser:
+              Add <strong>{boutiqueTitle}</strong> directly to your home screen for instant shopping without opening a browser:
             </p>
 
             <ol className="space-y-3 text-xs text-neutral-700 bg-neutral-50 p-3 rounded-xl border border-neutral-200/70">

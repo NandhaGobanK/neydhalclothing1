@@ -14,20 +14,28 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectCategory,
   selectedCategory = 'all',
 }) => {
-  const { settings, cartCount, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen } = useStore();
+  const { settings, cartCount, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen, publicProducts } = useStore();
   const [logoError, setLogoError] = React.useState(false);
 
   React.useEffect(() => {
     setLogoError(false);
   }, [settings.logoUrl]);
 
-  const categories = [
+  // Only display fabric keywords that are published from the admin page
+  const publishedFabrics = React.useMemo(() => {
+    const set = new Set<string>();
+    publicProducts.forEach((p) => {
+      if (p.fabric && p.fabric.trim()) {
+        set.add(p.fabric.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [publicProducts]);
+
+  const categories = React.useMemo(() => [
     { id: 'all', label: 'All Sarees' },
-    { id: 'Kanjivaram Silk', label: 'Kanjivaram' },
-    { id: 'Banarasi Brocade', label: 'Banarasi' },
-    { id: 'Chanderi Tissue', label: 'Chanderi' },
-    { id: 'Pure Georgette', label: 'Georgette' },
-  ];
+    ...publishedFabrics.map((fab) => ({ id: fab, label: fab })),
+  ], [publishedFabrics]);
 
   const showTrackOrder = settings.storefrontDisplay?.showTrackOrder !== false;
 
