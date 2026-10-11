@@ -1,4 +1,4 @@
-export type SareeFabric =
+export type StandardSareeFabric =
   | 'Kanjivaram Silk'
   | 'Banarasi Brocade'
   | 'Chanderi Tissue'
@@ -6,6 +6,8 @@ export type SareeFabric =
   | 'Pure Georgette'
   | 'Tussar Handloom'
   | 'Cotton Silk';
+
+export type SareeFabric = StandardSareeFabric | 'Other' | (string & {});
 
 export type StandardSareeColor =
   | 'Crimson Red'
@@ -18,6 +20,12 @@ export type StandardSareeColor =
   | 'Ivory Cream';
 
 export type SareeColor = StandardSareeColor | (string & {});
+
+export interface DeliverySettings {
+  shippingFee: number; // Standard delivery charge (e.g. ₹150)
+  freeDeliveryEnabled: boolean; // Option if customer buys more than some amount to enable free delivery
+  freeDeliveryThreshold: number; // Limit fixed by admin (e.g. ₹20000)
+}
 
 export interface Product {
   id: string;
@@ -102,6 +110,7 @@ export interface StaffSectionPermissions {
   settingsPayment: { canView: boolean; canEdit: boolean };
   settingsProfile: { canView: boolean; canEdit: boolean };
   settingsChatTemplates: { canView: boolean; canEdit: boolean };
+  settingsDelivery?: { canView: boolean; canEdit: boolean };
 }
 
 export interface StaffMember {
@@ -175,6 +184,10 @@ export interface StorefrontDisplaySettings {
   showTrackOrder: boolean;
   allowPublicCancellation: boolean;
   freeShippingText: string;
+  footerAboutText?: string;
+  footerCertifications?: string[];
+  footerPolicies?: string[];
+  heroKickerTags?: string[];
 }
 
 export interface StoreSettings {
@@ -189,6 +202,7 @@ export interface StoreSettings {
   theme: StoreTheme;
   announcement: AnnouncementSettings;
   payment: PaymentSettings;
+  delivery: DeliverySettings;
   storefrontDisplay: StorefrontDisplaySettings;
   adminPin: string; // 6-digit access PIN
   staffMembers: StaffMember[];

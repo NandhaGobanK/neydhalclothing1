@@ -83,7 +83,7 @@ export const OrderCancellationModal: React.FC<OrderCancellationModalProps> = ({
             <div>
               <h2 className="font-serif text-base sm:text-lg font-bold">Request Order Cancellation</h2>
               <p className="text-[11px] text-neutral-400">
-                Cancel your saree reservation & initiate direct UPI refund
+                Cancel your order & initiate direct UPI refund
               </p>
             </div>
           </div>

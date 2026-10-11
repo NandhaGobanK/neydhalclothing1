@@ -78,6 +78,11 @@ export const SettingsManager: React.FC = () => {
   const [announcementEnabled, setAnnouncementEnabled] = useState(settings.announcement.enabled);
   const [announcementText, setAnnouncementText] = useState(settings.announcement.text);
 
+  // Delivery & Free Shipping Threshold Configuration (Admin controlled)
+  const [shippingFee, setShippingFee] = useState<number>(settings.delivery?.shippingFee ?? 250);
+  const [freeDeliveryEnabled, setFreeDeliveryEnabled] = useState<boolean>(settings.delivery?.freeDeliveryEnabled ?? true);
+  const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState<number>(settings.delivery?.freeDeliveryThreshold ?? 20000);
+
   // Payment Config
   const [upiId, setUpiId] = useState(settings.payment.upiId);
   const [payeeName, setPayeeName] = useState(settings.payment.payeeName);
@@ -264,6 +269,11 @@ export const SettingsManager: React.FC = () => {
         qrCodeUrl: qrCodeUrl.trim(),
         instructions: paymentInstructions.trim(),
       },
+      delivery: {
+        shippingFee: Number(shippingFee) || 0,
+        freeDeliveryEnabled,
+        freeDeliveryThreshold: Number(freeDeliveryThreshold) || 0,
+      },
       chatTemplates,
       defaultStaffPermissions: staffPermissions,
       ...(isAdmin ? { adminPin: adminPin.trim() || '889988' } : {}),
@@ -279,6 +289,9 @@ export const SettingsManager: React.FC = () => {
 
   const canViewAnnouncement = isAdmin || currentPermissions?.settingsAnnouncement?.canView !== false;
   const canEditAnnouncement = isAdmin || currentPermissions?.settingsAnnouncement?.canEdit !== false;
+
+  const canViewDelivery = isAdmin || currentPermissions?.settingsDelivery?.canView !== false;
+  const canEditDelivery = isAdmin || currentPermissions?.settingsDelivery?.canEdit !== false;
 
   const canViewPayment = isAdmin || currentPermissions?.settingsPayment?.canView !== false;
   const canEditPayment = isAdmin || currentPermissions?.settingsPayment?.canEdit !== false;
@@ -765,6 +778,7 @@ export const SettingsManager: React.FC = () => {
                     { key: 'analytics', label: 'Sales Analytics & Revenue Reports', hasEdit: false },
                     { key: 'staff', label: 'Staff Accounts & Workload', hasEdit: true },
                     { key: 'settingsStorefront', label: 'Settings: Storefront Display & Logo/Banner', hasEdit: true },
+                    { key: 'settingsDelivery', label: 'Settings: Delivery Charges & Free Delivery Limit', hasEdit: true },
                     { key: 'settingsAnnouncement', label: 'Settings: Announcement Board', hasEdit: true },
                     { key: 'settingsPayment', label: 'Settings: Payment & UPI Configuration', hasEdit: true },
                     { key: 'settingsProfile', label: 'Settings: Boutique Profile & Contact', hasEdit: true },
@@ -876,6 +890,104 @@ export const SettingsManager: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Section: Delivery Charges & Free Delivery Limit (User Request) */}
+        {canViewDelivery && (
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
+                <Truck className="w-5 h-5 text-amber-600" />
+                <h3>Delivery Charges & Free Delivery Limits</h3>
+              </div>
+              {!canEditDelivery && (
+                <span className="text-[11px] text-neutral-500 font-medium bg-neutral-100 px-2.5 py-1 rounded-full">
+                  View-Only
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-neutral-500 mb-4">
+              Configure standard delivery charges for orders, and enable free delivery when a customer's order value exceeds an admin-specified limit.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Standard Delivery Charge (₹) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-neutral-500 font-bold">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={!canEditDelivery}
+                    value={shippingFee}
+                    onChange={(e) => setShippingFee(Math.max(0, Number(e.target.value)))}
+                    placeholder="250"
+                    className="w-full pl-7 pr-3 py-2.5 rounded-xl border border-neutral-300 font-mono text-sm text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                  />
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  Fixed shipping fee applied on orders below the free delivery threshold.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-neutral-800">
+                    Free Delivery Threshold (₹) *
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      disabled={!canEditDelivery}
+                      checked={freeDeliveryEnabled}
+                      onChange={(e) => setFreeDeliveryEnabled(e.target.checked)}
+                      className="rounded text-emerald-600 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span className="text-[11px] font-semibold text-emerald-800">
+                      {freeDeliveryEnabled ? 'Active' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-neutral-500 font-bold">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    disabled={!canEditDelivery || !freeDeliveryEnabled}
+                    value={freeDeliveryThreshold}
+                    onChange={(e) => setFreeDeliveryThreshold(Math.max(0, Number(e.target.value)))}
+                    placeholder="20000"
+                    className={`w-full pl-7 pr-3 py-2.5 rounded-xl border font-mono text-sm text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 ${
+                      !freeDeliveryEnabled ? 'bg-neutral-100 border-neutral-200 text-neutral-400' : 'border-neutral-300'
+                    }`}
+                  />
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  If customer buys more than this amount, delivery becomes automatically free (Fixed by admin).
+                </p>
+              </div>
+
+              <div className="sm:col-span-2 p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-950 flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                <div className="text-[11px] leading-relaxed">
+                  <span className="font-bold">Live Storefront Rule: </span>
+                  {freeDeliveryEnabled ? (
+                    <span>
+                      Standard delivery fee of <span className="font-bold">₹{shippingFee}</span> applies. Orders of <span className="font-bold font-mono">₹{freeDeliveryThreshold.toLocaleString('en-IN')}</span> and above qualify for <span className="font-bold text-emerald-800">Free Delivery</span> automatically!
+                    </span>
+                  ) : (
+                    <span>
+                      Free delivery threshold is turned off. All orders are charged standard flat fee of <span className="font-bold">₹{shippingFee}</span>.
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}

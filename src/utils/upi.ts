@@ -75,7 +75,11 @@ export function formatWhatsAppOrderMessage(order: Order, settings: StoreSettings
     ? `\n💬 *Customer Comments / Instructions:*\n"${order.notes.trim()}"\n`
     : '';
 
-  const message = `🛍️ *NEW HANDLOOM ORDER RESERVATION*
+  const shippingText = order.shippingFee === 0
+    ? 'Delivery Charges: *Free*'
+    : `Delivery Charges: *${formatPrice(order.shippingFee)}*`;
+
+  const message = `🛍️ *NEW HANDLOOM ORDER*
 Boutique: *${settings.boutiqueName}*
 Order Reference: *#${order.orderNumber}*
 Date: ${new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -83,7 +87,9 @@ Date: ${new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', 
 *ORDER ITEMS:*
 ${itemsText}
 
-💰 *TOTAL AMOUNT:* ${formatPrice(order.totalAmount)}
+Subtotal: *${formatPrice(order.subtotal)}*
+${shippingText}
+💰 *TOTAL PAYABLE AMOUNT:* ${formatPrice(order.totalAmount)}
 💳 *PAYMENT TRANSACTION ID (UTR):* ${order.upiTransactionId}
 Store UPI: ${settings.payment.upiId}
 
@@ -94,7 +100,7 @@ Email: ${order.customer.email}
 Address: ${order.customer.address}, ${order.customer.city}, ${order.customer.state} - ${order.customer.pincode}
 ${customerComments}${refundInfo}
 
-_Kindly verify the payment transaction and confirm my order reservation._`;
+_Kindly verify the payment transaction and dispatch my order._`;
 
   return message;
 }

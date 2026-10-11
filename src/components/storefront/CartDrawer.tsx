@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
-import { X, Trash2, Plus, Minus, ArrowRight, ShoppingBag, ShieldCheck } from 'lucide-react';
+import { X, Trash2, Plus, Minus, ArrowRight, ShoppingBag, ShieldCheck, Truck, Sparkles } from 'lucide-react';
 
 export const CartDrawer: React.FC = () => {
   const {
@@ -13,6 +13,11 @@ export const CartDrawer: React.FC = () => {
     clearCart,
     cartTotal,
     cartCount,
+    cartShippingFee,
+    isFreeDeliveryUnlocked,
+    amountNeededForFreeDelivery,
+    cartGrandTotal,
+    settings,
     setIsCheckoutOpen,
   } = useStore();
 
@@ -22,6 +27,8 @@ export const CartDrawer: React.FC = () => {
     setIsCartOpen(false);
     setIsCheckoutOpen(true);
   };
+
+  const deliveryConfig = settings.delivery;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end">
@@ -127,14 +134,60 @@ export const CartDrawer: React.FC = () => {
 
             {/* Footer Summary */}
             <div className="p-4 sm:p-5 border-t border-neutral-200 bg-neutral-50/70 space-y-3">
-              <div className="flex items-center justify-between text-xs text-neutral-600">
-                <span>Shipping & Insurance</span>
-                <span className="font-semibold text-emerald-700">Free (Pan-India)</span>
+              {/* Free Delivery Threshold Progress Notice */}
+              {deliveryConfig?.freeDeliveryEnabled && (
+                <div className={`p-3 rounded-xl border text-xs ${
+                  isFreeDeliveryUnlocked
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                    : 'bg-amber-50 border-amber-200 text-amber-950'
+                }`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold flex items-center gap-1.5">
+                      <Truck className={`w-3.5 h-3.5 ${isFreeDeliveryUnlocked ? 'text-emerald-600' : 'text-amber-700'}`} />
+                      <span>{isFreeDeliveryUnlocked ? '🎉 Free Delivery Unlocked!' : 'Free Delivery Goal'}</span>
+                    </span>
+                    <span className="font-bold text-[11px]">
+                      {isFreeDeliveryUnlocked
+                        ? 'Eligible'
+                        : `Add ${formatPrice(amountNeededForFreeDelivery)} more`}
+                    </span>
+                  </div>
+                  <div className="w-full bg-neutral-200 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${isFreeDeliveryUnlocked ? 'bg-emerald-600' : 'bg-amber-600'}`}
+                      style={{
+                        width: `${Math.min(100, Math.round((cartTotal / (deliveryConfig.freeDeliveryThreshold || 1)) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-neutral-600 mt-1">
+                    {isFreeDeliveryUnlocked
+                      ? `Your order exceeds ${formatPrice(deliveryConfig.freeDeliveryThreshold)}. Free delivery is enabled!`
+                      : `Free Delivery applies on orders above ${formatPrice(deliveryConfig.freeDeliveryThreshold)} (Fixed by boutique).`}
+                  </p>
+                </div>
+              )}
+
+              {/* Price Breakdown */}
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between text-neutral-600">
+                  <span>Bag Subtotal</span>
+                  <span className="font-semibold text-neutral-900 tabular-nums">{formatPrice(cartTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-neutral-600">
+                  <span>Delivery Charges</span>
+                  {cartShippingFee === 0 ? (
+                    <span className="font-semibold text-emerald-700">Free</span>
+                  ) : (
+                    <span className="font-semibold text-neutral-900 tabular-nums">{formatPrice(cartShippingFee)}</span>
+                  )}
+                </div>
               </div>
+
               <div className="flex items-center justify-between text-base font-bold text-neutral-900 pt-2 border-t border-neutral-200">
-                <span>Total Amount</span>
+                <span>Total Payable</span>
                 <span className="tabular-nums text-lg text-neutral-950 font-serif">
-                  {formatPrice(cartTotal)}
+                  {formatPrice(cartGrandTotal)}
                 </span>
               </div>
 
@@ -155,7 +208,7 @@ export const CartDrawer: React.FC = () => {
                   onClick={handleProceedToCheckout}
                   className="flex-1 py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition"
                 >
-                  <span>Proceed to Prepaid Checkout</span>
+                  <span>Buy Now / Checkout</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

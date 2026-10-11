@@ -111,6 +111,7 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
   settingsPayment: { canView: false, canEdit: false },
   settingsProfile: { canView: true, canEdit: false },
   settingsChatTemplates: { canView: true, canEdit: false },
+  settingsDelivery: { canView: true, canEdit: false },
 };
 
 export const INITIAL_SETTINGS: StoreSettings = {
@@ -125,14 +126,19 @@ export const INITIAL_SETTINGS: StoreSettings = {
   theme: 'maroon',
   announcement: {
     enabled: true,
-    text: '✨ Festive Wedding Edit: Free Insured Express Delivery across India. 100% Pure Silk Mark Certified Handlooms.',
+    text: '✨ Festive Wedding Edit: Handcrafted Pure Silk Mark Certified Handlooms direct from master weavers.',
     badgeLabel: 'FESTIVE NOTICE',
   },
   payment: {
     upiId: 'aarasarees@okhdfcbank',
     payeeName: 'Aara Heritage Sarees LLP',
     qrCodeUrl: '',
-    instructions: 'Scan using any UPI app (Google Pay, PhonePe, Paytm, BHIM) and enter the 12-digit UTR/Transaction ID below to verify your handloom reservation.',
+    instructions: 'Scan using any UPI app (Google Pay, PhonePe, Paytm, BHIM) and enter the 12-digit UTR/Transaction ID below to verify your order.',
+  },
+  delivery: {
+    shippingFee: 250,
+    freeDeliveryEnabled: true,
+    freeDeliveryThreshold: 20000,
   },
   storefrontDisplay: {
     heroHeadline: 'Timeless Drapes, Woven for Generations.',

@@ -266,26 +266,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   <span className="font-medium text-neutral-900">{product.occasion}</span>
                 </div>
               </div>
-
-              {/* Trust highlights */}
-              <div className="grid grid-cols-2 gap-3 mb-6 text-[11px] text-neutral-600">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>Silk Mark Registered</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Truck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>Ships in 24-48 Hours</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>Direct Artisan Handloom</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>100% Refund Safeguard</span>
-                </div>
-              </div>
             </div>
 
             {/* Action Buttons */}
@@ -309,10 +289,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 className={`flex-1 py-3.5 px-4 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition ${
                   isOutOfStock
                     ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
-                    : 'bg-amber-500 hover:bg-amber-400 text-neutral-950 shadow-amber-500/20'
+                    : 'bg-amber-500 hover:bg-amber-400 text-neutral-950 shadow-amber-500/20 font-bold'
                 }`}
               >
-                <span>{isOutOfStock ? 'Currently Sold Out' : 'Prepaid UPI Reservation'}</span>
+                <span>{isOutOfStock ? 'Currently Sold Out' : 'Buy Now'}</span>
               </button>
             </div>
           </div>

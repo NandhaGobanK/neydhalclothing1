@@ -593,9 +593,23 @@ export const OrderManager: React.FC = () => {
                         </div>
                       ))}
                     </div>
-                    <div className="pt-2 flex justify-between font-bold text-sm text-neutral-900 border-t border-neutral-100">
-                      <span>Total Paid:</span>
-                      <span className="tabular-nums font-serif text-base">{formatPrice(order.totalAmount)}</span>
+                    <div className="space-y-1 pt-2 border-t border-neutral-100 text-xs">
+                      <div className="flex justify-between text-neutral-600">
+                        <span>Items Subtotal:</span>
+                        <span className="font-semibold text-neutral-900 tabular-nums">{formatPrice(order.subtotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-neutral-600">
+                        <span>Delivery Fee:</span>
+                        {order.shippingFee === 0 ? (
+                          <span className="font-semibold text-emerald-700">Free</span>
+                        ) : (
+                          <span className="font-semibold text-neutral-900 tabular-nums">{formatPrice(order.shippingFee)}</span>
+                        )}
+                      </div>
+                      <div className="flex justify-between font-bold text-sm text-neutral-900 pt-1 border-t border-neutral-100">
+                        <span>Total Paid:</span>
+                        <span className="tabular-nums font-serif text-base">{formatPrice(order.totalAmount)}</span>
+                      </div>
                     </div>
                   </div>
 

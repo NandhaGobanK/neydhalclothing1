@@ -10,7 +10,7 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails }) => {
-  const { addToCart } = useStore();
+  const { addToCart, settings } = useStore();
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -116,9 +116,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
               </span>
             )}
           </div>
-          <span className="text-[11px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-md">
-            Free Delivery
-          </span>
+          {settings.delivery?.freeDeliveryEnabled && product.price >= settings.delivery.freeDeliveryThreshold ? (
+            <span className="text-[11px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-md">
+              Free Delivery
+            </span>
+          ) : settings.delivery?.shippingFee ? (
+            <span className="text-[11px] text-neutral-600 font-medium bg-neutral-100 px-2 py-0.5 rounded-md">
+              +₹{settings.delivery.shippingFee} Delivery
+            </span>
+          ) : (
+            <span className="text-[11px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-md">
+              Free Delivery
+            </span>
+          )}
         </div>
       </div>
     </div>

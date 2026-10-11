@@ -41,22 +41,28 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 lg:py-28">
           <div className="max-w-2xl">
-            {/* Subtle text kicker */}
-            <div className="flex items-center gap-2 text-amber-400 text-xs tracking-widest font-semibold uppercase mb-4">
-              <span>Direct Artisan Looms</span>
-              <span aria-hidden="true">·</span>
-              <span>Pure Mulberry Silk</span>
-              <span aria-hidden="true">·</span>
-              <span>Prepaid UPI Verification</span>
-            </div>
+            {/* Dynamic text kicker configured by admin */}
+            {display.heroKickerTags && display.heroKickerTags.length > 0 ? (
+              <div className="flex items-center gap-2 text-amber-400 text-xs tracking-widest font-semibold uppercase mb-4 flex-wrap">
+                {display.heroKickerTags.map((tag, i) => (
+                  <React.Fragment key={i}>
+                    <span>{tag}</span>
+                    {i < display.heroKickerTags!.length - 1 && <span aria-hidden="true">·</span>}
+                  </React.Fragment>
+                ))}
+              </div>
+            ) : settings.tagline ? (
+              <div className="text-amber-400 text-xs tracking-widest font-semibold uppercase mb-4">
+                <span>{settings.tagline}</span>
+              </div>
+            ) : null}
 
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif font-bold text-white tracking-tight leading-[1.1] mb-6">
               {display.heroHeadline || 'Timeless Drapes, Woven for Generations.'}
             </h1>
 
             <p className="text-neutral-300 text-base sm:text-lg mb-8 leading-relaxed font-light">
-              {display.heroSubheadline ||
-                'Discover authentic handcrafted Kanjivaram bridal silks, Varanasi Kadwa brocades, and feather-light Chanderi tissue sarees. Direct from the master weavers of India to your doorstep.'}
+              {display.heroSubheadline || ''}
             </p>
 
             <div className="flex flex-wrap items-center gap-4">
@@ -70,40 +76,14 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
             </div>
           </div>
 
-          {/* Trust Strip below hero if enabled */}
-          {display.showTrustBadges !== false && (
-            <div className="mt-12 sm:mt-16 pt-8 border-t border-neutral-800/80 grid grid-cols-1 sm:grid-cols-3 gap-6">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
+          {/* Delivery & Assurance Strip below hero if enabled */}
+          {display.showTrustBadges && display.freeShippingText && (
+            <div className="mt-12 sm:mt-16 pt-8 border-t border-neutral-800/80">
+              <div className="flex items-center gap-3 p-4 rounded-xl bg-neutral-900/60 border border-neutral-800 text-sm max-w-xl">
+                <Truck className="w-5 h-5 text-amber-400 shrink-0" />
                 <div>
-                  <h4 className="text-sm font-semibold text-white">Silk Mark Certified</h4>
-                  <p className="text-xs text-neutral-400 mt-0.5">100% natural pure silk fibers tested for authenticity.</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
-                  <Truck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-white">
-                    {display.freeShippingText ? 'Insured Express Shipping' : 'Insured Delivery'}
-                  </h4>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    {display.freeShippingText || 'Free doorstep delivery across India in tamper-proof boxes.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
-                  <RefreshCw className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-white">Guaranteed UPI Refund</h4>
-                  <p className="text-xs text-neutral-400 mt-0.5">Instant refund capture during checkout in case of cancellation.</p>
+                  <span className="font-semibold text-white">Delivery Information: </span>
+                  <span className="text-neutral-300">{display.freeShippingText}</span>
                 </div>
               </div>
             </div>

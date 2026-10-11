@@ -49,6 +49,10 @@ interface StoreContextType {
   clearCart: () => void;
   cartTotal: number;
   cartCount: number;
+  cartShippingFee: number;
+  isFreeDeliveryUnlocked: boolean;
+  amountNeededForFreeDelivery: number;
+  cartGrandTotal: number;
 
   // Orders
   orders: Order[];
@@ -169,6 +173,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const loaded = loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
     const updated: StoreSettings = {
       ...loaded,
+      delivery: {
+        shippingFee: loaded.delivery?.shippingFee ?? INITIAL_SETTINGS.delivery.shippingFee,
+        freeDeliveryEnabled: loaded.delivery?.freeDeliveryEnabled ?? INITIAL_SETTINGS.delivery.freeDeliveryEnabled,
+        freeDeliveryThreshold: loaded.delivery?.freeDeliveryThreshold ?? INITIAL_SETTINGS.delivery.freeDeliveryThreshold,
+      },
       chatTemplates: {
         ...DEFAULT_CHAT_TEMPLATES,
         ...(loaded.chatTemplates || {}),
@@ -330,16 +339,35 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return cart.reduce((count, item) => count + item.quantity, 0);
   }, [cart]);
 
-  // Product management with auto SKU generation
+  // Delivery & Free shipping calculation
+  const deliveryConfig = settings.delivery || INITIAL_SETTINGS.delivery;
+  const isFreeDeliveryUnlocked = useMemo(() => {
+    if (!deliveryConfig.freeDeliveryEnabled) return false;
+    return cartTotal >= deliveryConfig.freeDeliveryThreshold;
+  }, [cartTotal, deliveryConfig]);
+
+  const cartShippingFee = useMemo(() => {
+    if (cart.length === 0) return 0;
+    if (isFreeDeliveryUnlocked) return 0;
+    return Math.max(0, deliveryConfig.shippingFee || 0);
+  }, [cart.length, isFreeDeliveryUnlocked, deliveryConfig]);
+
+  const cartGrandTotal = useMemo(() => {
+    return cartTotal + cartShippingFee;
+  }, [cartTotal, cartShippingFee]);
+
+  const amountNeededForFreeDelivery = useMemo(() => {
+    if (!deliveryConfig.freeDeliveryEnabled) return 0;
+    return Math.max(0, deliveryConfig.freeDeliveryThreshold - cartTotal);
+  }, [cartTotal, deliveryConfig]);
+
+  // Product management (Manual product code entered by admin)
   const addProduct = (productData: Omit<Product, 'id' | 'createdAt'>): Product => {
-    const prefix = productData.fabric.substring(0, 3).toUpperCase();
-    const colPrefix = productData.color.substring(0, 4).toUpperCase();
-    const randomCode = Math.floor(100 + Math.random() * 900);
-    const generatedSku = productData.productCode?.trim() || `${prefix}-${colPrefix}-${randomCode}`;
+    const manualSku = productData.productCode?.trim() || '';
 
     const newProduct: Product = {
       ...productData,
-      productCode: generatedSku,
+      productCode: manualSku,
       id: `saree-${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
@@ -447,6 +475,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     checkoutMethod: 'submit_order' | 'whatsapp';
   }): Order => {
     const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    const deliv = settings.delivery || INITIAL_SETTINGS.delivery;
+    const isFree = deliv.freeDeliveryEnabled && subtotal >= deliv.freeDeliveryThreshold;
+    const shippingFee = items.length === 0 ? 0 : isFree ? 0 : Math.max(0, deliv.shippingFee || 0);
+    const totalAmount = subtotal + shippingFee;
     const orderNumber = `AARA-${Math.floor(1000 + Math.random() * 9000)}`;
 
     // Auto-assign to first active concierge staff if available
@@ -459,8 +491,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       customer,
       items,
       subtotal,
-      shippingFee: 0,
-      totalAmount: subtotal,
+      shippingFee,
+      totalAmount,
       upiTransactionId: upiTransactionId.trim(),
       refundDetails: {
         refundUpiId: refundUpiId ? refundUpiId.trim() : undefined,
@@ -805,6 +837,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           ...prev.payment,
           ...(safeUpdates.payment || {}),
         },
+        delivery: {
+          ...prev.delivery,
+          ...(safeUpdates.delivery || {}),
+        },
         storefrontDisplay: {
           ...prev.storefrontDisplay,
           ...(safeUpdates.storefrontDisplay || {}),
@@ -920,6 +956,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         clearCart,
         cartTotal,
         cartCount,
+        cartShippingFee,
+        isFreeDeliveryUnlocked,
+        amountNeededForFreeDelivery,
+        cartGrandTotal,
         orders,
         placeOrder,
         updateOrderStatus,

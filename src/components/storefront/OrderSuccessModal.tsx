@@ -33,7 +33,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
             <CheckCircle2 className="w-8 h-8" />
           </div>
           <h2 className="font-serif text-2xl sm:text-3xl font-bold">
-            Handloom Order Reserved!
+            Handloom Order Placed!
           </h2>
           <p className="text-amber-200 text-xs sm:text-sm mt-1 max-w-sm mx-auto">
             Your boutique order has been recorded in our workshop ledger.
@@ -56,7 +56,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
           {/* Items summary */}
           <div className="border border-neutral-200 rounded-2xl p-4 bg-neutral-50/70">
             <h3 className="font-serif text-sm font-bold text-neutral-900 mb-2">
-              Reserved Heirlooms ({lastPlacedOrder.items.length})
+              Ordered Heirlooms ({lastPlacedOrder.items.length})
             </h3>
             <div className="divide-y divide-neutral-200/60">
               {lastPlacedOrder.items.map((item) => (
@@ -71,9 +71,23 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
                 </div>
               ))}
             </div>
-            <div className="pt-2 mt-2 border-t border-neutral-200 flex justify-between font-bold text-sm text-neutral-950">
-              <span>Total Paid</span>
-              <span className="tabular-nums font-serif text-base">{formatPrice(lastPlacedOrder.totalAmount)}</span>
+            <div className="space-y-1 pt-2 mt-2 border-t border-neutral-200 text-xs">
+              <div className="flex justify-between text-neutral-600">
+                <span>Items Subtotal:</span>
+                <span className="font-semibold text-neutral-900 tabular-nums">{formatPrice(lastPlacedOrder.subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-neutral-600">
+                <span>Delivery Charges:</span>
+                {lastPlacedOrder.shippingFee === 0 ? (
+                  <span className="font-semibold text-emerald-700">Free</span>
+                ) : (
+                  <span className="font-semibold text-neutral-900 tabular-nums">{formatPrice(lastPlacedOrder.shippingFee)}</span>
+                )}
+              </div>
+              <div className="flex justify-between font-bold text-sm text-neutral-950 pt-1 border-t border-neutral-200">
+                <span>Total Paid:</span>
+                <span className="tabular-nums font-serif text-base">{formatPrice(lastPlacedOrder.totalAmount)}</span>
+              </div>
             </div>
           </div>
 

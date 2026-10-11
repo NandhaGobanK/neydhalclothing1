@@ -25,7 +25,15 @@ interface CheckoutModalProps {
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess }) => {
-  const { cart, cartTotal, settings, placeOrder } = useStore();
+  const {
+    cart,
+    cartTotal,
+    cartShippingFee,
+    isFreeDeliveryUnlocked,
+    cartGrandTotal,
+    settings,
+    placeOrder,
+  } = useStore();
 
   // Form states
   const [name, setName] = useState('');
@@ -59,13 +67,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
   const qrImageUrl = settings.payment.qrCodeUrl || getUpiQrCodeImageUrl(
     settings.payment.upiId,
     settings.payment.payeeName,
-    cartTotal
+    cartGrandTotal
   );
 
   const handleDownloadQr = async () => {
     setIsDownloadingQr(true);
     try {
-      await downloadQrCode(qrImageUrl, `aara-saree-upi-qr-${cartTotal}.png`);
+      await downloadQrCode(qrImageUrl, `aara-saree-upi-qr-${cartGrandTotal}.png`);
     } catch (err) {
       console.error('Error downloading QR code:', err);
     } finally {
@@ -147,10 +155,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
           <div>
             <div className="flex items-center gap-2 text-xs text-amber-300 font-semibold tracking-wider uppercase">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Prepaid Handloom Reservation</span>
+              <span>Direct Boutique Handloom Order</span>
             </div>
             <h2 className="font-serif text-xl sm:text-2xl font-bold mt-0.5">
-              Secure Checkout & UPI Payment
+              Buy Now — Secure Checkout & UPI Payment
             </h2>
           </div>
           <button
@@ -174,7 +182,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
           <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80">
             <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
               <span className="font-semibold text-neutral-700">Order Items ({cart.length})</span>
-              <span className="text-emerald-700 font-medium">Free Express Delivery</span>
+              {cartShippingFee === 0 ? (
+                <span className="text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  Free Express Delivery
+                </span>
+              ) : (
+                <span className="text-neutral-600 font-medium">
+                  Standard Delivery: {formatPrice(cartShippingFee)}
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap gap-2 mb-3">
               {cart.map((item) => (
@@ -186,11 +202,26 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                 </span>
               ))}
             </div>
-            <div className="flex justify-between items-baseline pt-2 border-t border-neutral-200">
-              <span className="text-xs text-neutral-600">Total Payable Amount:</span>
-              <span className="text-xl font-bold text-neutral-950 font-serif tabular-nums">
-                {formatPrice(cartTotal)}
-              </span>
+
+            <div className="space-y-1.5 pt-2 border-t border-neutral-200 text-xs">
+              <div className="flex justify-between text-neutral-600">
+                <span>Items Subtotal:</span>
+                <span className="font-semibold text-neutral-900 tabular-nums">{formatPrice(cartTotal)}</span>
+              </div>
+              <div className="flex justify-between text-neutral-600">
+                <span>Delivery Charges:</span>
+                {cartShippingFee === 0 ? (
+                  <span className="font-semibold text-emerald-700">Free</span>
+                ) : (
+                  <span className="font-semibold text-neutral-900 tabular-nums">{formatPrice(cartShippingFee)}</span>
+                )}
+              </div>
+              <div className="flex justify-between items-baseline pt-1.5 border-t border-neutral-200 font-bold">
+                <span className="text-neutral-800">Total Payable Amount:</span>
+                <span className="text-xl text-neutral-950 font-serif tabular-nums">
+                  {formatPrice(cartGrandTotal)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -457,7 +488,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
             <div className="text-left w-full sm:w-auto">
               <span className="text-[11px] text-neutral-500 uppercase font-semibold">Total Payable</span>
               <p className="text-xl font-serif font-bold text-neutral-900 tabular-nums">
-                {formatPrice(cartTotal)}
+                {formatPrice(cartGrandTotal)}
               </p>
             </div>
 

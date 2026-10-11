@@ -379,7 +379,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           </p>
                         )}
                         <p className="text-[11px] text-rose-800 leading-relaxed">
-                          This saree reservation has been cancelled. Please review refund transaction record below.
+                          This order has been cancelled. Please review refund transaction record below.
                         </p>
                       </div>
                     )}
