@@ -1,6 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
+import { syncAnalyticsToGoogleSheet } from '../../utils/googleSheets';
+import { getAccessToken } from '../../utils/firebaseAuth';
 import {
   TrendingUp,
   ShoppingBag,
@@ -13,10 +15,21 @@ import {
   XCircle,
   Truck,
   RotateCcw,
+  FileSpreadsheet,
+  ExternalLink,
+  RefreshCw,
+  Check,
+  X,
+  AlertOctagon,
 } from 'lucide-react';
 
 export const AnalyticsManager: React.FC = () => {
-  const { orders, products, settings } = useStore();
+  const { orders, products, settings, updateSettings } = useStore();
+
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [sheetSyncSuccess, setSheetSyncSuccess] = useState<{ url: string; count: number } | null>(null);
+  const [sheetSyncError, setSheetSyncError] = useState<string | null>(null);
+  const [isConfirmSyncOpen, setIsConfirmSyncOpen] = useState(false);
 
   // Financial & Order KPIs
   const stats = useMemo(() => {
@@ -172,18 +185,158 @@ export const AnalyticsManager: React.FC = () => {
     return Object.values(staffMap).sort((a, b) => b.handledCount - a.handledCount);
   }, [orders, settings.staffMembers]);
 
+  const handleConfirmSyncSheets = async () => {
+    setIsConfirmSyncOpen(false);
+    setIsSyncingSheets(true);
+    setSheetSyncError(null);
+    setSheetSyncSuccess(null);
+
+    try {
+      const payload = {
+        kpiStats: stats,
+        productSales: productAnalytics.map((p) => ({
+          title: p.product.title,
+          productCode: p.product.productCode,
+          fabric: p.product.fabric,
+          color: p.product.color,
+          price: p.product.price,
+          unitsSold: p.unitsSold,
+          revenue: p.revenue,
+          rating: p.rating,
+          stockCount: p.product.stockCount,
+          stockStatus: p.product.stockStatus,
+        })),
+        fabricBreakdown,
+        staffAttribution,
+      };
+
+      // Single point of storage: reuse master spreadsheet if created from orders
+      const masterSpreadsheetId =
+        settings.ordersSpreadsheetId || settings.analyticsSpreadsheetId;
+
+      const res = await syncAnalyticsToGoogleSheet(
+        payload,
+        settings.boutiqueName,
+        masterSpreadsheetId
+      );
+
+      if (res.success) {
+        setSheetSyncSuccess({ url: res.spreadsheetUrl, count: res.rowsUpdated });
+        updateSettings({
+          ordersSpreadsheetId: res.spreadsheetId,
+          ordersSpreadsheetUrl: res.spreadsheetUrl,
+          analyticsSpreadsheetId: res.spreadsheetId,
+          analyticsSpreadsheetUrl: res.spreadsheetUrl,
+        });
+      }
+    } catch (err: any) {
+      console.error('Failed to sync analytics to Google Sheets:', err);
+      setSheetSyncError(err.message || 'Failed to synchronize analytics with Google Sheets.');
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
+
+  const handleAuthorizeAndSync = async () => {
+    setIsSyncingSheets(true);
+    setSheetSyncError(null);
+    try {
+      await getAccessToken(true, true);
+      await handleConfirmSyncSheets();
+    } catch (err: any) {
+      setSheetSyncError(err?.message || 'Google authorization failed. Please try again.');
+      setIsSyncingSheets(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div>
-        <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 flex items-center gap-2">
-          <TrendingUp className="w-6 h-6 text-amber-600" />
-          <span>Sales Analytics & Product Performance</span>
-        </h2>
-        <p className="text-xs text-neutral-500 mt-0.5">
-          Track revenue, product sales velocity, SKU ratings, and concierge fulfillment workloads
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 flex items-center gap-2">
+            <TrendingUp className="w-6 h-6 text-amber-600" />
+            <span>Sales Analytics & Product Performance</span>
+          </h2>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            Track revenue, product sales velocity, SKU ratings, and concierge fulfillment workloads
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {settings.analyticsSpreadsheetUrl && (
+            <a
+              href={settings.analyticsSpreadsheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-semibold shadow-xs transition"
+              title="Open Google Sheet in new tab"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Open Analytics Sheet</span>
+              <ExternalLink className="w-3 h-3 text-emerald-600" />
+            </a>
+          )}
+
+          <button
+            onClick={() => setIsConfirmSyncOpen(true)}
+            disabled={isSyncingSheets}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition disabled:opacity-50"
+          >
+            {isSyncingSheets ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+            )}
+            <span>{isSyncingSheets ? 'Syncing...' : 'Sync with Google Sheets'}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Google Sheets Sync Alert Notifications */}
+      {sheetSyncSuccess && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              Successfully synchronized boutique KPIs, product performance, and sales breakdown to Google Sheets!
+            </span>
+          </div>
+          <a
+            href={sheetSyncSuccess.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-bold text-emerald-700 underline hover:text-emerald-900"
+          >
+            <span>Open Sheet</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+      )}
+
+      {sheetSyncError && (
+        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{sheetSyncError}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleAuthorizeAndSync}
+              className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition shadow-xs flex items-center gap-1.5"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Authorize Google & Retry</span>
+            </button>
+            <button
+              onClick={() => setSheetSyncError(null)}
+              className="text-rose-700 font-bold hover:underline px-2"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 4 KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -408,6 +561,68 @@ export const AnalyticsManager: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Google Sheets Sync Confirmation Dialog */}
+      {isConfirmSyncOpen && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-emerald-950 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Sync Boutique Analytics to Google Sheets
+                  </h3>
+                  <p className="text-[11px] text-emerald-300">
+                    Export multi-tab performance reporting to Google Drive
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsConfirmSyncOpen(false)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs text-neutral-700">
+              <p className="leading-relaxed">
+                You are about to export and synchronize boutique analytics, sales KPIs, SKU rankings, and fabric category statistics directly into your Google Sheets spreadsheet.
+              </p>
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 space-y-1">
+                <p className="font-semibold">Spreadsheet tabs included:</p>
+                <ul className="list-disc list-inside space-y-0.5 text-emerald-800">
+                  <li><strong>Overview & KPIs:</strong> Revenue, AOV, order totals.</li>
+                  <li><strong>Product Sales Tracker:</strong> Saree sales velocity and ratings.</li>
+                  <li><strong>Fabric Breakdown:</strong> Kanjivaram, Banarasi, and Chanderi splits.</li>
+                  <li><strong>Staff Attribution:</strong> Orders and gross workload per staff.</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmSyncOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSyncSheets}
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition shadow-xs flex items-center gap-1.5"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Confirm & Sync</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { Header } from './components/storefront/Header';
 import { AnnouncementBar } from './components/storefront/AnnouncementBar';
@@ -17,6 +17,7 @@ import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 
 function MainAppContent() {
   const {
+    products,
     currentView,
     setCurrentView,
     isAdminLoggedIn,
@@ -32,6 +33,64 @@ function MainAppContent() {
 
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Handle URL deep links & redirects (#track, ?order=, /track, #admin, /admin, ?product=)
+  useEffect(() => {
+    const handleUrlRouting = () => {
+      if (typeof window === 'undefined') return;
+      const hash = window.location.hash;
+      const search = window.location.search;
+      const pathname = window.location.pathname;
+
+      // 1. Admin link handling (#admin or /admin or ?view=admin)
+      if (
+        hash === '#admin' ||
+        hash.startsWith('#admin') ||
+        pathname === '/admin' ||
+        search.includes('view=admin')
+      ) {
+        if (isAdminLoggedIn) {
+          setCurrentView('admin');
+        } else {
+          setShowAdminAuthModal(true);
+        }
+      }
+
+      // 2. Track Order link handling (#track, ?track=..., ?order=..., /track)
+      if (
+        hash.includes('track') ||
+        pathname === '/track' ||
+        search.includes('order=') ||
+        search.includes('track=') ||
+        search.includes('phone=')
+      ) {
+        setIsTrackOrderOpen(true);
+      }
+
+      // 3. Direct product link handling (?product=...)
+      const matchProduct = search.match(/[?&]product=([^&]+)/i) || hash.match(/[?&#]product=([^&#]+)/i);
+      if (matchProduct && matchProduct[1]) {
+        const prodCode = decodeURIComponent(matchProduct[1]).trim().toLowerCase();
+        const cleanSearchCode = prodCode.replace(/^[#\s]+/, '');
+        const found = products.find((p) => {
+          const pCode = (p.productCode || '').toLowerCase().replace(/^[#\s]+/, '');
+          const pId = p.id.toLowerCase();
+          return pId === prodCode || pCode === cleanSearchCode || pCode === prodCode;
+        });
+        if (found) {
+          setActiveProductModal(found);
+        }
+      }
+    };
+
+    handleUrlRouting();
+    window.addEventListener('hashchange', handleUrlRouting);
+    window.addEventListener('popstate', handleUrlRouting);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlRouting);
+      window.removeEventListener('popstate', handleUrlRouting);
+    };
+  }, [isAdminLoggedIn, products]);
 
   const handleOpenAdmin = () => {
     if (isAdminLoggedIn) {
@@ -131,8 +190,15 @@ function MainAppContent() {
             <TrackOrderModal
               onClose={() => {
                 setIsTrackOrderOpen(false);
-                if (window.location.hash.startsWith('#track')) {
-                  window.location.hash = '';
+                if (typeof window !== 'undefined') {
+                  const searchParams = new URLSearchParams(window.location.search);
+                  searchParams.delete('order');
+                  searchParams.delete('track');
+                  searchParams.delete('trackOrder');
+                  searchParams.delete('phone');
+                  const newSearch = searchParams.toString() ? `?${searchParams.toString()}` : '';
+                  const cleanHash = window.location.hash.startsWith('#track') ? '' : window.location.hash;
+                  window.history.replaceState(null, '', `${window.location.pathname}${newSearch}${cleanHash}`);
                 }
               }}
             />

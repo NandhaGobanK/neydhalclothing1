@@ -125,9 +125,9 @@ export const INITIAL_SETTINGS: StoreSettings = {
   currencySymbol: '₹',
   theme: 'maroon',
   announcement: {
-    enabled: true,
-    text: '✨ Festive Wedding Edit: Handcrafted Pure Silk Mark Certified Handlooms direct from master weavers.',
-    badgeLabel: 'FESTIVE NOTICE',
+    enabled: false,
+    text: '',
+    badgeLabel: 'NOTICE',
   },
   payment: {
     upiId: 'aarasarees@okhdfcbank',
@@ -141,19 +141,20 @@ export const INITIAL_SETTINGS: StoreSettings = {
     freeDeliveryThreshold: 20000,
   },
   storefrontDisplay: {
-    heroHeadline: 'Timeless Drapes, Woven for Generations.',
-    heroSubheadline: 'Discover authentic handcrafted Kanjivaram bridal silks, Varanasi Kadwa brocades, and feather-light Chanderi tissue sarees. Direct from the master weavers of India to your doorstep.',
+    heroHeadline: 'Handcrafted Heritage Sarees',
+    heroSubheadline: '',
     showHeroBanner: true,
     heroBannerImageUrl: '',
-    showTrustBadges: true,
-    showCraftsmanshipStory: true,
-    storyTitle: 'The Heritage Loom Legacy',
-    storyContent: 'Every saree in our collection is an heirloom woven with mulberry silk and authentic zari by master weavers across Kanchipuram and Varanasi.',
+    showTrustBadges: false,
+    showCraftsmanshipStory: false,
+    storyTitle: '',
+    storyContent: '',
     showTrackOrder: true,
     allowPublicCancellation: true,
-    freeShippingText: 'Free Insured Express Delivery across India (Tamper-Proof Box)',
+    freeShippingText: '',
   },
   adminPin: '889988', // 6-digit access PIN
+  customStoreDomain: '', // Custom domain or Vercel URL
   staffMembers: [],
   chatTemplates: DEFAULT_CHAT_TEMPLATES,
   defaultStaffPermissions: DEFAULT_STAFF_PERMISSIONS,
@@ -323,3 +324,50 @@ export const SAMPLE_PRODUCTS: Product[] = [
 ];
 
 export const INITIAL_ORDERS: Order[] = [];
+
+export const INITIAL_REVIEWS = [
+  {
+    id: 'rev-01',
+    productId: 'saree-kanjivaram-crimson-01',
+    customerName: 'Ananya Deshmukh',
+    city: 'Bengaluru',
+    rating: 5,
+    title: 'Heirloom quality bridal silk',
+    comment: 'The Korvai weave is simply magnificent. The gold zari has the unmistakable warm weight of pure handloom craftsmanship. Draped like an absolute dream for my wedding reception.',
+    verifiedBuyer: true,
+    createdAt: '2026-03-08T10:30:00Z',
+  },
+  {
+    id: 'rev-02',
+    productId: 'saree-kanjivaram-crimson-01',
+    customerName: 'Meenakshi Iyer',
+    city: 'Chennai',
+    rating: 5,
+    title: 'Authentic Kanchipuram silk certified',
+    comment: 'Pure mulberry silk with real temple borders. Arrived within 3 days in exquisite satin boutique packaging. Concierge on WhatsApp answered every question promptly.',
+    verifiedBuyer: true,
+    createdAt: '2026-03-09T14:15:00Z',
+  },
+  {
+    id: 'rev-03',
+    productId: 'saree-banarasi-emerald-02',
+    customerName: 'Pooja Singhania',
+    city: 'Kolkata',
+    rating: 5,
+    title: 'Mesmerizing Kadwa craftsmanship',
+    comment: 'The antique meenakari motifs are raised and tactile. You can feel every single flower hand-woven by the master artisan. Truly a museum piece drape.',
+    verifiedBuyer: true,
+    createdAt: '2026-03-10T16:45:00Z',
+  },
+  {
+    id: 'rev-04',
+    productId: 'saree-chanderi-lavender-03',
+    customerName: 'Rhea Sen',
+    city: 'Mumbai',
+    rating: 5,
+    title: 'Feather-light and ethereal drape',
+    comment: 'Such a subtle and regal lavender hue with luminous tissue gold reflection. Extremely comfortable to wear through 6 hours of daytime sangeet ceremonies.',
+    verifiedBuyer: true,
+    createdAt: '2026-03-11T11:20:00Z',
+  },
+];

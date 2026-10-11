@@ -1,0 +1,67 @@
+/**
+ * Client-side high-fidelity image compression and resizing.
+ * Prevents localStorage QuotaExceeded errors and Firestore 1MB document size limits
+ * by optimizing raw camera/device uploads before storing.
+ */
+export async function compressImage(
+  file: File,
+  maxWidth: number = 1400,
+  maxHeight: number = 800,
+  quality: number = 0.85
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // If it's a vector SVG, keep as is
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const rawDataUrl = reader.result as string;
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Calculate proportional aspect ratio
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(rawDataUrl);
+          return;
+        }
+
+        // Apply smooth bilinear interpolation
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Compress to JPEG for photos or PNG for transparent logos if small
+        const isPng = file.type === 'image/png' && width <= 400;
+        const outputMime = isPng ? 'image/png' : 'image/jpeg';
+        const compressedDataUrl = canvas.toDataURL(outputMime, quality);
+
+        resolve(compressedDataUrl);
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}

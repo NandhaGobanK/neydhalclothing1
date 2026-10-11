@@ -1,4 +1,4 @@
-import { Order, StoreSettings } from '../types/store';
+import { Order, StoreSettings, Product } from '../types/store';
 
 export function formatPrice(amount: number): string {
   return new Intl.NumberFormat('en-IN', {
@@ -6,6 +6,79 @@ export function formatPrice(amount: number): string {
     currency: 'INR',
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+/**
+ * Returns the effective public store URL based on:
+ * 1. Admin configured custom domain in Store Settings (e.g. https://myboutique.vercel.app)
+ * 2. Vercel / environment variable VITE_PUBLIC_STORE_URL
+ * 3. Browser origin (window.location.origin)
+ */
+export function getPublicStoreUrl(settings?: StoreSettings): string {
+  if (settings?.customStoreDomain && settings.customStoreDomain.trim()) {
+    let domain = settings.customStoreDomain.trim();
+    if (!domain.startsWith('http://') && !domain.startsWith('https://')) {
+      domain = `https://${domain}`;
+    }
+    return domain.replace(/\/+$/, '');
+  }
+
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_PUBLIC_STORE_URL) {
+    let envDomain = String(import.meta.env.VITE_PUBLIC_STORE_URL).trim();
+    if (envDomain) {
+      if (!envDomain.startsWith('http://') && !envDomain.startsWith('https://')) {
+        envDomain = `https://${envDomain}`;
+      }
+      return envDomain.replace(/\/+$/, '');
+    }
+  }
+
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    return window.location.origin;
+  }
+
+  return '';
+}
+
+/**
+ * Generates reliable public track order URL that works in all browsers & WhatsApp
+ */
+export function getTrackingLink(order: Order, settings?: StoreSettings, baseUrl?: string): string {
+  const base = baseUrl || getPublicStoreUrl(settings);
+  return `${base}/?order=${encodeURIComponent(order.orderNumber)}&phone=${encodeURIComponent(order.customer.phone)}#track`;
+}
+
+/**
+ * Generates direct product link for public sharing
+ */
+export function getProductShareUrl(product: Product, settings?: StoreSettings, baseUrl?: string): string {
+  const base = baseUrl || getPublicStoreUrl(settings);
+  const identifier = product.productCode || product.id;
+  return `${base}/?product=${encodeURIComponent(identifier)}`;
+}
+
+/**
+ * Calculates discount offer details (amount saved & percentage tag)
+ */
+export function calculateDiscount(price: number, originalPrice?: number): {
+  hasDiscount: boolean;
+  mrp: number;
+  sellingPrice: number;
+  discountAmount: number;
+  discountPercentage: number;
+} {
+  const mrp = originalPrice && originalPrice > price ? originalPrice : 0;
+  const hasDiscount = mrp > price;
+  const discountAmount = hasDiscount ? mrp - price : 0;
+  const discountPercentage = hasDiscount ? Math.round(((mrp - price) / mrp) * 100) : 0;
+
+  return {
+    hasDiscount,
+    mrp,
+    sellingPrice: price,
+    discountAmount,
+    discountPercentage,
+  };
 }
 
 export function generateUpiUri(
@@ -105,26 +178,33 @@ _Kindly verify the payment transaction and dispatch my order._`;
   return message;
 }
 
-export function applyTemplateTokens(
-  template: string,
+export interface DynamicVariableItem {
+  token: string;
+  label: string;
+  value: string;
+  category: 'essential' | 'customer' | 'shipping' | 'refund' | 'store';
+}
+
+export function getOrderDynamicVariables(
   order: Order,
   settings: StoreSettings,
-  storeUrl = window.location.origin
-): string {
+  storeUrl?: string
+): DynamicVariableItem[] {
+  const effectiveBaseUrl = storeUrl || getPublicStoreUrl(settings);
   const itemsSummary = order.items
     .map((item) => `${item.product.title} [${item.product.productCode}] (Qty: ${item.quantity})`)
     .join(', ');
-
-  const trackingLink = `${storeUrl}/#track?order=${encodeURIComponent(order.orderNumber)}&phone=${encodeURIComponent(order.customer.phone)}`;
-
+  const itemsCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  const trackingLink = getTrackingLink(order, settings, effectiveBaseUrl);
+  const courier = order.shippingDetails?.courierName || 'DTDC Express';
+  const trackingId = order.shippingDetails?.trackingNumber || 'Pending';
+  const deliveryAddress = `${order.customer.address}, ${order.customer.city}, ${order.customer.state} - ${order.customer.pincode}`;
+  const staffName = order.assignedStaffName || (order.lastUpdatedBy && order.lastUpdatedBy !== 'system' ? `@${order.lastUpdatedBy}` : 'Concierge Desk');
   const staffSignature = order.assignedStaffName
     ? `\n👤 *Attending Concierge:* ${order.assignedStaffName}${order.lastUpdatedBy ? ` (@${order.lastUpdatedBy})` : ''}`
     : order.lastUpdatedBy && order.lastUpdatedBy !== 'system'
     ? `\n👤 *Handled by Staff:* @${order.lastUpdatedBy}`
     : '';
-
-  const courier = order.shippingDetails?.courierName || 'DTDC Express';
-  const trackingId = order.shippingDetails?.trackingNumber || 'Pending';
   const reason = order.cancellationReason || '';
   const reasonNotice = reason ? `\n• *Reason for ${order.status}:* ${reason}` : '';
   const refundStatusNotice =
@@ -137,26 +217,88 @@ export function applyTemplateTokens(
   const refundUpiText = order.refundDetails?.refundUpiId
     ? `\n• Refunded to UPI: *${order.refundDetails.refundUpiId}*`
     : '';
+  const orderDate = new Date(order.createdAt).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+  const orderTime = new Date(order.createdAt).toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
-  return template
-    .replace(/\{customerName\}/g, order.customer.name)
-    .replace(/\{boutiqueName\}/g, settings.boutiqueName)
-    .replace(/\{orderNumber\}/g, order.orderNumber)
-    .replace(/\{itemsSummary\}/g, itemsSummary)
-    .replace(/\{totalAmount\}/g, formatPrice(order.totalAmount))
-    .replace(/\{upiTransactionId\}/g, order.upiTransactionId)
-    .replace(/\{trackingLink\}/g, trackingLink)
-    .replace(/\{courierName\}/g, courier)
-    .replace(/\{trackingNumber\}/g, trackingId)
-    .replace(/\{reasonNotice\}/g, reasonNotice)
-    .replace(/\{reason\}/g, reason)
-    .replace(/\{refundStatusNotice\}/g, refundStatusNotice)
-    .replace(/\{refundUtrText\}/g, refundUtrText)
-    .replace(/\{refundUtr\}/g, refundUtr)
-    .replace(/\{refundUpiText\}/g, refundUpiText)
-    .replace(/\{refundUpi\}/g, refundUpi)
-    .replace(/\{staffSignature\}/g, staffSignature)
-    .replace(/\{instagramHandle\}/g, settings.instagramHandle);
+  return [
+    // Essential order variables
+    { token: '{orderNumber}', label: 'Order Number', value: order.orderNumber, category: 'essential' },
+    { token: '{totalAmount}', label: 'Total Amount', value: formatPrice(order.totalAmount), category: 'essential' },
+    { token: '{subtotal}', label: 'Subtotal', value: formatPrice(order.subtotal), category: 'essential' },
+    { token: '{shippingFee}', label: 'Delivery Fee', value: order.shippingFee === 0 ? 'Free' : formatPrice(order.shippingFee), category: 'essential' },
+    { token: '{upiTransactionId}', label: 'Payment UTR (Transaction ID)', value: order.upiTransactionId, category: 'essential' },
+    { token: '{trackingLink}', label: 'Live Tracking Link', value: trackingLink, category: 'essential' },
+    { token: '{orderStatus}', label: 'Order Status', value: order.status, category: 'essential' },
+    { token: '{orderDate}', label: 'Order Date', value: orderDate, category: 'essential' },
+    { token: '{orderTime}', label: 'Order Time', value: orderTime, category: 'essential' },
+    { token: '{itemsSummary}', label: 'Items & SKU List', value: itemsSummary, category: 'essential' },
+    { token: '{itemsCount}', label: 'Total Saree Pieces', value: `${itemsCount}`, category: 'essential' },
+
+    // Customer variables
+    { token: '{customerName}', label: 'Customer Name', value: order.customer.name, category: 'customer' },
+    { token: '{customerPhone}', label: 'Customer Phone', value: order.customer.phone, category: 'customer' },
+    { token: '{customerEmail}', label: 'Customer Email', value: order.customer.email, category: 'customer' },
+    { token: '{deliveryAddress}', label: 'Full Delivery Address', value: deliveryAddress, category: 'customer' },
+    { token: '{city}', label: 'City', value: order.customer.city, category: 'customer' },
+    { token: '{state}', label: 'State', value: order.customer.state, category: 'customer' },
+    { token: '{pincode}', label: 'Pincode', value: order.customer.pincode, category: 'customer' },
+    { token: '{customerNotes}', label: 'Customer Comments / Notes', value: order.notes?.trim() || 'None', category: 'customer' },
+
+    // Shipping variables
+    { token: '{courierName}', label: 'Courier Partner', value: courier, category: 'shipping' },
+    { token: '{trackingNumber}', label: 'Tracking / AWB Number', value: trackingId, category: 'shipping' },
+    { token: '{shippingNotes}', label: 'Courier Notes', value: order.shippingDetails?.notes || '', category: 'shipping' },
+
+    // Refund / Cancellation variables
+    { token: '{reason}', label: 'Cancellation / Rejection Reason', value: reason, category: 'refund' },
+    { token: '{reasonNotice}', label: 'Reason Notice Block', value: reasonNotice, category: 'refund' },
+    { token: '{refundStatus}', label: 'Refund Status', value: order.refundDetails?.refundStatus || 'N/A', category: 'refund' },
+    { token: '{refundStatusNotice}', label: 'Refund Status Notice', value: refundStatusNotice, category: 'refund' },
+    { token: '{refundUtr}', label: 'Refund UTR ID', value: refundUtr, category: 'refund' },
+    { token: '{refundUtrText}', label: 'Refund UTR Text Block', value: refundUtrText, category: 'refund' },
+    { token: '{refundUpi}', label: 'Customer Refund UPI ID', value: refundUpi, category: 'refund' },
+    { token: '{refundUpiText}', label: 'Refund UPI Text Block', value: refundUpiText, category: 'refund' },
+    { token: '{refundPhone}', label: 'Refund Phone', value: order.refundDetails?.refundUpiPhone || order.customer.phone, category: 'refund' },
+
+    // Store & Staff variables
+    { token: '{boutiqueName}', label: 'Boutique Name', value: settings.boutiqueName, category: 'store' },
+    { token: '{boutiquePhone}', label: 'Boutique Phone', value: settings.contactPhone, category: 'store' },
+    { token: '{boutiqueEmail}', label: 'Boutique Email', value: settings.contactEmail, category: 'store' },
+    { token: '{instagramHandle}', label: 'Instagram Handle', value: settings.instagramHandle, category: 'store' },
+    { token: '{staffName}', label: 'Assigned Staff Name', value: staffName, category: 'store' },
+    { token: '{staffSignature}', label: 'Staff Signature Block', value: staffSignature, category: 'store' },
+  ];
+}
+
+export function applyTemplateTokens(
+  template: string,
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): string {
+  const effectiveBaseUrl = storeUrl || getPublicStoreUrl(settings);
+  const dynamicVars = getOrderDynamicVariables(order, settings, effectiveBaseUrl);
+
+  let result = template;
+  for (const item of dynamicVars) {
+    // Replace all occurrences of {token}
+    const escapedToken = item.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result.replace(new RegExp(escapedToken, 'g'), item.value);
+  }
+
+  // Also support legacy or alias tokens
+  result = result
+    .replace(/\{customerComments\}/g, order.notes?.trim() || 'None')
+    .replace(/\{cancellationReason\}/g, order.cancellationReason || '');
+
+  return result;
 }
 
 /**
@@ -165,20 +307,21 @@ export function applyTemplateTokens(
 export function formatWhatsAppStageUpdateMessage(
   order: Order,
   settings: StoreSettings,
-  storeUrl = window.location.origin
+  storeUrl?: string
 ): string {
+  const effectiveBaseUrl = storeUrl || getPublicStoreUrl(settings);
   const statusKey = order.status.toLowerCase() as keyof typeof settings.chatTemplates;
   const customTemplate = settings.chatTemplates?.[statusKey];
 
   if (customTemplate && customTemplate.trim()) {
-    return applyTemplateTokens(customTemplate, order, settings, storeUrl);
+    return applyTemplateTokens(customTemplate, order, settings, effectiveBaseUrl);
   }
 
   const itemsSummary = order.items
     .map((item) => `${item.product.title} [${item.product.productCode}] (Qty: ${item.quantity})`)
     .join(', ');
 
-  const trackingLink = `${storeUrl}/#track?order=${encodeURIComponent(order.orderNumber)}&phone=${encodeURIComponent(order.customer.phone)}`;
+  const trackingLink = getTrackingLink(order, settings, effectiveBaseUrl);
 
   const staffSignature = order.assignedStaffName
     ? `\n👤 *Attending Concierge:* ${order.assignedStaffName}${order.lastUpdatedBy ? ` (@${order.lastUpdatedBy})` : ''}`

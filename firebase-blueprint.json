@@ -1,0 +1,104 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Handcrafted saree catalog item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "productCode": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 200 },
+        "subtitle": { "type": "string", "maxLength": 300 },
+        "description": { "type": "string", "maxLength": 3000 },
+        "fabric": { "type": "string", "maxLength": 100 },
+        "color": { "type": "string", "maxLength": 100 },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "stockStatus": { "type": "string", "enum": ["in_stock", "limited", "out_of_stock"] },
+        "stockCount": { "type": "number" },
+        "isVisible": { "type": "boolean" },
+        "images": { "type": "array" },
+        "videoUrl": { "type": "string", "maxLength": 500 },
+        "weaveDetails": { "type": "string", "maxLength": 500 },
+        "borderType": { "type": "string", "maxLength": 500 },
+        "blousePieceIncluded": { "type": "boolean" },
+        "lengthMeters": { "type": "number" },
+        "occasion": { "type": "string", "maxLength": 200 },
+        "isFeatured": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "productCode", "title", "fabric", "color", "price", "stockStatus", "isVisible"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer saree reservation and prepaid UPI order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderNumber": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" },
+        "customer": { "type": "object" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "shippingFee": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "upiTransactionId": { "type": "string", "maxLength": 100 },
+        "refundDetails": { "type": "object" },
+        "shippingDetails": { "type": "object" },
+        "status": { "type": "string", "enum": ["Pending", "Confirmed", "Shipped", "Delivered", "Cancelled", "Rejected"] },
+        "checkoutMethod": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "cancellationReason": { "type": "string", "maxLength": 1000 },
+        "cancellationRequest": { "type": "object" },
+        "assignedStaffId": { "type": "string", "maxLength": 128 },
+        "assignedStaffName": { "type": "string", "maxLength": 128 },
+        "lastUpdatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "orderNumber", "customer", "items", "totalAmount", "status"]
+    },
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Boutique global configuration, payments, delivery, and themes",
+      "type": "object",
+      "properties": {
+        "boutiqueName": { "type": "string", "maxLength": 200 },
+        "logoUrl": { "type": "string", "maxLength": 1000 },
+        "tagline": { "type": "string", "maxLength": 300 },
+        "contactPhone": { "type": "string", "maxLength": 50 },
+        "contactEmail": { "type": "string", "maxLength": 100 },
+        "instagramHandle": { "type": "string", "maxLength": 100 },
+        "storeAddress": { "type": "string", "maxLength": 500 },
+        "currencySymbol": { "type": "string", "maxLength": 10 },
+        "theme": { "type": "string", "maxLength": 50 },
+        "announcement": { "type": "object" },
+        "payment": { "type": "object" },
+        "delivery": { "type": "object" },
+        "storefrontDisplay": { "type": "object" },
+        "adminPin": { "type": "string", "maxLength": 20 },
+        "adminGoogleEmail": { "type": "string", "maxLength": 100 },
+        "ordersSpreadsheetId": { "type": "string", "maxLength": 200 },
+        "ordersSpreadsheetUrl": { "type": "string", "maxLength": 500 },
+        "analyticsSpreadsheetId": { "type": "string", "maxLength": 200 },
+        "analyticsSpreadsheetUrl": { "type": "string", "maxLength": 500 },
+        "staffMembers": { "type": "array" },
+        "chatTemplates": { "type": "object" },
+        "defaultStaffPermissions": { "type": "object" }
+      },
+      "required": ["boutiqueName", "theme"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": { "$ref": "Product" },
+      "description": "Handcrafted sarees collection"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "Order" },
+      "description": "Customer orders and UPI transactions"
+    },
+    "/settings/{settingsId}": {
+      "schema": { "$ref": "StoreSettings" },
+      "description": "Global store configuration and announcement board"
+    }
+  }
+}

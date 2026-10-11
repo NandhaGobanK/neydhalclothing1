@@ -8,6 +8,11 @@ interface FooterProps {
 
 export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
   const { settings, isAdminLoggedIn, setIsTrackOrderOpen } = useStore();
+  const [logoErr, setLogoErr] = React.useState(false);
+
+  React.useEffect(() => {
+    setLogoErr(false);
+  }, [settings.logoUrl]);
 
   return (
     <footer className="bg-neutral-950 text-neutral-400 border-t border-neutral-800 text-xs mt-16">
@@ -16,10 +21,11 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
           {/* Brand info */}
           <div className="md:col-span-2 space-y-3">
             <div className="flex items-center gap-2.5">
-              {settings.logoUrl && (
+              {settings.logoUrl && !logoErr && (
                 <img
                   src={settings.logoUrl}
                   alt={settings.boutiqueName}
+                  onError={() => setLogoErr(true)}
                   className="h-9 w-auto max-w-[140px] object-contain rounded-md"
                 />
               )}

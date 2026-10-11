@@ -1,11 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Order, OrderStatus } from '../../types/store';
+import { syncOrdersToGoogleSheet } from '../../utils/googleSheets';
+import { getAccessToken } from '../../utils/firebaseAuth';
 import {
   formatPrice,
   formatWhatsAppStageUpdateMessage,
   formatWhatsAppRefundMessage,
   openWhatsApp,
+  getOrderDynamicVariables,
+  DynamicVariableItem,
 } from '../../utils/upi';
 import {
   Search,
@@ -24,6 +28,9 @@ import {
   Send,
   Edit,
   Sparkles,
+  FileSpreadsheet,
+  ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 
 export const OrderManager: React.FC = () => {
@@ -36,6 +43,7 @@ export const OrderManager: React.FC = () => {
     resolveCancellationRequest,
     staffMembers,
     settings,
+    updateSettings,
     currentUser,
     currentPermissions,
   } = useStore();
@@ -64,6 +72,64 @@ export const OrderManager: React.FC = () => {
   const [refundModalOrder, setRefundModalOrder] = useState<Order | null>(null);
   const [refundUtr, setRefundUtr] = useState('');
   const [refundNotes, setRefundNotes] = useState('');
+
+  // Editable Automated Message Dispatcher Modal (User Request)
+  const [messageModalOrder, setMessageModalOrder] = useState<Order | null>(null);
+  const [messageModalStage, setMessageModalStage] = useState<OrderStatus>('Pending');
+  const [messageModalText, setMessageModalText] = useState<string>('');
+  const [messageModalCopied, setMessageModalCopied] = useState(false);
+  const [messageModalCategory, setMessageModalCategory] = useState<'all' | 'essential' | 'customer' | 'shipping' | 'refund' | 'store'>('all');
+  const [updateOrderStatusOnSend, setUpdateOrderStatusOnSend] = useState(false);
+
+  // Google Sheets Sync States
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [sheetSyncSuccess, setSheetSyncSuccess] = useState<{ url: string; count: number } | null>(null);
+  const [sheetSyncError, setSheetSyncError] = useState<string | null>(null);
+  const [isConfirmSyncOpen, setIsConfirmSyncOpen] = useState(false);
+
+  const handleConfirmSyncSheets = async () => {
+    setIsConfirmSyncOpen(false);
+    setIsSyncingSheets(true);
+    setSheetSyncError(null);
+    setSheetSyncSuccess(null);
+
+    try {
+      // Single point of storage: reuse master spreadsheet ID if already created
+      const targetSpreadsheetId =
+        settings.ordersSpreadsheetId || settings.analyticsSpreadsheetId;
+      const res = await syncOrdersToGoogleSheet(
+        orders,
+        settings.boutiqueName,
+        targetSpreadsheetId
+      );
+      if (res.success) {
+        setSheetSyncSuccess({ url: res.spreadsheetUrl, count: res.rowsUpdated });
+        updateSettings({
+          ordersSpreadsheetId: res.spreadsheetId,
+          ordersSpreadsheetUrl: res.spreadsheetUrl,
+          analyticsSpreadsheetId: res.spreadsheetId,
+          analyticsSpreadsheetUrl: res.spreadsheetUrl,
+        });
+      }
+    } catch (err: any) {
+      console.error('Failed to sync orders to Google Sheets:', err);
+      setSheetSyncError(err.message || 'Failed to synchronize orders with Google Sheets.');
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
+
+  const handleAuthorizeAndSync = async () => {
+    setIsSyncingSheets(true);
+    setSheetSyncError(null);
+    try {
+      await getAccessToken(true, true);
+      await handleConfirmSyncSheets();
+    } catch (err: any) {
+      setSheetSyncError(err?.message || 'Authorization failed. Please try again.');
+      setIsSyncingSheets(false);
+    }
+  };
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -163,10 +229,8 @@ export const OrderManager: React.FC = () => {
     setRefundUtr('');
     setRefundNotes('');
 
-    if (confirm(`Order marked as ${targetStatus}! Would you like to notify the customer on WhatsApp with the reason now?`)) {
-      const msg = formatWhatsAppStageUpdateMessage(updatedOrder, settings);
-      openWhatsApp(updatedOrder.customer.phone, msg);
-    }
+    // Open automated message editor so admin can review dynamic variables and personalize before sending
+    handleOpenMessageModal(updatedOrder, targetStatus);
   };
 
   const handleSaveShipping = (e: React.FormEvent) => {
@@ -191,11 +255,8 @@ export const OrderManager: React.FC = () => {
 
     setShippingModalOrder(null);
 
-    // Ask to send WhatsApp notification immediately
-    if (confirm('Shipment details saved! Would you like to send a dispatch update with courier & tracking details to the customer on WhatsApp now?')) {
-      const msg = formatWhatsAppStageUpdateMessage(updatedOrder, settings);
-      openWhatsApp(updatedOrder.customer.phone, msg);
-    }
+    // Open message modal with dynamic variables populated (tracking ID, courier, etc.)
+    handleOpenMessageModal(updatedOrder, 'Shipped');
   };
 
   const handleSaveRefund = (e: React.FormEvent) => {
@@ -215,16 +276,65 @@ export const OrderManager: React.FC = () => {
 
     setRefundModalOrder(null);
 
-    // Prompt to send refund WhatsApp notification
-    if (confirm('Refund marked as completed! Would you like to send the Refund UTR notification to the customer on WhatsApp now?')) {
-      const msg = formatWhatsAppRefundMessage(updatedOrder, settings);
-      openWhatsApp(updatedOrder.customer.phone, msg);
+    // Open message modal populated with refund UTR details
+    setMessageModalOrder(updatedOrder);
+    setMessageModalStage(updatedOrder.status);
+    const refundMsg = formatWhatsAppRefundMessage(updatedOrder, settings);
+    setMessageModalText(refundMsg);
+  };
+
+  const handleOpenMessageModal = (order: Order, stageOverride?: OrderStatus) => {
+    const stage = stageOverride || order.status;
+    setMessageModalOrder(order);
+    setMessageModalStage(stage);
+    setUpdateOrderStatusOnSend(false);
+    setMessageModalCopied(false);
+    const orderWithStage: Order = stageOverride && stageOverride !== order.status ? { ...order, status: stageOverride } : order;
+    const initialText = formatWhatsAppStageUpdateMessage(orderWithStage, settings);
+    setMessageModalText(initialText);
+  };
+
+  const handleSwitchMessageModalStage = (newStage: OrderStatus) => {
+    if (!messageModalOrder) return;
+    setMessageModalStage(newStage);
+    const orderWithStage: Order = { ...messageModalOrder, status: newStage };
+    const text = formatWhatsAppStageUpdateMessage(orderWithStage, settings);
+    setMessageModalText(text);
+  };
+
+  const handleResetModalMessageToTemplate = () => {
+    if (!messageModalOrder) return;
+    const orderWithStage: Order = { ...messageModalOrder, status: messageModalStage };
+    const text = formatWhatsAppStageUpdateMessage(orderWithStage, settings);
+    setMessageModalText(text);
+  };
+
+  const handleInsertDynamicVariable = (val: string) => {
+    setMessageModalText((prev) => {
+      if (!prev) return val;
+      const spacer = prev.endsWith(' ') || prev.endsWith('\n') ? '' : ' ';
+      return prev + spacer + val;
+    });
+  };
+
+  const handleSendCustomWhatsApp = () => {
+    if (!messageModalOrder || !messageModalText.trim()) return;
+    if (updateOrderStatusOnSend && messageModalOrder.status !== messageModalStage) {
+      updateOrderStatus(messageModalOrder.id, messageModalStage);
     }
+    openWhatsApp(messageModalOrder.customer.phone, messageModalText);
+    setMessageModalOrder(null);
+  };
+
+  const handleCopyModalMessage = () => {
+    if (!messageModalText) return;
+    navigator.clipboard.writeText(messageModalText);
+    setMessageModalCopied(true);
+    setTimeout(() => setMessageModalCopied(false), 2000);
   };
 
   const handleSendStageWhatsApp = (order: Order) => {
-    const text = formatWhatsAppStageUpdateMessage(order, settings);
-    openWhatsApp(order.customer.phone, text);
+    handleOpenMessageModal(order, order.status);
   };
 
   const handleExportCsv = () => {
@@ -289,14 +399,91 @@ export const OrderManager: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleExportCsv}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold shadow-xs transition"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>Export Orders CSV</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {settings.ordersSpreadsheetUrl && (
+            <a
+              href={settings.ordersSpreadsheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-semibold shadow-xs transition"
+              title="Open Google Sheet in new tab"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Open in Google Sheets</span>
+              <ExternalLink className="w-3 h-3 text-emerald-600" />
+            </a>
+          )}
+
+          <button
+            onClick={() => setIsConfirmSyncOpen(true)}
+            disabled={isSyncingSheets}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition disabled:opacity-50 cursor-pointer"
+          >
+            {isSyncingSheets ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+            )}
+            <span>{isSyncingSheets ? 'Syncing...' : 'Sync with Google Sheets'}</span>
+          </button>
+
+          <button
+            onClick={handleExportCsv}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold shadow-xs transition"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export CSV</span>
+          </button>
+        </div>
       </div>
+
+      {/* Google Sheets Sync Alert Notifications */}
+      {sheetSyncSuccess && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              Successfully synchronized <strong>{sheetSyncSuccess.count} orders</strong> to your Google Sheets document!
+            </span>
+          </div>
+          <a
+            href={sheetSyncSuccess.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-bold text-emerald-700 underline hover:text-emerald-900"
+          >
+            <span>Open Sheet</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+      )}
+
+      {sheetSyncError && (
+        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{sheetSyncError}</span>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            {(sheetSyncError.toLowerCase().includes('scope') ||
+              sheetSyncError.toLowerCase().includes('authentication') ||
+              sheetSyncError.toLowerCase().includes('permission')) && (
+              <button
+                onClick={handleAuthorizeAndSync}
+                className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition"
+              >
+                Grant Google Permissions
+              </button>
+            )}
+            <button
+              onClick={() => setSheetSyncError(null)}
+              className="text-rose-700 font-bold hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Refund Automation Banner if any orders need refund */}
       {pendingRefundOrders.length > 0 && (
@@ -993,6 +1180,349 @@ export const OrderManager: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Automated Order Message Dispatcher & Dynamic Variable Editor Modal (User Request) */}
+      {messageModalOrder && (() => {
+        const dynamicVariables = getOrderDynamicVariables(messageModalOrder, settings);
+        const filteredVars = messageModalCategory === 'all'
+          ? dynamicVariables
+          : dynamicVariables.filter((v) => v.category === messageModalCategory);
+
+        return (
+          <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+            <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto flex flex-col max-h-[92vh]">
+              {/* Modal Header */}
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-950 via-neutral-900 to-emerald-900 text-white flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    <MessageSquare className="w-5 h-5 fill-emerald-400 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-serif text-base sm:text-lg font-bold text-white">
+                        Automated Order Status Message
+                      </h3>
+                      <span className="font-mono text-xs font-bold text-amber-300 bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 rounded">
+                        #{messageModalOrder.orderNumber}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-neutral-300 mt-0.5 flex items-center gap-2 flex-wrap">
+                      <span>Customer: <strong className="text-white">{messageModalOrder.customer.name}</strong> ({messageModalOrder.customer.phone})</span>
+                      <span>·</span>
+                      <span>Current Order Stage: <strong className="text-amber-400">{messageModalOrder.status}</strong></span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMessageModalOrder(null)}
+                  className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Scrollable Modal Content */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs">
+                {/* Stage Template Selector Tabs */}
+                <div className="bg-neutral-50 rounded-2xl p-3 border border-neutral-200 space-y-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Select Base Stage Template:</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleResetModalMessageToTemplate}
+                      className="inline-flex items-center gap-1 text-[11px] text-neutral-600 hover:text-neutral-900 font-semibold"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Revert Edits to Default</span>
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['Pending', 'Confirmed', 'Shipped', 'Delivered', 'Cancelled', 'Rejected'] as OrderStatus[]).map(
+                      (st) => {
+                        const isActive = messageModalStage === st;
+                        return (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => handleSwitchMessageModalStage(st)}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 ${
+                              isActive
+                                ? 'bg-neutral-900 text-white shadow-xs'
+                                : 'bg-white hover:bg-neutral-200/70 text-neutral-700 border border-neutral-200'
+                            }`}
+                          >
+                            <span>{st}</span>
+                            {messageModalOrder.status === st && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Current Order Status" />
+                            )}
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
+
+                {/* Dynamic Order Variables Palette (User Request) */}
+                <div className="bg-amber-500/10 rounded-2xl p-3.5 border border-amber-500/30 space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Dynamic Variables from Customer Order</span>
+                      </h4>
+                      <p className="text-[11px] text-amber-900/80 mt-0.5">
+                        Click any chip to insert its dynamic customer value or token into your message.
+                      </p>
+                    </div>
+
+                    {/* Filter categories */}
+                    <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+                      {(
+                        [
+                          { key: 'all', label: 'All' },
+                          { key: 'essential', label: 'Essential (Tracking/UTR)' },
+                          { key: 'customer', label: 'Customer' },
+                          { key: 'shipping', label: 'Shipping' },
+                          { key: 'refund', label: 'Refund' },
+                          { key: 'store', label: 'Store' },
+                        ] as const
+                      ).map((cat) => (
+                        <button
+                          key={cat.key}
+                          type="button"
+                          onClick={() => setMessageModalCategory(cat.key)}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold whitespace-nowrap transition ${
+                            messageModalCategory === cat.key
+                              ? 'bg-amber-800 text-white'
+                              : 'bg-white/80 text-amber-950 hover:bg-white'
+                          }`}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Variables Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-44 overflow-y-auto p-1">
+                    {filteredVars.map((v) => (
+                      <div
+                        key={v.token}
+                        className="p-2 rounded-xl bg-white border border-amber-200/80 shadow-2xs hover:border-amber-400 transition flex flex-col justify-between group"
+                      >
+                        <div className="flex items-start justify-between gap-1">
+                          <span className="font-mono text-[10px] font-bold text-amber-900 truncate">
+                            {v.token}
+                          </span>
+                          <span className="text-[9px] uppercase font-semibold text-neutral-400 shrink-0">
+                            {v.label}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-neutral-800 truncate mt-1" title={v.value}>
+                          {v.value || <span className="italic text-neutral-400 font-normal">None</span>}
+                        </p>
+                        <div className="mt-1.5 pt-1 border-t border-neutral-100 flex items-center justify-between gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleInsertDynamicVariable(v.value)}
+                            className="text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:underline"
+                            title={`Insert evaluated value "${v.value}"`}
+                          >
+                            + Insert Value
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleInsertDynamicVariable(v.token)}
+                            className="text-[10px] text-neutral-500 hover:text-neutral-900"
+                            title={`Insert token placeholder ${v.token}`}
+                          >
+                            + Token
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Editable Message Textarea */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-neutral-900 text-xs">
+                      Editable Message for Customer:
+                    </label>
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      {messageModalText.length} characters · ~{Math.ceil(messageModalText.split(/\s+/).filter(Boolean).length)} words
+                    </span>
+                  </div>
+
+                  <textarea
+                    rows={8}
+                    value={messageModalText}
+                    onChange={(e) => setMessageModalText(e.target.value)}
+                    placeholder="Enter or customize the automated notification..."
+                    className="w-full p-3.5 rounded-2xl border border-neutral-300 font-mono text-xs text-neutral-900 bg-white leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-emerald-500/40 shadow-inner"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-neutral-500 pt-0.5">
+                    <span className="italic">
+                      Tip: Edits here are specific to this single customer order before dispatching on WhatsApp.
+                    </span>
+                    <span className="font-mono text-[10px]">
+                      WhatsApp format: *bold*, _italic_, ~strike~
+                    </span>
+                  </div>
+                </div>
+
+                {/* WhatsApp Chat Preview Simulation */}
+                <div className="bg-neutral-100 rounded-2xl p-3.5 border border-neutral-200 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-neutral-600 font-semibold border-b border-neutral-200/80 pb-1.5">
+                    <span className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>WhatsApp Customer Preview:</span>
+                    </span>
+                    <span className="text-neutral-500 font-mono text-[10px]">Recipient: {messageModalOrder.customer.phone}</span>
+                  </div>
+
+                  <div className="bg-[#e5ddd5] p-3 rounded-xl border border-neutral-300 overflow-x-hidden">
+                    <div className="max-w-md ml-auto bg-[#dcf8c6] text-neutral-950 p-3 rounded-2xl rounded-tr-xs shadow-xs text-xs whitespace-pre-wrap font-sans leading-relaxed">
+                      {messageModalText}
+                      <div className="mt-1 flex items-center justify-end gap-1 text-[9px] text-neutral-500 font-mono">
+                        <span>{new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-blue-600 font-bold">✓✓</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Order Status Synchronization Option */}
+                {messageModalOrder.status !== messageModalStage && (
+                  <label className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={updateOrderStatusOnSend}
+                      onChange={(e) => setUpdateOrderStatusOnSend(e.target.checked)}
+                      className="rounded text-amber-600 w-4 h-4"
+                    />
+                    <div>
+                      <span className="font-bold block">
+                        Also update order stage from "{messageModalOrder.status}" to "{messageModalStage}" in boutique records
+                      </span>
+                      <span className="text-[11px] text-amber-800 font-normal">
+                        Syncs the new status to the order database when sending this notification.
+                      </span>
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="p-4 sm:p-5 bg-neutral-50 border-t border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCopyModalMessage}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-800 font-semibold text-xs transition flex items-center justify-center gap-1.5 shadow-2xs"
+                >
+                  {messageModalCopied ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      <span className="text-emerald-700">Copied to Clipboard!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-neutral-600" />
+                      <span>Copy Message</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setMessageModalOrder(null)}
+                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 hover:bg-neutral-100 font-semibold text-xs transition"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSendCustomWhatsApp}
+                    className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2"
+                  >
+                    <MessageSquare className="w-4 h-4 fill-white" />
+                    <span>Send on WhatsApp</span>
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Google Sheets Sync Confirmation Dialog */}
+      {isConfirmSyncOpen && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-emerald-950 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Sync Orders to Google Sheets
+                  </h3>
+                  <p className="text-[11px] text-emerald-300">
+                    Export boutique orders log to Google Drive
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsConfirmSyncOpen(false)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs text-neutral-700">
+              <p className="leading-relaxed">
+                You are about to export and synchronize <strong className="text-neutral-900 font-bold">{orders.length} orders</strong> directly into your Google Sheets spreadsheet.
+              </p>
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 space-y-1">
+                <p className="font-semibold">What will happen:</p>
+                <ul className="list-disc list-inside space-y-0.5 text-emerald-800">
+                  <li>Creates or updates the &ldquo;Orders Log&rdquo; spreadsheet on your Google Drive.</li>
+                  <li>Writes columns for Order numbers, customer details, payment UTRs, and delivery status.</li>
+                  <li>Overwrites older rows to maintain clean data synchronization.</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmSyncOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSyncSheets}
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition shadow-xs flex items-center gap-1.5"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Confirm & Sync</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

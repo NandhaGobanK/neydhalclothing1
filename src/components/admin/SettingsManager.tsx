@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { StoreTheme, OrderStatusChatTemplates, StaffSectionPermissions, Order } from '../../types/store';
 import { THEME_CONFIGS } from '../../utils/theme';
 import { DEFAULT_CHAT_TEMPLATES, DEFAULT_STAFF_PERMISSIONS } from '../../data/initialData';
 import { applyTemplateTokens } from '../../utils/upi';
+import { compressImageFile } from '../../utils/imageCompression';
 import {
   Save,
   Palette,
@@ -43,6 +44,7 @@ export const SettingsManager: React.FC = () => {
   const [contactEmail, setContactEmail] = useState(settings.contactEmail);
   const [instagramHandle, setInstagramHandle] = useState(settings.instagramHandle);
   const [storeAddress, setStoreAddress] = useState(settings.storeAddress);
+  const [customStoreDomain, setCustomStoreDomain] = useState(settings.customStoreDomain || '');
   const [theme, setTheme] = useState<StoreTheme>(settings.theme);
 
   // Storefront Public Front Display Controls
@@ -107,45 +109,127 @@ export const SettingsManager: React.FC = () => {
 
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [isCompressingLogo, setIsCompressingLogo] = useState(false);
+  const [isCompressingBanner, setIsCompressingBanner] = useState(false);
+  const [brandingSaveSuccess, setBrandingSaveSuccess] = useState(false);
 
-  // File Upload Handlers
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Synchronize local form state when settings update from Firestore
+  useEffect(() => {
+    if (settings) {
+      if (settings.logoUrl !== undefined) setLogoUrl(settings.logoUrl || '');
+      if (settings.boutiqueName) setBoutiqueName(settings.boutiqueName);
+      if (settings.tagline !== undefined) setTagline(settings.tagline);
+      if (settings.contactPhone !== undefined) setContactPhone(settings.contactPhone);
+      if (settings.contactEmail !== undefined) setContactEmail(settings.contactEmail);
+      if (settings.instagramHandle !== undefined) setInstagramHandle(settings.instagramHandle);
+      if (settings.storeAddress !== undefined) setStoreAddress(settings.storeAddress);
+      if (settings.customStoreDomain !== undefined) setCustomStoreDomain(settings.customStoreDomain || '');
+      if (settings.theme) setTheme(settings.theme);
+
+      const disp = settings.storefrontDisplay;
+      if (disp) {
+        if (disp.heroHeadline !== undefined) setHeroHeadline(disp.heroHeadline);
+        if (disp.heroSubheadline !== undefined) setHeroSubheadline(disp.heroSubheadline);
+        if (disp.showHeroBanner !== undefined) setShowHeroBanner(disp.showHeroBanner);
+        if (disp.heroBannerImageUrl !== undefined) setHeroBannerImageUrl(disp.heroBannerImageUrl || '');
+        if (disp.showTrustBadges !== undefined) setShowTrustBadges(disp.showTrustBadges);
+        if (disp.freeShippingText !== undefined) setFreeShippingText(disp.freeShippingText);
+        if (disp.showTrackOrder !== undefined) setShowTrackOrder(disp.showTrackOrder !== false);
+        if (disp.allowPublicCancellation !== undefined) setAllowPublicCancellation(disp.allowPublicCancellation !== false);
+        if (disp.showCraftsmanshipStory !== undefined) setShowCraftsmanshipStory(disp.showCraftsmanshipStory);
+        if (disp.storyTitle !== undefined) setStoryTitle(disp.storyTitle);
+        if (disp.storyContent !== undefined) setStoryContent(disp.storyContent);
+      }
+
+      if (settings.announcement) {
+        setAnnouncementEnabled(settings.announcement.enabled);
+        setAnnouncementText(settings.announcement.text || '');
+      }
+      if (settings.delivery) {
+        setShippingFee(settings.delivery.shippingFee);
+        setFreeDeliveryEnabled(settings.delivery.freeDeliveryEnabled);
+        setFreeDeliveryThreshold(settings.delivery.freeDeliveryThreshold);
+      }
+      if (settings.payment) {
+        setUpiId(settings.payment.upiId);
+        setPayeeName(settings.payment.payeeName);
+        setQrCodeUrl(settings.payment.qrCodeUrl || '');
+        setPaymentInstructions(settings.payment.instructions);
+      }
+    }
+  }, [settings]);
+
+  // File Upload Handlers with Automatic Canvas Compression
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setLogoUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        setIsCompressingLogo(true);
+        const compressed = await compressImageFile(file, {
+          maxWidth: 360,
+          maxHeight: 360,
+          quality: 0.85,
+          mimeType: 'image/jpeg',
+        });
+        setLogoUrl(compressed);
+      } catch (err) {
+        console.error('Failed to compress logo:', err);
+      } finally {
+        setIsCompressingLogo(false);
+      }
     }
   };
 
-  const handleHeroBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleHeroBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setHeroBannerImageUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        setIsCompressingBanner(true);
+        const compressed = await compressImageFile(file, {
+          maxWidth: 1600,
+          maxHeight: 900,
+          quality: 0.80,
+          mimeType: 'image/jpeg',
+        });
+        setHeroBannerImageUrl(compressed);
+      } catch (err) {
+        console.error('Failed to compress hero banner:', err);
+      } finally {
+        setIsCompressingBanner(false);
+      }
     }
   };
 
-  const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setQrCodeUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImageFile(file, {
+          maxWidth: 400,
+          maxHeight: 400,
+          quality: 0.85,
+          mimeType: 'image/jpeg',
+        });
+        setQrCodeUrl(compressed);
+      } catch (err) {
+        console.error('Failed to compress QR:', err);
+      }
     }
+  };
+
+  const handleQuickSaveBranding = () => {
+    updateSettings({
+      logoUrl: logoUrl.trim(),
+      storefrontDisplay: {
+        ...(settings.storefrontDisplay || defaultDisplay),
+        heroHeadline: heroHeadline.trim(),
+        heroSubheadline: heroSubheadline.trim(),
+        showHeroBanner,
+        heroBannerImageUrl: heroBannerImageUrl.trim(),
+      },
+    });
+    setBrandingSaveSuccess(true);
+    setTimeout(() => setBrandingSaveSuccess(false), 3000);
   };
 
   const handleInsertToken = (token: string) => {
@@ -244,6 +328,7 @@ export const SettingsManager: React.FC = () => {
       contactEmail: contactEmail.trim(),
       instagramHandle: instagramHandle.trim(),
       storeAddress: storeAddress.trim(),
+      customStoreDomain: customStoreDomain.trim(),
       theme,
       storefrontDisplay: {
         heroHeadline: heroHeadline.trim(),
@@ -444,7 +529,7 @@ export const SettingsManager: React.FC = () => {
                       />
                       <label className="px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold cursor-pointer flex items-center gap-1.5 shrink-0 transition">
                         <Upload className="w-3.5 h-3.5" />
-                        <span>Upload Banner</span>
+                        <span>{isCompressingBanner ? 'Compressing...' : 'Upload Banner'}</span>
                         <input type="file" accept="image/*" onChange={handleHeroBannerUpload} className="hidden" />
                       </label>
                     </div>
@@ -452,6 +537,34 @@ export const SettingsManager: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {/* Quick Save Branding Action Bar */}
+            {canEditStorefront && (
+              <div className="pt-3 border-t border-neutral-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <p className="text-[11px] text-neutral-500">
+                  {isCompressingLogo || isCompressingBanner
+                    ? 'Compressing image for lightning-fast loading...'
+                    : 'Changes here sync in real-time to your public storefront header & hero banner.'}
+                </p>
+                <div className="flex items-center gap-2">
+                  {brandingSaveSuccess && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full animate-in fade-in">
+                      <Check className="w-3 h-3" />
+                      <span>Saved & Synced!</span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleQuickSaveBranding}
+                    disabled={isCompressingLogo || isCompressingBanner}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs shadow-xs transition disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Logo & Banner</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -689,32 +802,42 @@ export const SettingsManager: React.FC = () => {
               {canEditChatTemplates && (
                 <div>
                   <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block mb-1">
-                    Click variable chip to insert placeholder:
+                    Click dynamic variable chip to insert order placeholder:
                   </span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-neutral-50 rounded-xl border border-neutral-200">
                     {[
-                      '{customerName}',
-                      '{orderNumber}',
-                      '{itemsSummary}',
-                      '{totalAmount}',
-                      '{upiTransactionId}',
-                      '{trackingLink}',
-                      '{courierName}',
-                      '{trackingNumber}',
-                      '{reasonNotice}',
-                      '{refundUtr}',
-                      '{refundUpi}',
-                      '{staffSignature}',
-                      '{boutiqueName}',
-                      '{instagramHandle}',
-                    ].map((token) => (
+                      { token: '{customerName}', label: 'Customer' },
+                      { token: '{orderNumber}', label: 'Order #' },
+                      { token: '{trackingLink}', label: 'Track Link' },
+                      { token: '{totalAmount}', label: 'Total ₹' },
+                      { token: '{subtotal}', label: 'Subtotal ₹' },
+                      { token: '{shippingFee}', label: 'Delivery Fee' },
+                      { token: '{upiTransactionId}', label: 'Payment UTR' },
+                      { token: '{itemsSummary}', label: 'Items & SKU' },
+                      { token: '{itemsCount}', label: 'Qty Count' },
+                      { token: '{orderStatus}', label: 'Stage' },
+                      { token: '{orderDate}', label: 'Date' },
+                      { token: '{customerPhone}', label: 'Phone' },
+                      { token: '{customerNotes}', label: 'Customer Notes' },
+                      { token: '{deliveryAddress}', label: 'Address' },
+                      { token: '{courierName}', label: 'Courier' },
+                      { token: '{trackingNumber}', label: 'Tracking ID' },
+                      { token: '{reasonNotice}', label: 'Reason Notice' },
+                      { token: '{refundUtr}', label: 'Refund UTR' },
+                      { token: '{refundUpi}', label: 'Refund UPI' },
+                      { token: '{staffSignature}', label: 'Staff Sig' },
+                      { token: '{boutiqueName}', label: 'Store Name' },
+                      { token: '{instagramHandle}', label: 'Instagram' },
+                    ].map(({ token, label }) => (
                       <button
                         key={token}
                         type="button"
                         onClick={() => handleInsertToken(token)}
-                        className="px-2 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[10px] font-mono font-semibold transition"
+                        className="px-2 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[10px] font-mono font-semibold transition flex items-center gap-1"
+                        title={`Insert ${token}`}
                       >
-                        {token}
+                        <span>{token}</span>
+                        <span className="text-[9px] text-amber-700/70 font-sans">({label})</span>
                       </button>
                     ))}
                   </div>
@@ -1149,6 +1272,37 @@ export const SettingsManager: React.FC = () => {
                   onChange={(e) => setStoreAddress(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                 />
+              </div>
+
+              {/* Custom Store Domain & Production Link Routing (User Request) */}
+              <div className="sm:col-span-2 p-4 rounded-xl border border-amber-300/80 bg-gradient-to-br from-amber-50/60 to-orange-50/30 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-neutral-900 text-xs">
+                      Custom Store Domain / Production URL (Vercel / Custom Domain)
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-amber-900 font-bold px-2 py-0.5 rounded-full bg-amber-200/80 border border-amber-300">
+                    Share Links & Live Tracking
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  disabled={!canEditProfile}
+                  value={customStoreDomain}
+                  onChange={(e) => setCustomStoreDomain(e.target.value)}
+                  placeholder="e.g. https://aara-heritage.vercel.app or https://yourdomain.com"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 bg-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                />
+                <p className="text-[11px] text-neutral-600 leading-relaxed">
+                  🌐 <strong>Domain Configuration Guide:</strong> When deployed to Vercel or your own custom domain, leave blank to automatically use the visitor's browser domain, or enter your official URL here. Once saved, all <strong>Product Share Links</strong>, <strong>Live Order Tracking links</strong>, and <strong>Automated WhatsApp Notifications</strong> will always use this production domain instead of the preview URL!
+                </p>
+                <div className="pt-1 flex items-center justify-between text-[11px] text-neutral-500 font-mono border-t border-amber-200/60">
+                  <span>Effective Store Base URL:</span>
+                  <span className="font-bold text-amber-950">
+                    {customStoreDomain.trim() || (typeof window !== 'undefined' ? window.location.origin : '')}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

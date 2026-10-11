@@ -51,6 +51,18 @@ export interface Product {
   createdAt: string;
 }
 
+export interface ProductReview {
+  id: string;
+  productId: string;
+  customerName: string;
+  rating: number; // 1 to 5 stars
+  title?: string;
+  comment: string;
+  city?: string;
+  verifiedBuyer?: boolean;
+  createdAt: string;
+}
+
 export interface CartItem {
   product: Product;
   quantity: number;
@@ -117,7 +129,9 @@ export interface StaffMember {
   id: string;
   name: string;
   username: string;
-  password: string;
+  password?: string;
+  email?: string; // Google account / Gmail ID for Google Authentication
+  authMethod?: 'google' | 'password' | 'both';
   role: 'manager' | 'concierge' | 'fulfillment';
   isLocked: boolean;
   phone: string;
@@ -205,6 +219,12 @@ export interface StoreSettings {
   delivery: DeliverySettings;
   storefrontDisplay: StorefrontDisplaySettings;
   adminPin: string; // 6-digit access PIN
+  adminGoogleEmail?: string; // Designated Google Account email for Owner/Admin
+  customStoreDomain?: string; // Custom domain or Vercel URL (e.g. https://aara-heritage.vercel.app)
+  ordersSpreadsheetId?: string;
+  ordersSpreadsheetUrl?: string;
+  analyticsSpreadsheetId?: string;
+  analyticsSpreadsheetUrl?: string;
   staffMembers: StaffMember[];
   chatTemplates: OrderStatusChatTemplates;
   defaultStaffPermissions?: StaffSectionPermissions;

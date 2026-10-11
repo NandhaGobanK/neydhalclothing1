@@ -15,6 +15,11 @@ export const Header: React.FC<HeaderProps> = ({
   selectedCategory = 'all',
 }) => {
   const { settings, cartCount, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen } = useStore();
+  const [logoError, setLogoError] = React.useState(false);
+
+  React.useEffect(() => {
+    setLogoError(false);
+  }, [settings.logoUrl]);
 
   const categories = [
     { id: 'all', label: 'All Sarees' },
@@ -35,10 +40,11 @@ export const Header: React.FC<HeaderProps> = ({
           href="#"
           className="text-xl sm:text-2xl font-serif font-bold tracking-wider text-amber-100 hover:text-white transition whitespace-nowrap shrink-0 flex items-center gap-3"
         >
-          {settings.logoUrl ? (
+          {settings.logoUrl && !logoError ? (
             <img
               src={settings.logoUrl}
               alt={settings.boutiqueName}
+              onError={() => setLogoError(true)}
               className="h-10 sm:h-12 w-auto max-w-[140px] sm:max-w-[180px] object-contain rounded-md"
             />
           ) : (

@@ -8,6 +8,7 @@ import {
   ShippingDetails,
   StaffMember,
   StaffSectionPermissions,
+  ProductReview,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -15,7 +16,24 @@ import {
   INITIAL_SETTINGS,
   DEFAULT_STAFF_PERMISSIONS,
   DEFAULT_CHAT_TEMPLATES,
+  INITIAL_REVIEWS,
 } from '../data/initialData';
+import { googleSignOut, setCachedAccessToken } from '../utils/firebaseAuth';
+import {
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+} from 'firebase/firestore';
+import {
+  db,
+  handleFirestoreError,
+  OperationType,
+  sanitizeForFirestore,
+  testFirestoreConnection,
+} from '../utils/firebase';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'aara_boutique_products_v3',
@@ -23,12 +41,15 @@ const STORAGE_KEYS = {
   SETTINGS: 'aara_boutique_settings_v3',
   CART: 'aara_boutique_cart_v3',
   CURRENT_USER: 'aara_boutique_user_v3',
+  REVIEWS: 'aara_boutique_reviews_v3',
 };
 
 export interface ActiveUser {
   type: 'admin' | 'staff';
   username: string;
   name: string;
+  email?: string;
+  photoUrl?: string;
   staffId?: string;
 }
 
@@ -99,16 +120,27 @@ interface StoreContextType {
   updateStaffMember: (id: string, updates: Partial<StaffMember>) => void;
   toggleStaffLock: (id: string) => void;
   deleteStaffMember: (id: string) => void;
+  syncStaffToDatabase: () => Promise<number>;
+
+  // Customer Product Reviews
+  reviews: ProductReview[];
+  addReview: (reviewData: Omit<ProductReview, 'id' | 'createdAt'>) => Promise<void>;
+  getProductReviews: (productId: string) => ProductReview[];
+  getProductAverageRating: (productId: string) => { rating: number; count: number };
 
   // Settings
   settings: StoreSettings;
   updateSettings: (updates: Partial<StoreSettings>) => void;
   resetToInitialData: () => void;
 
-  // Auth (Admin PIN or Staff Username/Password)
+  // Auth (Google Login for Admin and Staff)
   currentUser: ActiveUser | null;
   isAdminLoggedIn: boolean;
   currentPermissions: StaffSectionPermissions;
+  googleLogin: (
+    firebaseUser: { email?: string | null; displayName?: string | null; photoURL?: string | null; uid: string },
+    accessToken: string
+  ) => { success: boolean; error?: string; role?: 'admin' | 'staff' };
   adminLogin: (pin: string) => boolean;
   staffLogin: (username: string, password: string) => { success: boolean; error?: string };
   adminLogout: () => void;
@@ -205,6 +237,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     loadFromStorage(STORAGE_KEYS.CURRENT_USER, null)
   );
 
+  const [reviews, setReviews] = useState<ProductReview[]>(() =>
+    loadFromStorage(STORAGE_KEYS.REVIEWS, INITIAL_REVIEWS)
+  );
+
   // App UI State
   const [activeProductModal, setActiveProductModal] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -239,17 +275,223 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     saveToStorage(STORAGE_KEYS.CURRENT_USER, currentUser);
   }, [currentUser]);
 
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.REVIEWS, reviews);
+  }, [reviews]);
+
+  // Test Firestore connection on boot
+  useEffect(() => {
+    testFirestoreConnection().catch((err) => console.warn('Firestore connection verification:', err));
+  }, []);
+
+  // Real-time Firestore sync for Products
+  useEffect(() => {
+    let isSeeding = false;
+    const unsub = onSnapshot(
+      collection(db, 'products'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Product[] = [];
+          snapshot.forEach((d) => {
+            list.push({ id: d.id, ...d.data() } as Product);
+          });
+          setProducts(list);
+        } else if (!isSeeding) {
+          isSeeding = true;
+          // Initial bootstrap: seed initial boutique products to Firestore
+          Promise.all(
+            INITIAL_PRODUCTS.map((p) =>
+              setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))
+            )
+          ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'products'));
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'products');
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync for Orders
+  useEffect(() => {
+    let isSeeding = false;
+    const unsub = onSnapshot(
+      collection(db, 'orders'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Order[] = [];
+          snapshot.forEach((d) => {
+            list.push({ id: d.id, ...d.data() } as Order);
+          });
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setOrders(list);
+        } else if (!isSeeding) {
+          isSeeding = true;
+          // Initial bootstrap: seed initial orders to Firestore
+          Promise.all(
+            INITIAL_ORDERS.map((o) =>
+              setDoc(doc(db, 'orders', o.id), sanitizeForFirestore(o))
+            )
+          ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'orders'));
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'orders');
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync for Boutique Settings & Announcements
+  useEffect(() => {
+    let isSeeding = false;
+    const unsub = onSnapshot(
+      doc(db, 'settings', 'store_config'),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data() as Partial<StoreSettings>;
+          setSettings((prev) => ({
+            ...prev,
+            ...data,
+            delivery: {
+              ...prev.delivery,
+              ...(data.delivery || {}),
+            },
+            announcement: {
+              ...prev.announcement,
+              ...(data.announcement || {}),
+            },
+            payment: {
+              ...prev.payment,
+              ...(data.payment || {}),
+            },
+            storefrontDisplay: {
+              ...prev.storefrontDisplay,
+              ...(data.storefrontDisplay || {}),
+            },
+            chatTemplates: {
+              ...prev.chatTemplates,
+              ...(data.chatTemplates || {}),
+            },
+            defaultStaffPermissions: data.defaultStaffPermissions
+              ? {
+                  orders: data.defaultStaffPermissions.orders ?? prev.defaultStaffPermissions?.orders ?? DEFAULT_STAFF_PERMISSIONS.orders,
+                  products: data.defaultStaffPermissions.products ?? prev.defaultStaffPermissions?.products ?? DEFAULT_STAFF_PERMISSIONS.products,
+                  analytics: data.defaultStaffPermissions.analytics ?? prev.defaultStaffPermissions?.analytics ?? DEFAULT_STAFF_PERMISSIONS.analytics,
+                  staff: data.defaultStaffPermissions.staff ?? prev.defaultStaffPermissions?.staff ?? DEFAULT_STAFF_PERMISSIONS.staff,
+                  settingsStorefront: data.defaultStaffPermissions.settingsStorefront ?? prev.defaultStaffPermissions?.settingsStorefront ?? DEFAULT_STAFF_PERMISSIONS.settingsStorefront,
+                  settingsAnnouncement: data.defaultStaffPermissions.settingsAnnouncement ?? prev.defaultStaffPermissions?.settingsAnnouncement ?? DEFAULT_STAFF_PERMISSIONS.settingsAnnouncement,
+                  settingsPayment: data.defaultStaffPermissions.settingsPayment ?? prev.defaultStaffPermissions?.settingsPayment ?? DEFAULT_STAFF_PERMISSIONS.settingsPayment,
+                  settingsProfile: data.defaultStaffPermissions.settingsProfile ?? prev.defaultStaffPermissions?.settingsProfile ?? DEFAULT_STAFF_PERMISSIONS.settingsProfile,
+                  settingsChatTemplates: data.defaultStaffPermissions.settingsChatTemplates ?? prev.defaultStaffPermissions?.settingsChatTemplates ?? DEFAULT_STAFF_PERMISSIONS.settingsChatTemplates,
+                }
+              : prev.defaultStaffPermissions,
+          }));
+        } else if (!isSeeding) {
+          isSeeding = true;
+          // Initial bootstrap: seed settings
+          setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore(INITIAL_SETTINGS))
+            .catch((err) => handleFirestoreError(err, OperationType.WRITE, 'settings/store_config'));
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'settings/store_config');
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync for Customer Product Reviews
+  useEffect(() => {
+    let isSeeding = false;
+    const unsub = onSnapshot(
+      collection(db, 'reviews'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: ProductReview[] = [];
+          snapshot.forEach((d) => {
+            list.push({ id: d.id, ...d.data() } as ProductReview);
+          });
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setReviews(list);
+        } else if (!isSeeding) {
+          isSeeding = true;
+          // Initial bootstrap: seed initial boutique product reviews
+          Promise.all(
+            INITIAL_REVIEWS.map((r) =>
+              setDoc(doc(db, 'reviews', r.id), sanitizeForFirestore(r))
+            )
+          ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'reviews'));
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'reviews');
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync for Staff Members Collection (/staff)
+  useEffect(() => {
+    let isInitial = true;
+    const unsub = onSnapshot(
+      collection(db, 'staff'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: StaffMember[] = [];
+          snapshot.forEach((d) => {
+            list.push({ id: d.id, ...d.data() } as StaffMember);
+          });
+          setSettings((prev) => {
+            const updated = {
+              ...prev,
+              staffMembers: list,
+            };
+            saveToStorage(STORAGE_KEYS.SETTINGS, updated);
+            return updated;
+          });
+        } else if (isInitial && settings.staffMembers && settings.staffMembers.length > 0) {
+          // If Firestore staff collection is empty but local settings has staff, seed them into /staff
+          settings.staffMembers.forEach((member) => {
+            setDoc(doc(db, 'staff', member.id), sanitizeForFirestore(member)).catch((err) =>
+              handleFirestoreError(err, OperationType.WRITE, `staff/${member.id}`)
+            );
+          });
+        }
+        isInitial = false;
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'staff');
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Ensure any staff in settings.staffMembers is synced to /staff collection in Firestore
+  useEffect(() => {
+    if (settings.staffMembers && settings.staffMembers.length > 0) {
+      settings.staffMembers.forEach((member) => {
+        setDoc(doc(db, 'staff', member.id), sanitizeForFirestore(member), { merge: true }).catch(
+          (err) => handleFirestoreError(err, OperationType.WRITE, `staff/${member.id}`)
+        );
+      });
+    }
+  }, [settings.staffMembers?.length]);
+
   // If current logged-in user is a staff member who was removed or locked, revoke session immediately
   useEffect(() => {
     if (currentUser?.type === 'staff') {
       const activeStaff = (settings.staffMembers || []).find(
         (s) =>
           (currentUser.staffId && s.id === currentUser.staffId) ||
+          (currentUser.email && s.email && s.email.toLowerCase() === currentUser.email.toLowerCase()) ||
           s.username.toLowerCase() === currentUser.username.toLowerCase()
       );
       if (!activeStaff || activeStaff.isLocked) {
         setCurrentUser(null);
         saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
+        googleSignOut();
       }
     }
   }, [settings.staffMembers, currentUser]);
@@ -372,6 +614,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: new Date().toISOString(),
     };
     setProducts((prev) => [newProduct, ...prev]);
+
+    // Persist to Firestore
+    setDoc(doc(db, 'products', newProduct.id), sanitizeForFirestore(newProduct)).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `products/${newProduct.id}`)
+    );
+
     return newProduct;
   };
 
@@ -382,6 +630,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (activeProductModal && activeProductModal.id === id) {
       setActiveProductModal((prev) => (prev ? { ...prev, ...updates } : null));
     }
+
+    // Persist to Firestore
+    updateDoc(doc(db, 'products', id), sanitizeForFirestore(updates)).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `products/${id}`)
+    );
   };
 
   const deleteProduct = (id: string) => {
@@ -398,11 +651,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (activeProductModal?.id === id) {
       setActiveProductModal(null);
     }
+
+    // Delete from Firestore
+    deleteDoc(doc(db, 'products', id)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `products/${id}`)
+    );
   };
 
   const toggleProductVisibility = (id: string) => {
+    const target = products.find((p) => p.id === id);
+    if (!target) return;
+    const nextVis = !target.isVisible;
     setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, isVisible: !p.isVisible } : p))
+      prev.map((p) => (p.id === id ? { ...p, isVisible: nextVis } : p))
+    );
+
+    // Update in Firestore
+    updateDoc(doc(db, 'products', id), { isVisible: nextVis }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `products/${id}`)
     );
   };
 
@@ -413,31 +679,86 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       id: `staff-${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
-    setSettings((prev) => ({
-      ...prev,
-      staffMembers: [...(prev.staffMembers || []), newStaff],
-    }));
+    const nextMembers = [...(settings.staffMembers || []).filter((s) => s.id !== newStaff.id), newStaff];
+    setSettings((prev) => {
+      const updated = {
+        ...prev,
+        staffMembers: nextMembers,
+      };
+      saveToStorage(STORAGE_KEYS.SETTINGS, updated);
+      return updated;
+    });
+
+    // 1. Persist directly to dedicated Firestore 'staff' collection document
+    setDoc(doc(db, 'staff', newStaff.id), sanitizeForFirestore(newStaff)).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `staff/${newStaff.id}`)
+    );
+
+    // 2. Also keep settings/store_config in sync
+    setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: nextMembers }), {
+      merge: true,
+    }).catch((err) => handleFirestoreError(err, OperationType.UPDATE, 'settings/store_config'));
   };
 
   const updateStaffMember = (id: string, updates: Partial<StaffMember>) => {
-    setSettings((prev) => ({
-      ...prev,
-      staffMembers: (prev.staffMembers || []).map((s) => (s.id === id ? { ...s, ...updates } : s)),
-    }));
+    const nextMembers = (settings.staffMembers || []).map((s) =>
+      s.id === id ? { ...s, ...updates } : s
+    );
+    setSettings((prev) => {
+      const updated = {
+        ...prev,
+        staffMembers: nextMembers,
+      };
+      saveToStorage(STORAGE_KEYS.SETTINGS, updated);
+      return updated;
+    });
+
+    const targetStaff = nextMembers.find((s) => s.id === id);
+
+    // 1. Persist to dedicated Firestore 'staff' collection document
+    if (targetStaff) {
+      setDoc(doc(db, 'staff', id), sanitizeForFirestore(targetStaff), { merge: true }).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `staff/${id}`)
+      );
+    }
+
+    // 2. Also keep settings/store_config in sync
+    setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: nextMembers }), {
+      merge: true,
+    }).catch((err) => handleFirestoreError(err, OperationType.UPDATE, 'settings/store_config'));
   };
 
   const toggleStaffLock = (id: string) => {
-    setSettings((prev) => ({
-      ...prev,
-      staffMembers: (prev.staffMembers || []).map((s) =>
-        s.id === id ? { ...s, isLocked: !s.isLocked } : s
-      ),
-    }));
+    const nextMembers = (settings.staffMembers || []).map((s) =>
+      s.id === id ? { ...s, isLocked: !s.isLocked } : s
+    );
+    setSettings((prev) => {
+      const updated = {
+        ...prev,
+        staffMembers: nextMembers,
+      };
+      saveToStorage(STORAGE_KEYS.SETTINGS, updated);
+      return updated;
+    });
+
+    const targetStaff = nextMembers.find((s) => s.id === id);
+
+    // 1. Persist to dedicated Firestore 'staff' collection document
+    if (targetStaff) {
+      setDoc(doc(db, 'staff', id), sanitizeForFirestore(targetStaff), { merge: true }).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `staff/${id}`)
+      );
+    }
+
+    // 2. Also keep settings/store_config in sync
+    setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: nextMembers }), {
+      merge: true,
+    }).catch((err) => handleFirestoreError(err, OperationType.UPDATE, 'settings/store_config'));
   };
 
   const deleteStaffMember = (id: string) => {
+    const remaining = (settings.staffMembers || []).filter((s) => s.id !== id);
     setSettings((prev) => {
-      const remaining = (prev.staffMembers || []).filter((s) => s.id !== id);
       const updated = {
         ...prev,
         staffMembers: remaining,
@@ -445,6 +766,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       saveToStorage(STORAGE_KEYS.SETTINGS, updated);
       return updated;
     });
+
+    // 1. Delete from dedicated Firestore 'staff' collection document
+    deleteDoc(doc(db, 'staff', id)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `staff/${id}`)
+    );
+
+    // 2. Also keep settings/store_config in sync
+    setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: remaining }), {
+      merge: true,
+    }).catch((err) => handleFirestoreError(err, OperationType.UPDATE, 'settings/store_config'));
 
     // Terminate active session if this staff member is currently logged in
     setCurrentUser((prevUser) => {
@@ -454,6 +785,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       return prevUser;
     });
+  };
+
+  const syncStaffToDatabase = async (): Promise<number> => {
+    const list = settings.staffMembers || [];
+    await Promise.all(
+      list.map((member) =>
+        setDoc(doc(db, 'staff', member.id), sanitizeForFirestore(member), { merge: true })
+      )
+    );
+    await setDoc(
+      doc(db, 'settings', 'store_config'),
+      sanitizeForFirestore({ staffMembers: list }),
+      { merge: true }
+    );
+    return list.length;
   };
 
   // Order management
@@ -510,6 +856,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setOrders((prev) => [newOrder, ...prev]);
     clearCart();
     setLastPlacedOrder(newOrder);
+
+    // Persist new order directly to Firestore
+    setDoc(doc(db, 'orders', newOrder.id), sanitizeForFirestore(newOrder)).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `orders/${newOrder.id}`)
+    );
+
     return newOrder;
   };
 
@@ -522,6 +874,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       cancellationReason?: string;
     }
   ) => {
+    let orderToSync: Partial<Order> | null = null;
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
@@ -560,7 +913,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           };
         }
 
-        return {
+        const updated: Order = {
           ...ord,
           status,
           shippingDetails: nextShippingDetails,
@@ -574,14 +927,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             processedAt: isNowCancelled && nextRefundUtr ? new Date().toISOString() : ord.refundDetails?.processedAt,
           },
         };
+
+        orderToSync = updated;
+        return updated;
       })
     );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
   };
 
   const updateOrderShipping = (
     orderId: string,
     shippingDetails: { courierName: string; trackingNumber: string; notes?: string }
   ) => {
+    let orderToSync: Partial<Order> | null = null;
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
@@ -596,7 +959,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           };
         }
 
-        return {
+        const updated: Order = {
           ...ord,
           status: 'Shipped',
           cancellationReason: undefined,
@@ -613,15 +976,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             notes: shippingDetails.notes?.trim(),
           },
         };
+        orderToSync = updated;
+        return updated;
       })
     );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
   };
 
   const markRefundProcessed = (orderId: string, refundUtr: string, notes?: string) => {
+    let orderToSync: Partial<Order> | null = null;
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
-        return {
+        const updated: Order = {
           ...ord,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           refundDetails: {
@@ -632,22 +1004,39 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             notes: notes || 'Refund processed via banking app',
           },
         };
+        orderToSync = updated;
+        return updated;
       })
     );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
   };
 
   const assignOrderStaff = (orderId: string, staffId: string, staffName: string) => {
+    let orderToSync: Partial<Order> | null = null;
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
-        return {
+        const updated: Order = {
           ...ord,
           assignedStaffId: staffId,
           assignedStaffName: staffName,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
         };
+        orderToSync = updated;
+        return updated;
       })
     );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
   };
 
   // Customer Cancellation Request
@@ -718,20 +1107,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     // Update order with cancellation request
+    const cancellationPayload = {
+      requested: true,
+      requestedAt: new Date().toISOString(),
+      reason: reason.trim(),
+      customerPhone: phone.trim(),
+      status: 'pending' as const,
+    };
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== targetOrder.id) return ord;
         return {
           ...ord,
-          cancellationRequest: {
-            requested: true,
-            requestedAt: new Date().toISOString(),
-            reason: reason.trim(),
-            customerPhone: phone.trim(),
-            status: 'pending' as const,
-          },
+          cancellationRequest: cancellationPayload,
         };
       })
+    );
+
+    // Persist to Firestore
+    updateDoc(doc(db, 'orders', targetOrder.id), sanitizeForFirestore({ cancellationRequest: cancellationPayload })).catch(
+      (err) => handleFirestoreError(err, OperationType.UPDATE, `orders/${targetOrder.id}`)
     );
 
     return {
@@ -739,13 +1135,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       message: 'Cancellation request recorded successfully. Our atelier team will review and process your refund.',
       order: {
         ...targetOrder,
-        cancellationRequest: {
-          requested: true,
-          requestedAt: new Date().toISOString(),
-          reason: reason.trim(),
-          customerPhone: phone.trim(),
-          status: 'pending' as const,
-        },
+        cancellationRequest: cancellationPayload,
       },
     };
   };
@@ -756,12 +1146,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     adminNotes?: string,
     refundUtr?: string
   ) => {
+    let orderToSync: Partial<Order> | null = null;
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
 
         if (action === 'approve') {
-          return {
+          const updated: Order = {
             ...ord,
             status: 'Cancelled',
             cancellationReason: ord.cancellationRequest?.reason || 'Customer requested cancellation approved',
@@ -784,8 +1175,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             },
             lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           };
+          orderToSync = updated;
+          return updated;
         } else {
-          return {
+          const updated: Order = {
             ...ord,
             cancellationRequest: {
               ...(ord.cancellationRequest || {
@@ -799,9 +1192,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             },
             lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           };
+          orderToSync = updated;
+          return updated;
         }
       })
     );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
   };
 
   const findOrdersByQuery = (query: string): Order[] => {
@@ -821,12 +1222,75 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
+  // Customer Product Reviews
+  const addReview = async (reviewData: Omit<ProductReview, 'id' | 'createdAt'>) => {
+    const newReview: ProductReview = {
+      ...reviewData,
+      id: `rev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      verifiedBuyer: reviewData.verifiedBuyer ?? true,
+    };
+
+    setReviews((prev) => [newReview, ...prev]);
+
+    await setDoc(doc(db, 'reviews', newReview.id), sanitizeForFirestore(newReview)).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `reviews/${newReview.id}`)
+    );
+  };
+
+  const getProductReviews = (productId: string): ProductReview[] => {
+    return reviews.filter((r) => r.productId === productId);
+  };
+
+  const getProductAverageRating = (productId: string): { rating: number; count: number } => {
+    const prodReviews = reviews.filter((r) => r.productId === productId);
+    if (prodReviews.length === 0) {
+      return { rating: 5.0, count: 0 };
+    }
+    const sum = prodReviews.reduce((acc, r) => acc + (r.rating || 5), 0);
+    return {
+      rating: Number((sum / prodReviews.length).toFixed(1)),
+      count: prodReviews.length,
+    };
+  };
+
   // Settings
   const updateSettings = (updates: Partial<StoreSettings>) => {
+    // Single point of storage: if either spreadsheet ID/URL is updated, keep both in sync
+    const effectiveSpreadsheetId =
+      updates.ordersSpreadsheetId ||
+      updates.analyticsSpreadsheetId ||
+      settings.ordersSpreadsheetId ||
+      settings.analyticsSpreadsheetId;
+    const effectiveSpreadsheetUrl =
+      updates.ordersSpreadsheetUrl ||
+      updates.analyticsSpreadsheetUrl ||
+      settings.ordersSpreadsheetUrl ||
+      settings.analyticsSpreadsheetUrl;
+
+    const mergedWithSheets: Partial<StoreSettings> = {
+      ...updates,
+      ...(effectiveSpreadsheetId
+        ? {
+            ordersSpreadsheetId: effectiveSpreadsheetId,
+            analyticsSpreadsheetId: effectiveSpreadsheetId,
+          }
+        : {}),
+      ...(effectiveSpreadsheetUrl
+        ? {
+            ordersSpreadsheetUrl: effectiveSpreadsheetUrl,
+            analyticsSpreadsheetUrl: effectiveSpreadsheetUrl,
+          }
+        : {}),
+    };
+
+    const safeUpdates =
+      currentUser?.type === 'admin'
+        ? mergedWithSheets
+        : { ...mergedWithSheets, adminPin: settings.adminPin };
+
     setSettings((prev) => {
-      // Non-admin staff cannot alter master adminPin
-      const safeUpdates = currentUser?.type === 'admin' ? updates : { ...updates, adminPin: prev.adminPin };
-      return {
+      const updated = {
         ...prev,
         ...safeUpdates,
         announcement: {
@@ -846,7 +1310,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           ...(safeUpdates.storefrontDisplay || {}),
         },
       };
+      return updated;
     });
+
+    // Persist to Firestore settings doc
+    setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore(safeUpdates), { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, 'settings/store_config')
+    );
   };
 
   const resetToInitialData = () => {
@@ -857,7 +1327,101 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     localStorage.clear();
   };
 
-  // Auth: 6-Digit PIN or Staff Credentials
+  // Auth: Google Login for Admin & Staff, PIN/Staff credentials compatibility
+  const googleLogin = (
+    firebaseUser: { email?: string | null; displayName?: string | null; photoURL?: string | null; uid: string },
+    accessToken: string
+  ): { success: boolean; error?: string; role?: 'admin' | 'staff' } => {
+    const email = (firebaseUser.email || '').trim().toLowerCase();
+    setCachedAccessToken(accessToken);
+
+    // 1. Check if email matches a registered staff member (exact or close match)
+    const staffList = settings.staffMembers || [];
+    let matchedStaff = staffList.find(
+      (s) =>
+        (s.email && s.email.trim().toLowerCase() === email) ||
+        (email && s.username.toLowerCase() === email.split('@')[0])
+    );
+
+    // 2. Tolerance for slight typos in registered Gmail ID (e.g. nandhagobanna96 vs nandhagobankannan96)
+    if (!matchedStaff && email) {
+      const emailLocal = email.split('@')[0];
+      matchedStaff = staffList.find((s) => {
+        if (!s.email) return false;
+        const sLocal = s.email.trim().toLowerCase().split('@')[0];
+        if (
+          emailLocal.startsWith(sLocal) ||
+          sLocal.startsWith(emailLocal) ||
+          (emailLocal.includes(sLocal) && Math.abs(emailLocal.length - sLocal.length) <= 4) ||
+          (sLocal.includes(emailLocal) && Math.abs(emailLocal.length - sLocal.length) <= 4)
+        ) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    if (matchedStaff) {
+      if (matchedStaff.isLocked) {
+        return {
+          success: false,
+          error: `The staff account for "${matchedStaff.name}" (@${matchedStaff.username}) is locked by the store administrator. Access is denied.`,
+        };
+      }
+
+      const staffUser: ActiveUser = {
+        type: 'staff',
+        username: matchedStaff.username,
+        name: matchedStaff.name,
+        email,
+        staffId: matchedStaff.id,
+        photoUrl: firebaseUser.photoURL || undefined,
+      };
+      setCurrentUser(staffUser);
+      saveToStorage(STORAGE_KEYS.CURRENT_USER, staffUser);
+      return { success: true, role: 'staff' };
+    }
+
+    // 3. Check if a designated admin Google email is configured
+    if (settings.adminGoogleEmail && settings.adminGoogleEmail.trim()) {
+      const adminEmail = settings.adminGoogleEmail.trim().toLowerCase();
+      if (adminEmail !== email) {
+        const registeredEmails = staffList
+          .map((s) => s.email)
+          .filter(Boolean)
+          .join(', ');
+
+        return {
+          success: false,
+          error: `Google account "${email}" is not authorized. Registered staff Gmail ID(s): ${
+            registeredEmails || 'None'
+          }. (Administrator: ${adminEmail}). Please ensure the Gmail ID in Staff Manager matches your Google account.`,
+        };
+      }
+    } else {
+      // First admin sign in registers as boutique admin
+      setSettings((prev) => {
+        const updated = {
+          ...prev,
+          adminGoogleEmail: email,
+        };
+        saveToStorage(STORAGE_KEYS.SETTINGS, updated);
+        return updated;
+      });
+    }
+
+    const adminUser: ActiveUser = {
+      type: 'admin',
+      username: email.split('@')[0] || 'admin',
+      name: firebaseUser.displayName || 'Boutique Administrator',
+      email,
+      photoUrl: firebaseUser.photoURL || undefined,
+    };
+    setCurrentUser(adminUser);
+    saveToStorage(STORAGE_KEYS.CURRENT_USER, adminUser);
+    return { success: true, role: 'admin' };
+  };
+
   const adminLogin = (pin: string): boolean => {
     const cleanPin = pin.trim();
     if (cleanPin.length === 6 && (cleanPin === settings.adminPin.trim() || cleanPin === '889988')) {
@@ -900,8 +1464,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return { success: true };
   };
 
-  const adminLogout = () => {
+  const adminLogout = async () => {
     setCurrentUser(null);
+    saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
+    await googleSignOut();
   };
 
   const isAdminLoggedIn = !!currentUser;
@@ -974,12 +1540,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateStaffMember,
         toggleStaffLock,
         deleteStaffMember,
+        syncStaffToDatabase,
+        reviews,
+        addReview,
+        getProductReviews,
+        getProductAverageRating,
         settings: exposedSettings,
         updateSettings,
         resetToInitialData,
         currentUser,
         isAdminLoggedIn,
         currentPermissions,
+        googleLogin,
         adminLogin,
         staffLogin,
         adminLogout,

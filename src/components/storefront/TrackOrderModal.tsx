@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Order, OrderStatus } from '../../types/store';
 import { formatPrice, openWhatsApp, formatWhatsAppCustomerCancellationRequest } from '../../utils/upi';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../../utils/firebase';
 import {
   Search,
   X,
@@ -17,6 +19,8 @@ import {
   RotateCcw,
   Ban,
   ArrowRight,
+  Loader2,
+  ExternalLink,
 } from 'lucide-react';
 
 interface TrackOrderModalProps {
@@ -29,27 +33,50 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
   const [searchedQuery, setSearchedQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Direct Firestore fallback state in case real-time snapshot is still in-flight
+  const [firestoreOrders, setFirestoreOrders] = useState<Order[]>([]);
+  const [isSearchingFirestore, setIsSearchingFirestore] = useState(false);
+
   // Cancellation Request Form State
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState('Change of wedding / event schedule');
   const [customReasonText, setCustomReasonText] = useState('');
   const [cancelStatusMsg, setCancelStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Check URL params if present (e.g., #track?order=AARA-1082 or ?order=AARA-1082)
+  // Check URL params if present (e.g. ?order=AARA-1082, #track?order=AARA-1082, ?track=AARA-1082)
   useEffect(() => {
     const syncFromUrl = () => {
       if (typeof window === 'undefined') return;
       const fullUrl = window.location.href;
-      const matchOrder = fullUrl.match(/[?&#]order=([^&#]+)/i);
-      const matchPhone = fullUrl.match(/[?&#]phone=([^&#]+)/i);
 
-      const targetOrder = matchOrder ? decodeURIComponent(matchOrder[1]).trim() : '';
-      const targetPhone = matchPhone ? decodeURIComponent(matchPhone[1]).trim() : '';
+      // 1. Try standard URLSearchParams first
+      let targetOrder = '';
+      let targetPhone = '';
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        targetOrder = searchParams.get('order') || searchParams.get('track') || searchParams.get('trackOrder') || '';
+        targetPhone = searchParams.get('phone') || '';
+      } catch (e) {}
+
+      // 2. Fallback regex to capture parameters if inside hash (e.g. #track?order=...)
+      if (!targetOrder) {
+        const matchOrder = fullUrl.match(/[?&#](?:order|track|trackOrder)=([^&#]+)/i);
+        if (matchOrder) {
+          targetOrder = decodeURIComponent(matchOrder[1]).trim();
+        }
+      }
+      if (!targetPhone) {
+        const matchPhone = fullUrl.match(/[?&#]phone=([^&#]+)/i);
+        if (matchPhone) {
+          targetPhone = decodeURIComponent(matchPhone[1]).trim();
+        }
+      }
 
       const paramVal = targetOrder || targetPhone;
       if (paramVal) {
-        setQuery(paramVal);
-        setSearchedQuery(paramVal);
+        const cleaned = paramVal.trim();
+        setQuery(cleaned);
+        setSearchedQuery(cleaned);
       }
     };
 
@@ -62,16 +89,19 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
     };
   }, []);
 
-  // Compute matched orders dynamically & reactively from live `orders` state
-  const matchedOrders = useMemo(() => {
+  // Compute matched orders from local state
+  const localMatchedOrders = useMemo(() => {
     if (!searchedQuery.trim()) return [];
     const clean = searchedQuery.trim().toLowerCase();
+    const cleanOrder = clean.replace(/^[#\s]+/, '').trim();
     const cleanDigits = searchedQuery.replace(/[^0-9]/g, '');
 
-    // 1. Strict exact Order Number match first to avoid showing wrong order
-    const exactOrderMatch = orders.find(
-      (o) => o.orderNumber.trim().toLowerCase() === clean
-    );
+    // 1. Strict exact Order Number match first
+    const exactOrderMatch = orders.find((o) => {
+      const oNum = o.orderNumber.trim().toLowerCase();
+      const oNumClean = oNum.replace(/^[#\s]+/, '').trim();
+      return oNum === clean || oNumClean === cleanOrder;
+    });
     if (exactOrderMatch) {
       return [exactOrderMatch];
     }
@@ -87,11 +117,12 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
     // 3. Fallback matching
     return orders
       .filter((o) => {
-        const matchOrderNum = o.orderNumber.toLowerCase().includes(clean);
+        const oNum = o.orderNumber.toLowerCase().replace(/^[#\s]+/, '');
+        const matchOrderNum = oNum.includes(cleanOrder);
         const matchName = o.customer.name.toLowerCase().includes(clean);
         const matchUtr = o.upiTransactionId.toLowerCase().includes(clean);
 
-        // Only match phone number if query looks like phone digits (at least 6 digits)
+        // Match phone number
         const matchPhone =
           cleanDigits.length >= 6 &&
           o.customer.phone.replace(/[^0-9]/g, '').includes(cleanDigits);
@@ -100,6 +131,66 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [orders, searchedQuery]);
+
+  // If order was not found in local memory, directly query Firestore
+  useEffect(() => {
+    if (!searchedQuery.trim() || localMatchedOrders.length > 0) {
+      setFirestoreOrders([]);
+      return;
+    }
+
+    let isSubscribed = true;
+    setIsSearchingFirestore(true);
+
+    const fetchFromFirestore = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'orders'));
+        if (!isSubscribed) return;
+        const clean = searchedQuery.trim().toLowerCase();
+        const cleanOrder = clean.replace(/^[#\s]+/, '').trim();
+        const cleanDigits = searchedQuery.replace(/[^0-9]/g, '');
+
+        const results: Order[] = [];
+        snap.forEach((d) => {
+          const ord = { id: d.id, ...d.data() } as Order;
+          const oNum = (ord.orderNumber || '').trim().toLowerCase();
+          const oNumClean = oNum.replace(/^[#\s]+/, '').trim();
+          const oPhone = (ord.customer?.phone || '').replace(/[^0-9]/g, '');
+
+          if (
+            oNum === clean ||
+            oNumClean === cleanOrder ||
+            ord.upiTransactionId?.toLowerCase() === clean ||
+            (cleanDigits.length >= 6 && oPhone.includes(cleanDigits))
+          ) {
+            results.push(ord);
+          }
+        });
+
+        if (isSubscribed) {
+          setFirestoreOrders(results);
+        }
+      } catch (err) {
+        console.warn('Direct Firestore order lookup:', err);
+      } finally {
+        if (isSubscribed) {
+          setIsSearchingFirestore(false);
+        }
+      }
+    };
+
+    fetchFromFirestore();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [searchedQuery, localMatchedOrders.length]);
+
+  // Combined matched orders
+  const matchedOrders = useMemo(() => {
+    if (localMatchedOrders.length > 0) return localMatchedOrders;
+    return firestoreOrders;
+  }, [localMatchedOrders, firestoreOrders]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -228,6 +319,14 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               </p>
               <p className="text-xs max-w-sm mx-auto mt-1">
                 Enter your order reference (e.g. AARA-1082) or mobile number above to see live stage status, courier consignment, and cancellation options.
+              </p>
+            </div>
+          ) : isSearchingFirestore ? (
+            <div className="py-12 text-center text-neutral-500">
+              <Loader2 className="w-8 h-8 text-amber-600 animate-spin mx-auto mb-2" />
+              <p className="font-serif text-base font-bold text-neutral-800">Searching Boutique Database...</p>
+              <p className="text-xs max-w-sm mx-auto mt-1">
+                Checking order reference "{searchedQuery}" with live workshop ledger.
               </p>
             </div>
           ) : matchedOrders.length === 0 ? (

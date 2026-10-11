@@ -81,7 +81,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                     : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
                 }`}>
-                  {isAdmin ? 'Admin Console' : `Staff: @${currentUser?.username}`}
+                  {isAdmin
+                    ? `Admin: ${currentUser?.email || 'Owner'}`
+                    : `Staff: @${currentUser?.username}${currentUser?.email ? ` (${currentUser.email})` : ''}`}
                 </span>
               </div>
             </div>

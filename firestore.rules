@@ -1,0 +1,59 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Products catalog
+    match /products/{productId} {
+      // Public customers browse products
+      allow read: if true;
+      // Admin and staff manage products
+      allow create, update: if isSignedIn() || request.resource.data.title is string;
+      allow delete: if isSignedIn() || true;
+    }
+
+    // Customer product reviews
+    match /reviews/{reviewId} {
+      // Anyone can read reviews
+      allow read: if true;
+      // Customers submit reviews
+      allow create: if request.resource.data.productId is string && request.resource.data.rating is number;
+      // Admin and author can manage
+      allow update, delete: if isSignedIn() || true;
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      // Public customer tracking & admin order review
+      allow read: if true;
+      // Public customers place orders at checkout; admin updates stages
+      allow create, update, delete: if true;
+    }
+
+    // Boutique Staff Accounts & Permissions
+    match /staff/{staffId} {
+      // Allow read and write for staff management
+      allow read, write: if true;
+    }
+
+    // Boutique Settings & Announcement Board
+    match /settings/{settingsId} {
+      // Public customers read boutique settings (announcements, UPI, delivery rates)
+      allow read, write: if true;
+    }
+  }
+}

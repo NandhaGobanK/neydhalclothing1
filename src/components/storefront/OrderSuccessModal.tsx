@@ -1,14 +1,14 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice, openWhatsApp } from '../../utils/upi';
-import { CheckCircle2, MessageSquare, Printer, Copy, Check, ArrowRight } from 'lucide-react';
+import { CheckCircle2, MessageSquare, Printer, Copy, Check, ArrowRight, Truck } from 'lucide-react';
 
 interface OrderSuccessModalProps {
   onClose: () => void;
 }
 
 export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose }) => {
-  const { lastPlacedOrder, settings } = useStore();
+  const { lastPlacedOrder, settings, setIsTrackOrderOpen } = useStore();
   const [copiedId, setCopiedId] = React.useState(false);
 
   if (!lastPlacedOrder) return null;
@@ -122,20 +122,32 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
         </div>
 
         {/* Actions */}
-        <div className="p-4 sm:p-6 bg-neutral-50 border-t border-neutral-100 flex flex-col sm:flex-row gap-3">
+        <div className="p-4 sm:p-6 bg-neutral-50 border-t border-neutral-100 flex flex-col sm:flex-row gap-2.5">
           <button
             onClick={handleWhatsAppChat}
             className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-sm transition"
           >
             <MessageSquare className="w-4 h-4 fill-white" />
-            <span>Chat with Boutique Concierge</span>
+            <span>Chat on WhatsApp</span>
+          </button>
+
+          <button
+            onClick={() => {
+              onClose();
+              setIsTrackOrderOpen(true);
+              window.location.hash = `track?order=${encodeURIComponent(lastPlacedOrder.orderNumber)}`;
+            }}
+            className="py-3 px-4 rounded-xl border border-neutral-300 hover:border-neutral-900 bg-white text-neutral-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition"
+          >
+            <Truck className="w-3.5 h-3.5 text-amber-600" />
+            <span>Track Order Now</span>
           </button>
 
           <button
             onClick={onClose}
-            className="py-3 px-6 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs flex items-center justify-center gap-2 transition"
+            className="py-3 px-5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs flex items-center justify-center gap-2 transition"
           >
-            <span>Back to Boutique</span>
+            <span>Back to Store</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

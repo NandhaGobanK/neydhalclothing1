@@ -8,16 +8,22 @@ interface HeroBannerProps {
 
 export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
   const { settings, setIsTrackOrderOpen } = useStore();
+  const [bannerError, setBannerError] = React.useState(false);
+
+  React.useEffect(() => {
+    setBannerError(false);
+  }, [settings.storefrontDisplay?.heroBannerImageUrl]);
+
   const display = settings.storefrontDisplay || {
-    heroHeadline: 'Timeless Drapes, Woven for Generations.',
-    heroSubheadline: 'Discover authentic handcrafted Kanjivaram bridal silks, Varanasi Kadwa brocades, and feather-light Chanderi tissue sarees. Direct from the master weavers of India to your doorstep.',
+    heroHeadline: settings.boutiqueName || 'Handcrafted Heritage Sarees',
+    heroSubheadline: '',
     showHeroBanner: true,
-    showTrustBadges: true,
-    showCraftsmanshipStory: true,
-    storyTitle: 'The Heritage Loom Legacy',
-    storyContent: 'Every saree in our collection is an heirloom woven with mulberry silk and authentic zari by master weavers across Kanchipuram and Varanasi.',
+    showTrustBadges: false,
+    showCraftsmanshipStory: false,
+    storyTitle: '',
+    storyContent: '',
     showTrackOrder: true,
-    freeShippingText: 'Free Insured Express Delivery across India (Tamper-Proof Box)',
+    freeShippingText: '',
   };
 
   if (display.showHeroBanner === false) {
@@ -30,8 +36,9 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
         {/* Background Hero Image with measured contrast scrim */}
         <div className="absolute inset-0 z-0">
           <img
-            src={display.heroBannerImageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+            src={(!bannerError && display.heroBannerImageUrl) ? display.heroBannerImageUrl : '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
             alt="Luxury Saree Boutique Showroom"
+            onError={() => setBannerError(true)}
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover object-center opacity-40 scale-105 transform hover:scale-100 transition-transform duration-1000 ease-out"
           />
@@ -58,12 +65,14 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
             ) : null}
 
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif font-bold text-white tracking-tight leading-[1.1] mb-6">
-              {display.heroHeadline || 'Timeless Drapes, Woven for Generations.'}
+              {display.heroHeadline || settings.boutiqueName || 'Handcrafted Heritage Sarees'}
             </h1>
 
-            <p className="text-neutral-300 text-base sm:text-lg mb-8 leading-relaxed font-light">
-              {display.heroSubheadline || ''}
-            </p>
+            {display.heroSubheadline && (
+              <p className="text-neutral-300 text-base sm:text-lg mb-8 leading-relaxed font-light">
+                {display.heroSubheadline}
+              </p>
+            )}
 
             <div className="flex flex-wrap items-center gap-4">
               <button
@@ -95,13 +104,11 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
       {display.showCraftsmanshipStory && display.storyContent && (
         <section className="bg-amber-50/60 border-b border-amber-200/60 py-10 px-4 sm:px-6">
           <div className="max-w-4xl mx-auto text-center">
-            <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-800 uppercase tracking-widest mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              <span>Artisan Loom Lineage</span>
-            </div>
-            <h3 className="font-serif text-2xl font-bold text-neutral-900 mb-3">
-              {display.storyTitle || 'The Heritage Loom Legacy'}
-            </h3>
+            {display.storyTitle && (
+              <h3 className="font-serif text-2xl font-bold text-neutral-900 mb-3">
+                {display.storyTitle}
+              </h3>
+            )}
             <p className="text-neutral-700 text-xs sm:text-sm leading-relaxed font-light">
               {display.storyContent}
             </p>
