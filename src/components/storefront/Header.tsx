@@ -56,9 +56,11 @@ export const Header: React.FC<HeaderProps> = ({
               className="h-10 sm:h-12 w-auto max-w-[140px] sm:max-w-[180px] object-contain rounded-md"
             />
           ) : (
-            <span className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-600 to-rose-700 flex items-center justify-center text-amber-100 font-serif font-bold text-sm shadow-inner">
-              आ
-            </span>
+            <img
+              src="/logo.png"
+              alt={settings.boutiqueName || 'Neydhal Logo'}
+              className="w-9 h-9 sm:w-10 sm:h-10 object-contain rounded-lg shadow-xs"
+            />
           )}
           <span className="truncate max-w-[200px] sm:max-w-none">{settings.boutiqueName}</span>
         </a>

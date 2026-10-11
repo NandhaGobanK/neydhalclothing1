@@ -74,9 +74,11 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
           <div className="py-2 sm:py-2.5 flex items-center justify-between flex-wrap gap-2 sm:gap-3 border-b border-neutral-800/80">
             {/* Brand & Portal Badge */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap">
-              <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-amber-600 to-rose-700 flex items-center justify-center text-amber-100 font-serif font-bold text-xs sm:text-sm shadow-inner shrink-0">
-                Aa
-              </span>
+              <img
+                src={settings.logoUrl || '/logo.png'}
+                alt={settings.boutiqueName}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-neutral-900 border border-amber-500/40 p-0.5 shrink-0 shadow-sm"
+              />
               <div className="min-w-0 flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <h1 className="font-serif text-sm sm:text-base font-bold text-white truncate max-w-[120px] sm:max-w-[200px] md:max-w-xs">
                   {settings.boutiqueName}

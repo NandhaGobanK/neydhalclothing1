@@ -1,9 +1,9 @@
 {
   "id": "/",
-  "name": "Aara Heritage Saree Boutique",
-  "short_name": "Aara Sarees",
-  "description": "Exquisite handcrafted Kanjivaram, Banarasi, and Chanderi sarees with instant UPI payment and direct boutique concierge.",
-  "theme_color": "#831843",
+  "name": "Neydhal Clothing",
+  "short_name": "Neydhal",
+  "description": "Neydhal Clothing: Exquisite handcrafted sarees and ethnic couture with instant UPI payment and direct concierge.",
+  "theme_color": "#171717",
   "background_color": "#fafafa",
   "display": "standalone",
   "start_url": "/",

@@ -204,8 +204,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const [settings, setSettings] = useState<StoreSettings>(() => {
     const loaded = loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    const boutiqueName =
+      !loaded.boutiqueName || loaded.boutiqueName.includes('Aara')
+        ? 'Neydhal Clothing'
+        : loaded.boutiqueName;
+    const logoUrl =
+      !loaded.logoUrl || loaded.logoUrl.includes('aara')
+        ? '/logo.png'
+        : loaded.logoUrl;
     const updated: StoreSettings = {
       ...loaded,
+      boutiqueName,
+      logoUrl,
       delivery: {
         shippingFee: loaded.delivery?.shippingFee ?? INITIAL_SETTINGS.delivery.shippingFee,
         freeDeliveryEnabled: loaded.delivery?.freeDeliveryEnabled ?? INITIAL_SETTINGS.delivery.freeDeliveryEnabled,
@@ -353,9 +363,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data() as Partial<StoreSettings>;
+          const sanitizedBoutiqueName =
+            !data.boutiqueName || data.boutiqueName.includes('Aara')
+              ? 'Neydhal Clothing'
+              : data.boutiqueName;
+          const sanitizedLogoUrl =
+            !data.logoUrl || data.logoUrl.includes('aara')
+              ? '/logo.png'
+              : data.logoUrl;
+
+          // If the Firestore document still has the outdated name or missing logo, update it
+          if (data.boutiqueName?.includes('Aara') || !data.logoUrl) {
+            updateDoc(doc(db, 'settings', 'store_config'), {
+              boutiqueName: 'Neydhal Clothing',
+              logoUrl: '/logo.png',
+            }).catch(() => {});
+          }
+
           setSettings((prev) => ({
             ...prev,
             ...data,
+            boutiqueName: sanitizedBoutiqueName,
+            logoUrl: sanitizedLogoUrl,
             delivery: {
               ...prev.delivery,
               ...(data.delivery || {}),

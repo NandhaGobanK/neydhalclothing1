@@ -31,8 +31,8 @@ export const ShareStoreModal: React.FC<ShareStoreModalProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   const storeUrl = getPublicStoreUrl(settings) || (typeof window !== 'undefined' ? window.location.origin : '');
-  const boutiqueName = settings.boutiqueName || 'Heritage Saree Boutique';
-  const tagline = settings.tagline || 'Exquisite Handcrafted Handloom Sarees';
+  const boutiqueName = settings.boutiqueName || 'Neydhal Clothing';
+  const tagline = settings.tagline || 'Pure Silk & Handcrafted Heirlooms';
 
   const defaultShareMessage = `Namaste! 🙏✨\nExplore authentic handcrafted sarees and exquisite handlooms at *${boutiqueName}*.\n\n${tagline}\n\n🛍️ Browse our latest collection & order online:\n👉 ${storeUrl}\n\n📦 Insured Express Delivery across India.`;
 

@@ -7,8 +7,8 @@ import { StoreSettings } from '../types/store';
 export function syncPWAAndDocumentMetadata(settings: Partial<StoreSettings>) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-  const boutiqueName = settings.boutiqueName?.trim() || 'Aara Heritage Saree Atelier';
-  const tagline = settings.tagline?.trim() || 'Pure Silk & Handcrafted Heirlooms of India';
+  const boutiqueName = settings.boutiqueName?.trim() || 'Neydhal Clothing';
+  const tagline = settings.tagline?.trim() || 'Pure Silk & Handcrafted Heirlooms';
   const theme = settings.theme || 'maroon';
 
   // 1. Update Document Title
