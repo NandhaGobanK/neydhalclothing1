@@ -417,16 +417,58 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
 
                     {/* Stage Timeline (When Not Cancelled) */}
                     {!isCancelled ? (
-                      <div>
-                        <div className="flex items-center justify-between">
+                      <div className="space-y-3">
+                        {/* Assigned Concierge Status Card (User Request) */}
+                        {order.assignedStaffName ? (
+                          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-3">
+                              <span className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-600 to-rose-700 text-amber-100 font-serif font-bold text-sm flex items-center justify-center shadow-xs shrink-0">
+                                {order.assignedStaffName.charAt(0)}
+                              </span>
+                              <div>
+                                <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                                  Dedicated Concierge Assigned
+                                </span>
+                                <h4 className="font-serif font-bold text-sm text-neutral-900">
+                                  {order.assignedStaffName}
+                                </h4>
+                                <p className="text-[11px] text-neutral-600">
+                                  Actively coordinating your saree reservation and loom verification.
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold shrink-0">
+                              Concierge Assigned ✓
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200 flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-3">
+                              <span className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                <Clock className="w-4 h-4 text-blue-600" />
+                              </span>
+                              <div>
+                                <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">
+                                  Order in Intake Queue
+                                </span>
+                                <h4 className="font-serif font-bold text-sm text-neutral-900">
+                                  Awaiting Staff Concierge Claim
+                                </h4>
+                                <p className="text-[11px] text-neutral-600">
+                                  Your order has been placed into our queue. A staff concierge will claim and close the deal shortly.
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-300 text-[10px] font-bold shrink-0">
+                              In Queue
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-1">
                           <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide">
                             Order Progress
                           </span>
-                          {order.assignedStaffName && (
-                            <span className="text-[11px] text-neutral-600">
-                              Attending Concierge: <strong>{order.assignedStaffName}</strong>
-                            </span>
-                          )}
                         </div>
                         <div className="grid grid-cols-4 gap-2 mt-2 pt-2">
                           {[
@@ -600,36 +642,38 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
 
                     {/* Bottom Actions: Cancel Request or WhatsApp Support */}
                     <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100">
-                      {canRequestCancel ? (
-                        <button
-                          onClick={() => setCancellingOrder(order)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 font-medium text-xs transition"
-                        >
-                          <Ban className="w-3.5 h-3.5" />
-                          <span>Request Order Cancellation</span>
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-neutral-400">
-                          {!isPublicCancellationEnabled
-                            ? 'Cancellation requests disabled'
-                            : isCancelled
-                            ? 'Order already cancelled'
-                            : order.status === 'Shipped'
-                            ? 'Dispatched (Cancellations not permitted after shipping)'
-                            : order.status === 'Delivered'
-                            ? 'Delivered'
-                            : order.cancellationRequest?.requested
-                            ? 'Cancellation requested (Under Review)'
-                            : `Cannot cancel in ${order.status} state`}
-                        </span>
-                      )}
+                      {isPublicCancellationEnabled ? (
+                        canRequestCancel ? (
+                          <button
+                            onClick={() => setCancellingOrder(order)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 font-medium text-xs transition"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                            <span>Request Order Cancellation</span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-neutral-400">
+                            {isCancelled
+                              ? 'Order already cancelled'
+                              : order.status === 'Shipped'
+                              ? 'Dispatched (Cancellations not permitted after shipping)'
+                              : order.status === 'Delivered'
+                              ? 'Delivered'
+                              : order.cancellationRequest?.requested
+                              ? 'Cancellation requested (Under Review)'
+                              : `Cannot cancel in ${order.status} state`}
+                          </span>
+                        )
+                      ) : null}
 
                       <button
                         onClick={() => {
                           const text = `Namaste! Regarding my saree order #${order.orderNumber} for ${formatPrice(order.totalAmount)}. Status: ${order.status}.`;
                           openWhatsApp(settings.contactPhone, text);
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition ml-auto"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition ${
+                          !isPublicCancellationEnabled ? 'w-full sm:w-auto justify-center' : 'ml-auto'
+                        }`}
                       >
                         <MessageSquare className="w-3.5 h-3.5 fill-white" />
                         <span>Chat with Boutique Concierge</span>

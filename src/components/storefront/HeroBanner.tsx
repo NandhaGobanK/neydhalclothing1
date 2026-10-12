@@ -32,22 +32,21 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
 
   return (
     <>
-      <div className="relative overflow-hidden bg-neutral-950 text-white">
-        {/* Background Hero Image with measured contrast scrim */}
+      <div className="relative overflow-hidden bg-neutral-950 text-white min-h-[460px] sm:min-h-[540px] flex items-center">
+        {/* Full-Visibility Hero Image (No dark scrim or heavy gradient shading) */}
         <div className="absolute inset-0 z-0">
           <img
             src={(!bannerError && display.heroBannerImageUrl) ? display.heroBannerImageUrl : '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
             alt="Luxury Saree Boutique Showroom"
             onError={() => setBannerError(true)}
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover object-center opacity-40 scale-105 transform hover:scale-100 transition-transform duration-1000 ease-out"
+            className="w-full h-full object-cover object-center opacity-100"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-neutral-950 via-neutral-950/85 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-transparent to-neutral-950/60" />
         </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 lg:py-28">
-          <div className="max-w-2xl">
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 w-full">
+          {/* Frosted text panel to maintain crystal readability while keeping the banner image completely visible */}
+          <div className="max-w-2xl bg-neutral-950/80 backdrop-blur-md p-6 sm:p-10 rounded-3xl border border-white/15 shadow-2xl">
             {/* Dynamic text kicker configured by admin */}
             {display.heroKickerTags && display.heroKickerTags.length > 0 ? (
               <div className="flex items-center gap-2 text-amber-400 text-xs tracking-widest font-semibold uppercase mb-4 flex-wrap">
@@ -64,12 +63,12 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
               </div>
             ) : null}
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif font-bold text-white tracking-tight leading-[1.1] mb-6">
+            <h1 className="text-3xl sm:text-5xl lg:text-5xl font-serif font-bold text-white tracking-tight leading-[1.15] mb-4">
               {display.heroHeadline || settings.boutiqueName || 'Handcrafted Heritage Sarees'}
             </h1>
 
             {display.heroSubheadline && (
-              <p className="text-neutral-300 text-base sm:text-lg mb-8 leading-relaxed font-light">
+              <p className="text-neutral-200 text-sm sm:text-base mb-6 leading-relaxed font-light">
                 {display.heroSubheadline}
               </p>
             )}
@@ -77,7 +76,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
             <div className="flex flex-wrap items-center gap-4">
               <button
                 onClick={onExploreCatalog}
-                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold text-sm transition-all shadow-lg shadow-amber-500/20 whitespace-nowrap"
+                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold text-sm transition-all shadow-lg shadow-amber-500/20 whitespace-nowrap cursor-pointer"
               >
                 <span>Explore Boutique Catalog</span>
                 <ArrowRight className="w-4 h-4" />

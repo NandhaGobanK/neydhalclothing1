@@ -90,8 +90,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
       setErrorMsg('Please provide a valid 10-digit mobile contact number.');
       return false;
     }
-    if (!email.trim() || !email.includes('@')) {
-      setErrorMsg('Please provide a valid email address for order confirmation.');
+    if (email.trim() && !email.includes('@')) {
+      setErrorMsg('Please provide a valid email address or leave it blank.');
       return false;
     }
     if (!address.trim() || !city.trim() || !state.trim() || !pincode.trim()) {
@@ -259,12 +259,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-neutral-700 font-medium mb-1">Email Address *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-neutral-700 font-medium">Email Address (Optional)</label>
+                  <span className="text-[10px] text-neutral-400 font-medium">Optional</span>
+                </div>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="For digital invoice & tracking updates"
+                  placeholder="Optional: For digital invoice & tracking updates"
                   className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 text-neutral-900"
                 />
               </div>
@@ -436,49 +439,63 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
             </div>
           </div>
 
-          {/* Section 4: Refund Details (Now Optional as per user request) */}
+          {/* Section 4: Refund Details / Notice (Controlled by Refund toggle option) */}
           <div className="pt-4 border-t border-neutral-200">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="font-serif text-base sm:text-lg font-bold text-neutral-900 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-emerald-800 text-emerald-100 text-xs flex items-center justify-center font-sans font-bold">3</span>
-                <span>Customer Refund Details (Optional)</span>
-              </h3>
-              <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                Optional
-              </span>
-            </div>
+            {settings.storefrontDisplay?.allowPublicRefunds !== false ? (
+              <>
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="font-serif text-base sm:text-lg font-bold text-neutral-900 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-emerald-800 text-emerald-100 text-xs flex items-center justify-center font-sans font-bold">3</span>
+                    <span>Customer Refund Details (Optional)</span>
+                  </h3>
+                  <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Optional
+                  </span>
+                </div>
 
-            <p className="text-xs text-neutral-500 mb-3">
-              Optional details to expedite an instant refund to your bank in case of cancellation or unavailability.
-            </p>
+                <p className="text-xs text-neutral-500 mb-3">
+                  Optional details to expedite an instant refund to your bank in case of cancellation or unavailability.
+                </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div>
-                <label className="block text-neutral-700 font-medium mb-1">
-                  Your Refund UPI ID (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={refundUpiId}
-                  onChange={(e) => setRefundUpiId(e.target.value)}
-                  placeholder="e.g. yourname@oksbi or 9876543210@paytm"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white font-mono text-xs focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block text-neutral-700 font-medium mb-1">
+                      Your Refund UPI ID (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={refundUpiId}
+                      onChange={(e) => setRefundUpiId(e.target.value)}
+                      placeholder="e.g. yourname@oksbi or 9876543210@paytm"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white font-mono text-xs focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-700 font-medium mb-1">
+                      Refund UPI Mobile Phone (Optional)
+                    </label>
+                    <input
+                      type="tel"
+                      value={refundUpiPhone}
+                      onChange={(e) => setRefundUpiPhone(e.target.value)}
+                      placeholder="Mobile number linked to your UPI"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-xs focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-950 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                  <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Important Cancellation & Refund Policy</span>
+                </div>
+                <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                  No cancellation once orders are placed. If you have paid and have any queries or requests related to refunds, please contact our boutique administrators or concierge staff assigned to your order for negotiations.
+                </p>
               </div>
-
-              <div>
-                <label className="block text-neutral-700 font-medium mb-1">
-                  Refund UPI Mobile Phone (Optional)
-                </label>
-                <input
-                  type="tel"
-                  value={refundUpiPhone}
-                  onChange={(e) => setRefundUpiPhone(e.target.value)}
-                  placeholder="Mobile number linked to your UPI"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-xs focus:outline-hidden"
-                />
-              </div>
-            </div>
+            )}
           </div>
         </div>
 

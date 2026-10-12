@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { StaffMember } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
+import { syncStaffLedgerToGoogleSheet } from '../../utils/googleSheets';
 import {
   Users,
   UserPlus,
@@ -26,6 +27,10 @@ import {
   Check,
   Server,
   Cloud,
+  FileSpreadsheet,
+  Download,
+  RefreshCw,
+  Activity,
 } from 'lucide-react';
 
 export const StaffManager: React.FC = () => {
@@ -37,6 +42,8 @@ export const StaffManager: React.FC = () => {
     deleteStaffMember,
     syncStaffToDatabase,
     orders,
+    settings,
+    updateSettings,
     currentUser,
     currentPermissions,
   } = useStore();
@@ -46,11 +53,91 @@ export const StaffManager: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [staffToDelete, setStaffToDelete] = useState<StaffMember | null>(null);
-  const [showHostingModal, setShowHostingModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedStaffEmail, setCopiedStaffEmail] = useState<string | null>(null);
   const [isSyncingDB, setIsSyncingDB] = useState(false);
   const [dbSyncSuccess, setDbSyncSuccess] = useState<string | null>(null);
+
+  // Staff & Ledger Google Sheets Sync & CSV Export (User Request)
+  const [isSyncingLedger, setIsSyncingLedger] = useState(false);
+  const [ledgerSyncSuccess, setLedgerSyncSuccess] = useState<{ url: string; count: number } | null>(null);
+  const [ledgerSyncError, setLedgerSyncError] = useState<string | null>(null);
+
+  const handleSyncLedger = async () => {
+    setIsSyncingLedger(true);
+    setLedgerSyncSuccess(null);
+    setLedgerSyncError(null);
+
+    try {
+      const targetSpreadsheetId =
+        settings.ordersSpreadsheetId || settings.analyticsSpreadsheetId;
+      const res = await syncStaffLedgerToGoogleSheet(
+        orders,
+        staffMembers,
+        settings.boutiqueName,
+        targetSpreadsheetId
+      );
+
+      if (res.success) {
+        setLedgerSyncSuccess({ url: res.spreadsheetUrl, count: res.rowsUpdated });
+        updateSettings({
+          ordersSpreadsheetId: res.spreadsheetId,
+          ordersSpreadsheetUrl: res.spreadsheetUrl,
+          analyticsSpreadsheetId: res.spreadsheetId,
+          analyticsSpreadsheetUrl: res.spreadsheetUrl,
+        });
+      }
+    } catch (err: any) {
+      setLedgerSyncError(err?.message || 'Failed to sync ledger with Google Sheets');
+    } finally {
+      setIsSyncingLedger(false);
+    }
+  };
+
+  const handleExportLedgerCsv = () => {
+    const headers = [
+      'Order Number',
+      'Customer Name',
+      'Customer Phone',
+      'Order Status',
+      'Order Total (₹)',
+      'Assigned Boutique Staff',
+      'Staff Username',
+      'Staff Role',
+      'Last Work / Handover Action',
+    ];
+
+    const rows = orders.map((ord) => {
+      const assigned = staffMembers.find((s) => s.id === ord.assignedStaffId);
+      const lastLog = ord.assignmentHistory && ord.assignmentHistory.length > 0
+        ? ord.assignmentHistory[ord.assignmentHistory.length - 1]
+        : null;
+      const lastLogText = lastLog
+        ? `[${new Date(lastLog.timestamp).toLocaleTimeString('en-IN')}] ${lastLog.staffName}: ${lastLog.action}${lastLog.note ? ` (${lastLog.note})` : ''}`
+        : 'Initial assignment';
+
+      return [
+        ord.orderNumber,
+        `"${ord.customer.name}"`,
+        `"${ord.customer.phone}"`,
+        ord.status,
+        ord.totalAmount,
+        `"${ord.assignedStaffName || 'Unassigned'}"`,
+        `"${assigned ? `@${assigned.username}` : (ord.lastUpdatedBy ? `@${ord.lastUpdatedBy}` : '')}"`,
+        `"${assigned ? assigned.role : ''}"`,
+        `"${lastLogText.replace(/"/g, '""')}"`,
+      ];
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `staff_ledger_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Form states
   const [name, setName] = useState('');
@@ -227,14 +314,6 @@ export const StaffManager: React.FC = () => {
             <span>{isSyncingDB ? 'Syncing DB...' : dbSyncSuccess || 'Sync to Database'}</span>
           </button>
 
-          <button
-            onClick={() => setShowHostingModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100/80 text-amber-900 text-xs font-semibold shadow-xs transition cursor-pointer"
-          >
-            <Globe className="w-3.5 h-3.5 text-amber-700" />
-            <span>Hosting & Setup Guide</span>
-          </button>
-
           {canEditStaff ? (
             <button
               onClick={openAddModal}
@@ -320,24 +399,39 @@ export const StaffManager: React.FC = () => {
             >
               <div>
                 {/* Status & Role Pill */}
-                <div className="flex items-center justify-between mb-3">
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                      staff.role === 'manager'
-                        ? 'bg-purple-100 text-purple-800'
-                        : staff.role === 'fulfillment'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {staff.role}
-                  </span>
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                        staff.role === 'manager'
+                          ? 'bg-purple-100 text-purple-800'
+                          : staff.role === 'fulfillment'
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {staff.role}
+                    </span>
+
+                    {/* Staff Logged In / Logged Out status (User Request) */}
+                    {staff.isLoggedIn || (currentUser?.type === 'staff' && (currentUser.staffId === staff.id || currentUser.username === staff.username)) ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                        <span>Staff Logged In</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 border border-neutral-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
+                        <span>Staff Logged Out</span>
+                      </span>
+                    )}
+                  </div>
 
                   <span
                     className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
                       staff.isLocked
                         ? 'bg-rose-100 text-rose-800'
-                        : 'bg-emerald-100 text-emerald-800'
+                        : 'bg-emerald-50 text-emerald-700'
                     }`}
                   >
                     {staff.isLocked ? (
@@ -490,15 +584,69 @@ export const StaffManager: React.FC = () => {
 
       {/* Staff Orders Workload Board */}
       <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-4">
-        <div>
-          <h3 className="font-serif text-lg font-bold text-neutral-900 flex items-center gap-2">
-            <Package className="w-5 h-5 text-amber-600" />
-            <span>Staff Order Assignments Ledger</span>
-          </h3>
-          <p className="text-xs text-neutral-500">
-            Current assignment distribution showing which boutique staff handles each client order
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-serif text-lg font-bold text-neutral-900 flex items-center gap-2">
+              <Package className="w-5 h-5 text-amber-600" />
+              <span>Staff Order Assignments Ledger</span>
+            </h3>
+            <p className="text-xs text-neutral-500">
+              Current assignment distribution showing which boutique staff handles each client order
+            </p>
+          </div>
+
+          {/* Google Sheets Sync & CSV Export Options (User Request) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleSyncLedger}
+              disabled={isSyncingLedger}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-semibold shadow-xs transition cursor-pointer"
+              title="Sync staff order assignments ledger to Google Sheets with Admin Gmail"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{isSyncingLedger ? 'Syncing Sheets...' : 'Sync with Google Sheets'}</span>
+            </button>
+
+            <button
+              onClick={handleExportLedgerCsv}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-800 text-xs font-semibold shadow-xs transition cursor-pointer"
+              title="Export staff assignments ledger to CSV file"
+            >
+              <Download className="w-3.5 h-3.5 text-neutral-700" />
+              <span>Export CSV</span>
+            </button>
+          </div>
         </div>
+
+        {/* Sync Success / Error Feedback Banner */}
+        {ledgerSyncSuccess && (
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                Synced <strong>{ledgerSyncSuccess.count}</strong> staff order assignments to your Master Google Sheet!
+              </span>
+            </div>
+            {ledgerSyncSuccess.url && (
+              <a
+                href={ledgerSyncSuccess.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold underline text-emerald-800 flex items-center gap-1 shrink-0"
+              >
+                <span>Open Google Sheet</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+        )}
+
+        {ledgerSyncError && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-950 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{ledgerSyncError}</span>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -859,138 +1007,6 @@ export const StaffManager: React.FC = () => {
                   <span>Yes, Revoke & Remove</span>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Free Hosting & Deployment Guide Modal */}
-      {showHostingModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
-          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
-            <div className="p-5 bg-neutral-950 text-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center">
-                  <Globe className="w-5 h-5 text-amber-400" />
-                </div>
-                <div>
-                  <h3 className="font-serif text-base sm:text-lg font-bold text-white">
-                    Free Hosting & Production Deployment Guide
-                  </h3>
-                  <p className="text-xs text-neutral-400">
-                    How to host this application for free and ensure Google Authentication works
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowHostingModal(false)}
-                className="p-1 rounded-full text-neutral-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-5 sm:p-6 overflow-y-auto space-y-6 text-xs text-neutral-700 leading-relaxed">
-              {/* Critical Alert about Firebase Authorized Domains */}
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300/80 space-y-2">
-                <div className="flex items-center gap-2 font-bold text-amber-950 text-sm">
-                  <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>Important: Google Auth Domain Authorization</span>
-                </div>
-                <p className="text-xs text-amber-900">
-                  When you host your boutique on a free platform (e.g. Vercel, Netlify, or Firebase Hosting), you must add your hosting domain to Firebase so Google Sign-In popups are allowed:
-                </p>
-                <ol className="list-decimal pl-5 space-y-1 font-medium text-amber-950 text-xs">
-                  <li>Open the <strong>Firebase Console</strong> and select your project.</li>
-                  <li>Navigate to <strong>Authentication &rarr; Settings &rarr; Authorized domains</strong>.</li>
-                  <li>Click <strong>Add domain</strong> and enter your deployed URL (e.g., <code>your-boutique.vercel.app</code>).</li>
-                </ol>
-              </div>
-
-              {/* Hosting Option 1: Firebase Hosting (Recommended) */}
-              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Cloud className="w-4 h-4 text-amber-600" />
-                    <h4 className="font-serif font-bold text-sm text-neutral-900">Option 1: Firebase Hosting (Recommended - 100% Free)</h4>
-                  </div>
-                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase">
-                    Zero Setup for Auth
-                  </span>
-                </div>
-                <p className="text-neutral-600 text-xs">
-                  Because Firebase Hosting shares the same project as your Firestore database, your <code>*.web.app</code> domain is <strong>automatically pre-authorized</strong> for Google Sign-In!
-                </p>
-                <div className="p-3 rounded-xl bg-neutral-900 text-neutral-200 font-mono text-[11px] space-y-1">
-                  <p>npm run build</p>
-                  <p>npm install -g firebase-tools</p>
-                  <p>firebase login</p>
-                  <p>firebase init hosting  # Set public directory to "dist"</p>
-                  <p>firebase deploy --only hosting</p>
-                </div>
-              </div>
-
-              {/* Hosting Option 2: Vercel */}
-              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Server className="w-4 h-4 text-blue-600" />
-                    <h4 className="font-serif font-bold text-sm text-neutral-900">Option 2: Vercel (Fastest Global CDN - Free Hobby Plan)</h4>
-                  </div>
-                  <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold uppercase">
-                    1-Click Git Deploy
-                  </span>
-                </div>
-                <ol className="list-decimal pl-5 space-y-1 text-neutral-600 text-xs">
-                  <li>Push your repository to GitHub or GitLab.</li>
-                  <li>Sign into <strong>Vercel.com</strong> and click <strong>Import Project</strong>.</li>
-                  <li>Build Command: <code>npm run build</code> | Output Directory: <code>dist</code>.</li>
-                  <li>Copy your new <code>*.vercel.app</code> URL and add it to Firebase <em>Authorized domains</em>.</li>
-                </ol>
-              </div>
-
-              {/* Hosting Option 3: Netlify */}
-              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-emerald-600" />
-                    <h4 className="font-serif font-bold text-sm text-neutral-900">Option 3: Netlify (Free Drag-and-Drop or Git)</h4>
-                  </div>
-                  <span className="px-2 py-0.5 rounded bg-neutral-200 text-neutral-800 text-[10px] font-bold uppercase">
-                    Free
-                  </span>
-                </div>
-                <p className="text-neutral-600 text-xs">
-                  Run <code>npm run build</code>, then drag the generated <code>dist</code> folder into the Netlify Drop dashboard, or link your GitHub repository. Remember to add your <code>*.netlify.app</code> domain to Firebase Authorized domains.
-                </p>
-              </div>
-
-              {/* Direct Link Access */}
-              <div className="p-4 rounded-2xl bg-neutral-100 border border-neutral-300 space-y-2">
-                <h4 className="font-serif font-bold text-neutral-900">Configured Redirect & Deep Links</h4>
-                <p className="text-neutral-600 text-xs">
-                  Your application has built-in deep-linking support across all browsers and hosting platforms:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
-                  <div className="p-2 bg-white rounded-lg border border-neutral-200">
-                    <span className="text-neutral-400">Admin Portal: </span>
-                    <strong className="text-neutral-900">#admin</strong> or <strong>/admin</strong>
-                  </div>
-                  <div className="p-2 bg-white rounded-lg border border-neutral-200">
-                    <span className="text-neutral-400">Order Tracking: </span>
-                    <strong className="text-neutral-900">#track</strong> or <strong>?order=AARA-xxxx</strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex justify-end shrink-0">
-              <button
-                onClick={() => setShowHostingModal(false)}
-                className="px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs"
-              >
-                Close Guide
-              </button>
             </div>
           </div>
         </div>

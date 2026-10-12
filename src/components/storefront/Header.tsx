@@ -2,6 +2,7 @@ import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { ShoppingBag, Lock, ShieldCheck, Truck } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
+import { getThemeColors } from '../../utils/theme';
 
 interface HeaderProps {
   onOpenAdmin: () => void;
@@ -15,6 +16,7 @@ export const Header: React.FC<HeaderProps> = ({
   selectedCategory = 'all',
 }) => {
   const { settings, cartCount, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen, publicProducts } = useStore();
+  const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoError, setLogoError] = React.useState(false);
 
   React.useEffect(() => {
@@ -39,14 +41,35 @@ export const Header: React.FC<HeaderProps> = ({
 
   const showTrackOrder = settings.storefrontDisplay?.showTrackOrder !== false;
 
+  // Secret owner access: Triple-click logo opens admin portal discreetly
+  const clickCountRef = React.useRef(0);
+  const clickTimerRef = React.useRef<any>(null);
+
+  const handleLogoEmblemClick = (e: React.MouseEvent) => {
+    clickCountRef.current += 1;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+
+    if (clickCountRef.current >= 3) {
+      e.preventDefault();
+      clickCountRef.current = 0;
+      onOpenAdmin();
+    } else {
+      clickTimerRef.current = setTimeout(() => {
+        clickCountRef.current = 0;
+      }, 1200);
+    }
+  };
+
   return (
-    <header className="sticky top-0 z-40 bg-neutral-900/95 backdrop-blur-md border-b border-neutral-800 text-white">
+    <header className={`sticky top-0 z-40 ${themeColors.headerBg} backdrop-blur-md border-b ${themeColors.headerBorder} ${themeColors.headerText} transition-colors duration-200`}>
       {/* Main Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-8">
         {/* Zone 1: Brand Logo & Wordmark */}
         <a
           href="#"
-          className="text-xl sm:text-2xl font-serif font-bold tracking-wider text-amber-100 hover:text-white transition whitespace-nowrap shrink-0 flex items-center gap-3"
+          onClick={handleLogoEmblemClick}
+          className="text-xl sm:text-2xl font-serif font-bold tracking-wider text-amber-100 hover:text-white transition whitespace-nowrap shrink-0 flex items-center gap-3 select-none"
+          title="Neydhal Handloom Sarees"
         >
           {settings.logoUrl && !logoError ? (
             <img
@@ -56,11 +79,13 @@ export const Header: React.FC<HeaderProps> = ({
               className="h-10 sm:h-12 w-auto max-w-[140px] sm:max-w-[180px] object-contain rounded-md"
             />
           ) : (
-            <img
-              src="/logo.png"
-              alt={settings.boutiqueName || 'Neydhal Logo'}
-              className="w-9 h-9 sm:w-10 sm:h-10 object-contain rounded-lg shadow-xs"
-            />
+            /* Shiny Neydhal Royal Purple App Logo */
+            <span className="w-9 h-9 rounded-full bg-gradient-to-br from-[#7e1ba8] via-[#52126e] to-[#2d053f] flex items-center justify-center text-[#faebd7] font-serif font-bold text-sm shadow-[0_4px_16px_rgba(82,18,110,0.65),inset_0_1.5px_2px_rgba(255,255,255,0.7)] ring-1 ring-amber-300/40 relative overflow-hidden group shrink-0">
+              {/* Shiny Gloss Reflex Overlays */}
+              <span className="absolute inset-0 bg-gradient-to-b from-white/30 via-white/5 to-transparent h-1/2 pointer-events-none rounded-t-full"></span>
+              <span className="absolute -inset-full group-hover:inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent transition-all duration-700 pointer-events-none"></span>
+              <span className="relative z-10 drop-shadow-sm tracking-normal">N</span>
+            </span>
           )}
           <span className="truncate max-w-[200px] sm:max-w-none">{settings.boutiqueName}</span>
         </a>
@@ -121,28 +146,18 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* Discreet Admin Portal Button */}
-          <button
-            onClick={onOpenAdmin}
-            className={`p-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-              isAdminLoggedIn
-                ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/80'
-                : 'bg-neutral-800/80 border border-neutral-700/60 text-neutral-400 hover:text-amber-200 hover:border-amber-500/40'
-            }`}
-            title={isAdminLoggedIn ? 'Open Admin Dashboard' : 'Owner Login'}
-          >
-            {isAdminLoggedIn ? (
-              <>
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden sm:inline">Admin Mode</span>
-              </>
-            ) : (
-              <>
-                <Lock className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Owner</span>
-              </>
-            )}
-          </button>
+          {/* Invisible Admin Portal: Hidden from customers to prevent accidental access.
+              Accessible via URL (#admin / /admin), keyboard shortcut (Ctrl+Shift+A), or triple-clicking the logo emblem */}
+          {isAdminLoggedIn && (
+            <button
+              onClick={onOpenAdmin}
+              className="p-2 rounded-lg text-xs font-semibold bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/80 flex items-center gap-1.5 transition"
+              title="Return to Admin Dashboard"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Admin Mode</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -115,23 +115,31 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
 };
 
 export const INITIAL_SETTINGS: StoreSettings = {
-  boutiqueName: 'Neydhal Clothing',
-  logoUrl: '/logo.png',
-  tagline: 'Pure Silk & Handcrafted Heirlooms',
+  boutiqueName: 'Aara Heritage Saree Atelier',
+  logoUrl: '',
+  tagline: 'Pure Silk & Handcrafted Heirlooms of India',
   contactPhone: '+919876543210',
-  contactEmail: 'contact@neydhal.com',
-  instagramHandle: '@neydhal.clothing',
+  contactEmail: 'concierge@aarasarees.com',
+  instagramHandle: '@aara.heritage',
+  youtubeHandle: '@aara.heritage',
   storeAddress: '12 Temple Street, Kanchipuram & Assi Ghat, Varanasi',
+  gstNumber: '33AAAAA0000A1Z5',
+  googleMaps: {
+    enabled: true,
+    mapUrl: 'https://maps.google.com/?q=Kanchipuram+Silk+Sarees',
+    placeName: 'Aara Heritage Saree Atelier, Temple Street, Kanchipuram',
+  },
   currencySymbol: '₹',
-  theme: 'maroon',
+  theme: 'royal_crimson',
+  themeMode: 'light',
   announcement: {
     enabled: false,
     text: '',
     badgeLabel: 'NOTICE',
   },
   payment: {
-    upiId: 'neydhal@okhdfcbank',
-    payeeName: 'Neydhal Clothing',
+    upiId: 'aarasarees@okhdfcbank',
+    payeeName: 'Aara Heritage Sarees LLP',
     qrCodeUrl: '',
     instructions: 'Scan using any UPI app (Google Pay, PhonePe, Paytm, BHIM) and enter the 12-digit UTR/Transaction ID below to verify your order.',
   },
@@ -151,6 +159,7 @@ export const INITIAL_SETTINGS: StoreSettings = {
     storyContent: '',
     showTrackOrder: true,
     allowPublicCancellation: true,
+    allowPublicRefunds: true,
     freeShippingText: '',
   },
   adminPin: '889988', // 6-digit access PIN

@@ -57,6 +57,7 @@ export const ProductManager: React.FC = () => {
   ]);
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [instagramShortsUrl, setInstagramShortsUrl] = useState('');
   const [weaveDetails, setWeaveDetails] = useState('');
   const [borderType, setBorderType] = useState('');
   const [blousePieceIncluded, setBlousePieceIncluded] = useState(true);
@@ -259,6 +260,7 @@ export const ProductManager: React.FC = () => {
     setImages(['/src/assets/images/saree_kanjivaram_crimson_1791651781402.jpg']);
     setImageUrlInput('');
     setVideoUrl('https://www.youtube.com/watch?v=0hW73jL76bY');
+    setInstagramShortsUrl('');
     setBlousePieceIncluded(true);
     setLengthMeters(6.3);
     setOccasion('Wedding & Reception');
@@ -312,6 +314,7 @@ export const ProductManager: React.FC = () => {
     setImages(prod.images || []);
     setImageUrlInput('');
     setVideoUrl(prod.videoUrl || '');
+    setInstagramShortsUrl(prod.instagramShortsUrl || '');
     setWeaveDetails(prod.weaveDetails || '');
     setBorderType(prod.borderType || '');
     setBlousePieceIncluded(prod.blousePieceIncluded);
@@ -397,6 +400,7 @@ export const ProductManager: React.FC = () => {
       isVisible,
       images: images.length > 0 ? images : ['/src/assets/images/hero_saree_atelier_1791651761357.jpg'],
       videoUrl: videoUrl.trim() || undefined,
+      instagramShortsUrl: instagramShortsUrl.trim() || undefined,
       weaveDetails: weaveDetails.trim(),
       borderType: borderType.trim(),
       blousePieceIncluded,
@@ -422,6 +426,19 @@ export const ProductManager: React.FC = () => {
 
   const canEditProducts = currentPermissions?.products?.canEdit !== false;
 
+  // Identify low stock and out-of-stock items to notify admins and staff
+  const lowStockProducts = useMemo(() => {
+    return products.filter(
+      (p) => p.stockStatus === 'limited' || (p.stockCount !== undefined && p.stockCount > 0 && p.stockCount <= 3)
+    );
+  }, [products]);
+
+  const outOfStockProducts = useMemo(() => {
+    return products.filter(
+      (p) => p.stockStatus === 'out_of_stock' || (p.stockCount !== undefined && p.stockCount <= 0)
+    );
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     if (!tableSearchQuery.trim()) return products;
     const q = tableSearchQuery.toLowerCase().trim();
@@ -436,6 +453,80 @@ export const ProductManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Low Stock & Out of Stock Alert Banner for Staff & Admin */}
+      {(lowStockProducts.length > 0 || outOfStockProducts.length > 0) && (
+        <div className="rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 via-rose-50 to-amber-50/80 p-4 sm:p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-900">
+                <AlertCircle className="w-5 h-5 text-amber-700" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-neutral-900 font-serif">
+                  Stock Replenishment Alert ({lowStockProducts.length + outOfStockProducts.length} Sarees Need Attention)
+                </h3>
+                <p className="text-[11px] text-neutral-600">
+                  Notify staff and admins: replenish inventory so patrons can place orders. Restocking will automatically announce availability on the public store front.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+            {outOfStockProducts.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-white/90 border border-rose-200 text-xs shadow-2xs"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0"></span>
+                  <div className="truncate">
+                    <p className="font-bold text-neutral-900 truncate">{p.title}</p>
+                    <p className="text-[10px] text-rose-700 font-mono">
+                      {p.productCode} · <span className="font-bold">OUT OF STOCK (0 units)</span>
+                    </p>
+                  </div>
+                </div>
+                {canEditProducts && (
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(p)}
+                    className="ml-2 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] shrink-0 transition"
+                  >
+                    Restock Now
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {lowStockProducts.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-white/90 border border-amber-200 text-xs shadow-2xs"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
+                  <div className="truncate">
+                    <p className="font-bold text-neutral-900 truncate">{p.title}</p>
+                    <p className="text-[10px] text-amber-800 font-mono">
+                      {p.productCode} · <span className="font-semibold">Low Stock: {p.stockCount} left</span>
+                    </p>
+                  </div>
+                </div>
+                {canEditProducts && (
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(p)}
+                    className="ml-2 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] shrink-0 transition"
+                  >
+                    Restock
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -964,17 +1055,33 @@ export const ProductManager: React.FC = () => {
                   />
                 </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block font-semibold text-neutral-700 mb-1">
-                    Video Drape URL (YouTube, Instagram Reel, or MP4)
-                  </label>
-                  <input
-                    type="url"
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
-                    placeholder="https://www.youtube.com/watch?v=... or https://instagram.com/reel/..."
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
-                  />
+                <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">
+                      Primary Video Drape URL (YouTube or MP4)
+                    </label>
+                    <input
+                      type="url"
+                      value={videoUrl}
+                      onChange={(e) => setVideoUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=... or .mp4"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1 flex items-center justify-between">
+                      <span>Instagram Shorts / Reel URL</span>
+                      <span className="text-[10px] text-pink-700 font-bold px-1.5 py-0.5 rounded-md bg-pink-50 border border-pink-200">Reels / Shorts</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={instagramShortsUrl}
+                      onChange={(e) => setInstagramShortsUrl(e.target.value)}
+                      placeholder="https://www.instagram.com/reel/... or /shorts/..."
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 bg-white"
+                    />
+                  </div>
                 </div>
 
                 {/* Saree Images Management */}

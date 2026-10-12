@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { StoreTheme, OrderStatusChatTemplates, StaffSectionPermissions, Order } from '../../types/store';
-import { THEME_CONFIGS } from '../../utils/theme';
+import { StoreTheme, ThemeMode, OrderStatusChatTemplates, StaffSectionPermissions, Order } from '../../types/store';
+import { ACTIVE_THEME_KEYS, THEME_TEMPLATES } from '../../utils/theme';
 import { DEFAULT_CHAT_TEMPLATES, DEFAULT_STAFF_PERMISSIONS } from '../../data/initialData';
 import { applyTemplateTokens } from '../../utils/upi';
 import { compressImageFile } from '../../utils/imageCompression';
@@ -27,6 +27,12 @@ import {
   Lock,
   Truck,
   CheckCircle2,
+  Sun,
+  Moon,
+  MapPin,
+  Navigation,
+  FileText,
+  ExternalLink,
 } from 'lucide-react';
 
 export const SettingsManager: React.FC = () => {
@@ -43,9 +49,14 @@ export const SettingsManager: React.FC = () => {
   const [contactPhone, setContactPhone] = useState(settings.contactPhone);
   const [contactEmail, setContactEmail] = useState(settings.contactEmail);
   const [instagramHandle, setInstagramHandle] = useState(settings.instagramHandle);
+  const [youtubeHandle, setYoutubeHandle] = useState(settings.youtubeHandle || '');
   const [storeAddress, setStoreAddress] = useState(settings.storeAddress);
-  const [customStoreDomain, setCustomStoreDomain] = useState(settings.customStoreDomain || '');
-  const [theme, setTheme] = useState<StoreTheme>(settings.theme);
+  const [gstNumber, setGstNumber] = useState(settings.gstNumber || '');
+  const [googleMapsEnabled, setGoogleMapsEnabled] = useState(settings.googleMaps?.enabled ?? true);
+  const [googleMapsUrl, setGoogleMapsUrl] = useState(settings.googleMaps?.mapUrl || '');
+  const [googleMapsPlaceName, setGoogleMapsPlaceName] = useState(settings.googleMaps?.placeName || '');
+  const [theme, setTheme] = useState<StoreTheme>(settings.theme || 'royal_crimson');
+  const [themeMode, setThemeMode] = useState<ThemeMode>(settings.themeMode || 'light');
 
   // Storefront Public Front Display Controls
   const defaultDisplay = settings.storefrontDisplay || {
@@ -71,6 +82,9 @@ export const SettingsManager: React.FC = () => {
   const [showTrackOrder, setShowTrackOrder] = useState(defaultDisplay.showTrackOrder !== false);
   const [allowPublicCancellation, setAllowPublicCancellation] = useState(
     settings.storefrontDisplay?.allowPublicCancellation !== false
+  );
+  const [allowPublicRefunds, setAllowPublicRefunds] = useState(
+    settings.storefrontDisplay?.allowPublicRefunds !== false
   );
   const [showCraftsmanshipStory, setShowCraftsmanshipStory] = useState(defaultDisplay.showCraftsmanshipStory);
   const [storyTitle, setStoryTitle] = useState(defaultDisplay.storyTitle);
@@ -122,9 +136,16 @@ export const SettingsManager: React.FC = () => {
       if (settings.contactPhone !== undefined) setContactPhone(settings.contactPhone);
       if (settings.contactEmail !== undefined) setContactEmail(settings.contactEmail);
       if (settings.instagramHandle !== undefined) setInstagramHandle(settings.instagramHandle);
+      if (settings.youtubeHandle !== undefined) setYoutubeHandle(settings.youtubeHandle || '');
       if (settings.storeAddress !== undefined) setStoreAddress(settings.storeAddress);
-      if (settings.customStoreDomain !== undefined) setCustomStoreDomain(settings.customStoreDomain || '');
+      if (settings.gstNumber !== undefined) setGstNumber(settings.gstNumber || '');
+      if (settings.googleMaps !== undefined) {
+        setGoogleMapsEnabled(settings.googleMaps.enabled ?? true);
+        setGoogleMapsUrl(settings.googleMaps.mapUrl || '');
+        setGoogleMapsPlaceName(settings.googleMaps.placeName || '');
+      }
       if (settings.theme) setTheme(settings.theme);
+      if (settings.themeMode) setThemeMode(settings.themeMode);
 
       const disp = settings.storefrontDisplay;
       if (disp) {
@@ -136,6 +157,7 @@ export const SettingsManager: React.FC = () => {
         if (disp.freeShippingText !== undefined) setFreeShippingText(disp.freeShippingText);
         if (disp.showTrackOrder !== undefined) setShowTrackOrder(disp.showTrackOrder !== false);
         if (disp.allowPublicCancellation !== undefined) setAllowPublicCancellation(disp.allowPublicCancellation !== false);
+        if (disp.allowPublicRefunds !== undefined) setAllowPublicRefunds(disp.allowPublicRefunds !== false);
         if (disp.showCraftsmanshipStory !== undefined) setShowCraftsmanshipStory(disp.showCraftsmanshipStory);
         if (disp.storyTitle !== undefined) setStoryTitle(disp.storyTitle);
         if (disp.storyContent !== undefined) setStoryContent(disp.storyContent);
@@ -360,9 +382,16 @@ export const SettingsManager: React.FC = () => {
       contactPhone: contactPhone.trim(),
       contactEmail: contactEmail.trim(),
       instagramHandle: instagramHandle.trim(),
+      youtubeHandle: youtubeHandle.trim(),
       storeAddress: storeAddress.trim(),
-      customStoreDomain: customStoreDomain.trim(),
+      gstNumber: gstNumber.trim(),
+      googleMaps: {
+        enabled: googleMapsEnabled,
+        mapUrl: googleMapsUrl.trim(),
+        placeName: googleMapsPlaceName.trim(),
+      },
       theme,
+      themeMode,
       storefrontDisplay: {
         heroHeadline: heroHeadline.trim(),
         heroSubheadline: heroSubheadline.trim(),
@@ -374,6 +403,7 @@ export const SettingsManager: React.FC = () => {
         storyContent: storyContent.trim(),
         showTrackOrder,
         allowPublicCancellation,
+        allowPublicRefunds,
         freeShippingText: freeShippingText.trim(),
       },
       announcement: {
@@ -677,7 +707,31 @@ export const SettingsManager: React.FC = () => {
                       Enable Customer Order Cancellation Requests (Pending & Confirmed Only)
                     </span>
                     <span className="text-[11px] text-neutral-500 font-normal">
-                      When enabled, customers can submit cancellation and refund requests while orders are in Pending or Confirmed state. Once shipped, cancellations are locked.
+                      When enabled, customers can submit cancellation requests in the Track Order modal. When disabled, the cancellation feature and statement are completely hidden from customers.
+                    </span>
+                  </div>
+                </label>
+
+                {/* Refund Feature Enable / Disable Toggle Option (User Request) */}
+                <label className="flex items-center gap-2 cursor-pointer sm:col-span-3 pt-2 border-t border-neutral-200">
+                  <input
+                    type="checkbox"
+                    disabled={!canEditStorefront}
+                    checked={allowPublicRefunds}
+                    onChange={(e) => setAllowPublicRefunds(e.target.checked)}
+                    className="rounded text-rose-900"
+                  />
+                  <div className="flex-1">
+                    <span className="font-semibold text-neutral-800 block flex items-center gap-2">
+                      <span>Enable Customer Refund Feature & UPI Collection</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        allowPublicRefunds ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
+                      }`}>
+                        {allowPublicRefunds ? 'Refunds Enabled' : 'Refunds Disabled'}
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-neutral-500 font-normal">
+                      When enabled, customer refund UPI information is collected and processed upon cancellation. When disabled, the boutique operates with a strict no-cancellation / manual concierge negotiation policy.
                     </span>
                   </div>
                 </label>
@@ -1300,6 +1354,22 @@ export const SettingsManager: React.FC = () => {
                   disabled={!canEditProfile}
                   value={instagramHandle}
                   onChange={(e) => setInstagramHandle(e.target.value)}
+                  placeholder="@aara.heritage"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1 flex items-center justify-between">
+                  <span>YouTube Channel / Handle</span>
+                  <span className="text-[10px] text-neutral-400 font-normal">@handle or URL</span>
+                </label>
+                <input
+                  type="text"
+                  disabled={!canEditProfile}
+                  value={youtubeHandle}
+                  onChange={(e) => setYoutubeHandle(e.target.value)}
+                  placeholder="e.g. @aara.heritage or https://youtube.com/@aarasarees"
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                 />
               </div>
@@ -1314,43 +1384,194 @@ export const SettingsManager: React.FC = () => {
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                 />
               </div>
+
+              {/* Shop GST Number for Public Front Store (User Request) */}
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Shop GST Number (GSTIN)</span>
+                  </span>
+                  <span className="text-[10px] text-amber-700 font-medium">Public Storefront</span>
+                </label>
+                <input
+                  type="text"
+                  disabled={!canEditProfile}
+                  value={gstNumber}
+                  onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g. 33AAAAA0000A1Z5"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs uppercase text-neutral-900 bg-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                />
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Official GSTIN number displayed in footer & invoices for customer trust and legal compliance.
+                </p>
+              </div>
+
+              {/* Google Maps Option on Boutique Profile with Toggle Option (User Request) */}
+              <div className="sm:col-span-2 p-4 rounded-xl border border-neutral-200 bg-neutral-50/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-rose-600 shrink-0" />
+                    <div>
+                      <span className="font-bold text-neutral-900 text-xs block">
+                        Google Maps Location Showcase
+                      </span>
+                      <span className="text-[11px] text-neutral-500">
+                        Allow customers to view store directions and location on Google Maps
+                      </span>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      disabled={!canEditProfile}
+                      checked={googleMapsEnabled}
+                      onChange={(e) => setGoogleMapsEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-neutral-300 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {googleMapsEnabled && (
+                  <div className="pt-2 border-t border-neutral-200/80 space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        Google Maps Share URL / Location Link
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          disabled={!canEditProfile}
+                          value={googleMapsUrl}
+                          onChange={(e) => setGoogleMapsUrl(e.target.value)}
+                          placeholder="e.g. https://maps.google.com/?q=Kanchipuram+Silk+Sarees or https://goo.gl/maps/..."
+                          className="flex-1 p-2 rounded-xl border border-neutral-300 text-xs text-neutral-900 bg-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                        />
+                        {googleMapsUrl.trim() && (
+                          <a
+                            href={googleMapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-neutral-900 text-amber-200 hover:text-white text-xs font-semibold shrink-0 transition"
+                          >
+                            <Navigation className="w-3.5 h-3.5" />
+                            <span>Test Link</span>
+                            <ExternalLink className="w-3 h-3 text-neutral-400" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        Showroom Location Label / Landmark Name
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!canEditProfile}
+                        value={googleMapsPlaceName}
+                        onChange={(e) => setGoogleMapsPlaceName(e.target.value)}
+                        placeholder="e.g. Aara Heritage Atelier, Near Ekambareswarar Temple, Kanchipuram"
+                        className="w-full p-2 rounded-xl border border-neutral-300 text-xs text-neutral-900 bg-white placeholder-neutral-400"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Section 8: Store Theme & Color Palette */}
+        {/* Section 8: Store Theme & Color Palette with Light/Dark Mode (User Request) */}
         {isAdmin && (
-          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
-            <div className="flex items-center gap-2 mb-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
-              <Palette className="w-5 h-5 text-amber-600" />
-              <h3>Store Theme & Color Palette</h3>
-            </div>
-            <p className="text-xs text-neutral-500 mb-4">
-              Select the brand aesthetic for the public customer catalog.
-            </p>
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-neutral-100">
+              <div>
+                <div className="flex items-center gap-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
+                  <Palette className="w-5 h-5 text-amber-600" />
+                  <h3>Store Theme & Color Palette</h3>
+                </div>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Choose a signature brand aesthetic and display mode for your customer-facing public storefront.
+                </p>
+              </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {(Object.keys(THEME_CONFIGS) as StoreTheme[]).map((themeKey) => {
-                const cfg = THEME_CONFIGS[themeKey];
+              {/* Light and Dark Theme Mode Change Option */}
+              <div className="flex items-center gap-2 p-1 bg-neutral-100 rounded-xl border border-neutral-200 self-start sm:self-center">
+                <button
+                  type="button"
+                  onClick={() => setThemeMode('light')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    themeMode === 'light'
+                      ? 'bg-white text-neutral-950 shadow-xs'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                >
+                  <Sun className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Light Mode</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setThemeMode('dark')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    themeMode === 'dark'
+                      ? 'bg-neutral-900 text-white shadow-xs'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                >
+                  <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Dark Mode</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Curated Theme Templates Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {ACTIVE_THEME_KEYS.map((themeKey) => {
+                const tmpl = THEME_TEMPLATES[themeKey];
+                if (!tmpl) return null;
                 const isSelected = theme === themeKey;
                 return (
                   <button
                     key={themeKey}
                     type="button"
                     onClick={() => setTheme(themeKey)}
-                    className={`p-3 rounded-xl border text-left flex flex-col justify-between transition ${
+                    className={`p-3.5 rounded-2xl border text-left flex flex-col justify-between transition cursor-pointer ${
                       isSelected
-                        ? 'border-neutral-900 ring-2 ring-neutral-900 bg-neutral-50 shadow-xs'
-                        : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                        ? 'border-neutral-950 ring-2 ring-neutral-950 bg-neutral-50/80 shadow-md'
+                        : 'border-neutral-200 hover:border-neutral-300 bg-white hover:bg-neutral-50/40'
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <span className={`w-4 h-4 rounded-full ${cfg.primaryBg}`} />
-                      <span className="w-3 h-3 rounded-full bg-amber-500" />
+                    <div>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="w-5 h-5 rounded-full border border-black/10 shadow-inner"
+                            style={{ backgroundColor: tmpl.swatchPrimary }}
+                          />
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-black/10"
+                            style={{ backgroundColor: tmpl.swatchAccent }}
+                          />
+                        </div>
+                        {isSelected && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-950 text-white">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-neutral-900 leading-snug">
+                        {tmpl.name}
+                      </h4>
+                      <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">
+                        {tmpl.subtitle}
+                      </p>
                     </div>
-                    <span className="text-xs font-bold text-neutral-900 leading-tight">
-                      {cfg.name}
-                    </span>
+
+                    <div className="mt-3 pt-2 border-t border-neutral-100 flex items-center justify-between text-[10px] font-semibold text-neutral-400">
+                      <span>Preview Palette</span>
+                      <span className="capitalize">{themeMode} Mode</span>
+                    </div>
                   </button>
                 );
               })}

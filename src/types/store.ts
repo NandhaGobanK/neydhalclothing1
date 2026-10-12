@@ -42,6 +42,7 @@ export interface Product {
   isVisible: boolean; // Admin visibility toggle
   images: string[];
   videoUrl?: string; // YouTube, Instagram reel, or MP4
+  instagramShortsUrl?: string; // Dedicated Instagram Shorts / Reel URL
   weaveDetails: string;
   borderType: string;
   blousePieceIncluded: boolean;
@@ -136,7 +137,20 @@ export interface StaffMember {
   isLocked: boolean;
   phone: string;
   createdAt: string;
+  isLoggedIn?: boolean; // Live login status
+  lastLoginAt?: string;
+  lastLogoutAt?: string;
   permissions?: StaffSectionPermissions;
+}
+
+export interface StaffAssignmentLog {
+  id: string;
+  timestamp: string;
+  staffId: string;
+  staffName: string;
+  assignedBy?: string;
+  action: string; // e.g. "Assigned order", "Reassigned from Nandha to Gugan due to emergency leave", "Started working on order"
+  note?: string;
 }
 
 export interface OrderStatusChatTemplates {
@@ -169,9 +183,31 @@ export interface Order {
   assignedStaffId?: string; // Staff member assigned to handle this order
   assignedStaffName?: string;
   lastUpdatedBy?: string; // Staff username who made the last change
+  assignmentHistory?: StaffAssignmentLog[]; // Work and assignment tracking history
 }
 
-export type StoreTheme = 'maroon' | 'emerald' | 'sapphire' | 'rosewood' | 'gold';
+export type ThemeMode = 'light' | 'dark';
+
+export type StoreTheme =
+  | 'royal_crimson'
+  | 'midnight_obsidian'
+  | 'kanjivaram_fuchsia'
+  | 'peacock_teal'
+  | 'ivory_charcoal'
+  | 'terracotta_sand'
+  | 'lavender_amethyst'
+  | 'emerald_forest'
+  | 'maroon'
+  | 'emerald'
+  | 'sapphire'
+  | 'rosewood'
+  | 'gold';
+
+export interface GoogleMapsSettings {
+  enabled: boolean;
+  mapUrl?: string; // Google Maps share URL or Embed link
+  placeName?: string; // e.g. "Aara Heritage Boutique, T. Nagar, Chennai"
+}
 
 export interface AnnouncementSettings {
   enabled: boolean;
@@ -197,11 +233,18 @@ export interface StorefrontDisplaySettings {
   storyContent: string;
   showTrackOrder: boolean;
   allowPublicCancellation: boolean;
+  allowPublicRefunds?: boolean; // Refund feature enable/disable toggle option
   freeShippingText: string;
   footerAboutText?: string;
   footerCertifications?: string[];
   footerPolicies?: string[];
   heroKickerTags?: string[];
+}
+
+export interface AdminOnlineStatus {
+  isLoggedIn: boolean;
+  lastLoginAt?: string;
+  lastLogoutAt?: string;
 }
 
 export interface StoreSettings {
@@ -211,15 +254,20 @@ export interface StoreSettings {
   contactPhone: string;
   contactEmail: string;
   instagramHandle: string;
+  youtubeHandle?: string; // YouTube Channel or Handle (e.g. @neydhal_heritage)
   storeAddress: string;
+  gstNumber?: string; // Shop GST Number (e.g. 33AAAAA0000A1Z5)
+  googleMaps?: GoogleMapsSettings; // Google Maps location & toggle
   currencySymbol: string;
   theme: StoreTheme;
+  themeMode?: ThemeMode; // Light or Dark theme mode
   announcement: AnnouncementSettings;
   payment: PaymentSettings;
   delivery: DeliverySettings;
   storefrontDisplay: StorefrontDisplaySettings;
   adminPin: string; // 6-digit access PIN
   adminGoogleEmail?: string; // Designated Google Account email for Owner/Admin
+  adminOnlineStatus?: AdminOnlineStatus; // Live status of store admin / owner
   customStoreDomain?: string; // Custom domain or Vercel URL (e.g. https://aara-heritage.vercel.app)
   ordersSpreadsheetId?: string;
   ordersSpreadsheetUrl?: string;

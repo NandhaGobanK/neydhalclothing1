@@ -14,10 +14,12 @@ import { Footer } from './components/storefront/Footer';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminAuthModal } from './components/admin/AdminAuthModal';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
+import { getThemeColors } from './utils/theme';
 
 function MainAppContent() {
   const {
     products,
+    settings,
     currentView,
     setCurrentView,
     isAdminLoggedIn,
@@ -85,10 +87,24 @@ function MainAppContent() {
 
     handleUrlRouting();
     window.addEventListener('hashchange', handleUrlRouting);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Secret key combination: Ctrl+Shift+A or Cmd+Shift+A for discreet owner portal access
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        if (isAdminLoggedIn) {
+          setCurrentView('admin');
+        } else {
+          setShowAdminAuthModal(true);
+        }
+      }
+    };
+
     window.addEventListener('popstate', handleUrlRouting);
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('hashchange', handleUrlRouting);
       window.removeEventListener('popstate', handleUrlRouting);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isAdminLoggedIn, products]);
 
@@ -119,8 +135,14 @@ function MainAppContent() {
     }
   };
 
+  const themeColors = getThemeColors(settings.theme, settings.themeMode);
+
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 text-neutral-900 selection:bg-amber-100 selection:text-amber-900">
+    <div
+      className={`min-h-screen flex flex-col ${themeColors.pageBg} ${themeColors.pageText} selection:bg-amber-100 selection:text-amber-900 transition-colors duration-200 ${
+        settings.themeMode === 'dark' ? 'dark bg-neutral-950 text-neutral-100' : ''
+      }`}
+    >
       {/* Offline Connectivity Status Pill */}
       <OfflineIndicator />
 

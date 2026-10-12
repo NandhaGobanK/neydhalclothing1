@@ -15,8 +15,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
   const [quantity, setQuantity] = useState(1);
   const [addedSuccess, setAddedSuccess] = useState(false);
 
-  const isOutOfStock = product.stockStatus === 'out_of_stock';
-  const maxStock = product.stockStatus === 'limited' && product.stockCount ? product.stockCount : 99;
+  const isOutOfStock = product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0);
+  const maxStock = isOutOfStock ? 0 : (product.stockCount !== undefined && product.stockCount > 0 ? product.stockCount : 99);
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -26,13 +26,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
     setTimeout(() => setAddedSuccess(false), 2000);
   };
 
-  const hasVideo = !!product.videoUrl;
+  const hasVideo = !!product.videoUrl || !!product.instagramShortsUrl;
   const discount = calculateDiscount(product.price, product.originalPrice);
+  const isDark = settings.themeMode === 'dark';
 
   return (
     <div
       onClick={() => onOpenDetails(product)}
-      className="group cursor-pointer flex flex-col bg-white rounded-2xl overflow-hidden border border-neutral-200/80 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-200"
+      className={`group cursor-pointer flex flex-col rounded-2xl overflow-hidden transition-all duration-200 shadow-xs hover:shadow-xl hover:-translate-y-1 ${
+        isDark
+          ? 'bg-neutral-900 border border-neutral-800 text-neutral-100 hover:border-neutral-700'
+          : 'bg-white border border-neutral-200/80 text-neutral-900'
+      }`}
     >
       {/* Product Image Area */}
       <div className="relative aspect-4/5 bg-neutral-100 overflow-hidden">
@@ -58,16 +63,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           )}
         </div>
 
-        {/* Stock / Limited tag */}
+        {/* Stock availability badge */}
         {isOutOfStock ? (
-          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-neutral-900/90 text-neutral-300 text-[11px] font-medium">
-            Sold Out
+          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-neutral-900/90 text-neutral-300 text-[11px] font-medium border border-neutral-700">
+            Out of Stock
           </div>
-        ) : product.stockStatus === 'limited' ? (
-          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-rose-900/90 text-rose-200 text-[11px] font-medium">
+        ) : product.stockCount !== undefined && product.stockCount <= 3 ? (
+          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-rose-900/90 text-rose-200 text-[11px] font-medium border border-rose-700/60 shadow-xs">
             Only {product.stockCount} Left
           </div>
-        ) : null}
+        ) : (
+          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-emerald-950/85 text-emerald-300 text-[11px] font-medium border border-emerald-700/50 backdrop-blur-xs">
+            {product.stockCount ? `${product.stockCount} Available` : 'In Stock'}
+          </div>
+        )}
 
         {/* Hover Quick Actions */}
         <div className="absolute inset-x-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-2">
@@ -121,7 +130,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           </span>
         </div>
 
-        <h3 className="font-serif text-base sm:text-lg font-bold text-neutral-900 line-clamp-1 group-hover:text-rose-900 transition-colors">
+        <h3 className={`font-serif text-base sm:text-lg font-bold line-clamp-1 transition-colors ${
+          isDark ? 'text-white group-hover:text-amber-300' : 'text-neutral-900 group-hover:text-rose-900'
+        }`}>
           {product.title}
         </h3>
 
@@ -129,22 +140,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
         <div className="flex items-center gap-1.5 text-xs mt-1 mb-1.5">
           <div className="flex items-center text-amber-500">
             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-            <span className="font-bold text-neutral-900 ml-1 text-xs">{rating.toFixed(1)}</span>
+            <span className={`font-bold ml-1 text-xs ${isDark ? 'text-neutral-200' : 'text-neutral-900'}`}>{rating.toFixed(1)}</span>
           </div>
           <span className="text-neutral-400 text-[11px]">
             ({count > 0 ? `${count} ${count === 1 ? 'review' : 'reviews'}` : 'New drape'})
           </span>
         </div>
 
-        <p className="text-xs text-neutral-500 line-clamp-2 mt-0.5 mb-3">
+        <p className={`text-xs line-clamp-2 mt-0.5 mb-3 ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
           {product.subtitle || product.description}
         </p>
 
         {/* Pricing & Offer Details */}
-        <div className="mt-auto pt-2 border-t border-neutral-100">
+        <div className={`mt-auto pt-2 border-t ${isDark ? 'border-neutral-800' : 'border-neutral-100'}`}>
           <div className="flex items-baseline justify-between flex-wrap gap-1">
             <div className="flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-base sm:text-lg font-bold text-neutral-900 tabular-nums">
+              <span className={`text-base sm:text-lg font-bold tabular-nums ${isDark ? 'text-white' : 'text-neutral-900'}`}>
                 {formatPrice(discount.sellingPrice)}
               </span>
               {discount.hasDiscount && (
@@ -240,8 +251,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
               </button>
             </>
           ) : (
-            <div className="w-full py-1.5 px-3 rounded-xl bg-neutral-100 text-neutral-400 text-center text-xs font-semibold">
-              Sold Out
+            <div className="w-full py-1.5 px-3 rounded-xl bg-neutral-100 border border-neutral-200 text-neutral-500 text-center text-xs font-semibold flex items-center justify-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+              <span>Out of Stock</span>
             </div>
           )}
         </div>

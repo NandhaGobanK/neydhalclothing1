@@ -18,6 +18,8 @@ import {
   Check,
   Plus,
   Minus,
+  Instagram,
+  Film,
 } from 'lucide-react';
 
 interface ProductDetailModalProps {
@@ -36,7 +38,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
     addReview,
   } = useStore();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [activeTab, setActiveTab] = useState<'photos' | 'video'>('photos');
+  const [activeTab, setActiveTab] = useState<'photos' | 'video' | 'shorts'>('photos');
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Customer Reviews state
@@ -89,8 +91,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
   const [addedFeedback, setAddedFeedback] = useState(false);
 
   const videoInfo = parseVideoUrl(product.videoUrl);
-  const isOutOfStock = product.stockStatus === 'out_of_stock';
-  const maxStock = product.stockStatus === 'limited' && product.stockCount ? product.stockCount : 99;
+  const shortsInfo = parseVideoUrl(product.instagramShortsUrl);
+  const isOutOfStock = product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0);
+  const maxStock = isOutOfStock ? 0 : (product.stockCount !== undefined && product.stockCount > 0 ? product.stockCount : 99);
 
   const handleIncrement = () => {
     if (quantity < maxStock) {
@@ -172,75 +175,95 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
         <div className="grid grid-cols-1 md:grid-cols-2">
           {/* Left Column: Visual Media Gallery & Video */}
           <div className="bg-neutral-100 flex flex-col justify-between border-b md:border-b-0 md:border-r border-neutral-200">
-            {/* Media Tabs if video is available */}
-            {videoInfo && (
-              <div className="p-3 bg-neutral-900 flex items-center justify-center gap-2">
+            {/* Media Tabs if video or Instagram shorts is available */}
+            {(videoInfo || shortsInfo) && (
+              <div className="p-2.5 bg-neutral-900 flex items-center justify-center gap-1.5 flex-wrap">
                 <button
                   onClick={() => setActiveTab('photos')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                     activeTab === 'photos'
-                      ? 'bg-amber-500 text-neutral-950'
-                      : 'text-neutral-300 hover:text-white'
+                      ? 'bg-amber-500 text-neutral-950 shadow-xs'
+                      : 'text-neutral-300 hover:text-white bg-neutral-800/80'
                   }`}
                 >
                   <ImageIcon className="w-3.5 h-3.5" />
                   <span>Saree Photos</span>
                 </button>
-                <button
-                  onClick={() => setActiveTab('video')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    activeTab === 'video'
-                      ? 'bg-amber-500 text-neutral-950'
-                      : 'text-neutral-300 hover:text-white'
-                  }`}
-                >
-                  <Play className="w-3.5 h-3.5" />
-                  <span>Video Preview (Drape)</span>
-                </button>
+                {videoInfo && (
+                  <button
+                    onClick={() => setActiveTab('video')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      activeTab === 'video'
+                        ? 'bg-amber-500 text-neutral-950 shadow-xs'
+                        : 'text-neutral-300 hover:text-white bg-neutral-800/80'
+                    }`}
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Loom Video</span>
+                  </button>
+                )}
+                {shortsInfo && (
+                  <button
+                    onClick={() => setActiveTab('shorts')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      activeTab === 'shorts'
+                        ? 'bg-pink-600 text-white shadow-xs'
+                        : 'text-neutral-300 hover:text-white bg-neutral-800/80'
+                    }`}
+                  >
+                    <Instagram className="w-3.5 h-3.5 text-pink-400" />
+                    <span>Instagram Shorts</span>
+                  </button>
+                )}
               </div>
             )}
 
             {/* Media Display Area */}
             <div className="relative aspect-4/5 sm:aspect-square md:aspect-auto md:h-120 bg-neutral-100 flex items-center justify-center overflow-hidden">
-              {activeTab === 'video' && videoInfo ? (
-                <div className="w-full h-full bg-black flex flex-col items-center justify-center">
-                  {videoInfo.type === 'youtube' && videoInfo.embedUrl ? (
-                    <iframe
-                      src={videoInfo.embedUrl}
-                      title={`${product.title} Video Preview`}
-                      className="w-full h-full border-0"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  ) : videoInfo.type === 'instagram' && videoInfo.embedUrl ? (
-                    <iframe
-                      src={videoInfo.embedUrl}
-                      title={`${product.title} Instagram Reel`}
-                      className="w-full h-full border-0"
-                      allowFullScreen
-                    />
-                  ) : videoInfo.type === 'direct' && videoInfo.embedUrl ? (
-                    <video
-                      src={videoInfo.embedUrl}
-                      controls
-                      playsInline
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div className="p-6 text-center text-neutral-300">
-                      <p className="text-sm font-semibold mb-2">External Video Preview</p>
-                      <a
-                        href={videoInfo.originalUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 text-neutral-950 text-xs font-bold"
-                      >
-                        <span>Watch on Instagram / YouTube</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+              {(activeTab === 'video' && videoInfo) || (activeTab === 'shorts' && shortsInfo) ? (
+                (() => {
+                  const currentMedia = activeTab === 'shorts' ? shortsInfo! : videoInfo!;
+                  return (
+                    <div className="w-full h-full bg-black flex flex-col items-center justify-center">
+                      {currentMedia.type === 'youtube' && currentMedia.embedUrl ? (
+                        <iframe
+                          src={currentMedia.embedUrl}
+                          title={`${product.title} Video Preview`}
+                          className="w-full h-full border-0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      ) : currentMedia.type === 'instagram' && currentMedia.embedUrl ? (
+                        <iframe
+                          src={currentMedia.embedUrl}
+                          title={`${product.title} Instagram Reel`}
+                          className="w-full h-full border-0"
+                          allowFullScreen
+                        />
+                      ) : currentMedia.type === 'direct' && currentMedia.embedUrl ? (
+                        <video
+                          src={currentMedia.embedUrl}
+                          controls
+                          playsInline
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="p-6 text-center text-neutral-300">
+                          <p className="text-sm font-semibold mb-2">Video Preview</p>
+                          <a
+                            href={currentMedia.originalUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 text-neutral-950 text-xs font-bold"
+                          >
+                            <span>Watch on Instagram / YouTube</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()
               ) : (
                 <img
                   src={product.images[selectedImageIndex] || product.images[0]}
@@ -282,7 +305,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
           {/* Right Column: Detailed Product Purchase Module */}
           <div className="p-6 sm:p-8 flex flex-col justify-between max-h-[85vh] overflow-y-auto">
             <div>
-              {/* Category & Status */}
+              {/* Category, Status & Stock Availability */}
               <div className="flex items-center justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2 text-xs text-neutral-500 flex-wrap">
                   <span className="text-amber-800 font-bold uppercase tracking-wider text-[11px]">
@@ -294,17 +317,51 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   <span className="font-mono text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded shadow-2xs">
                     Code: {product.productCode}
                   </span>
+                  <span aria-hidden="true">·</span>
+                  {/* Stock Availability Indicator */}
+                  {isOutOfStock ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-neutral-900 text-rose-300 border border-neutral-700">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                      <span>Out of Stock</span>
+                    </span>
+                  ) : product.stockCount !== undefined && product.stockCount <= 3 ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                      <span>Limited: Only {product.stockCount} Left</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
+                      <span>{product.stockCount ? `${product.stockCount} Available` : 'In Stock'}</span>
+                    </span>
+                  )}
                 </div>
-                <button
-                  onClick={handleShare}
-                  className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition"
-                  title="Share Saree Link"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
+                {/* Bold Boxed Circular Share Button Module (User Request) */}
+                <div className="relative shrink-0 flex items-center gap-2 p-1.5 pl-2 pr-3 bg-neutral-100 hover:bg-neutral-200/70 rounded-2xl border-2 border-neutral-900 shadow-sm transition">
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    className="w-10 h-10 rounded-full border-2 border-neutral-950 bg-amber-500 hover:bg-amber-400 active:scale-95 text-neutral-950 shadow-md hover:shadow-lg transition-all duration-150 flex items-center justify-center font-bold group cursor-pointer ring-2 ring-amber-300/60 shrink-0"
+                    title="Share Saree Link"
+                    aria-label="Share Saree Link"
+                  >
+                    <Share2 className="w-5 h-5 stroke-[2.6] text-neutral-950 group-hover:scale-110 transition-transform" />
+                  </button>
+                  <div className="flex flex-col text-left select-none">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-neutral-950 leading-tight">
+                      Share
+                    </span>
+                    <span className="text-[10px] font-semibold text-neutral-600 leading-none">
+                      Link
+                    </span>
+                  </div>
+                  {copiedLink && (
+                    <span className="absolute -bottom-9 right-0 bg-neutral-950 text-emerald-300 border border-emerald-500/60 text-[11px] font-bold px-3 py-1 rounded-full whitespace-nowrap shadow-2xl z-30 animate-in fade-in zoom-in-95">
+                      Link Copied! ✓
+                    </span>
+                  )}
+                </div>
               </div>
               {copiedLink && (
-                <p className="text-[11px] text-emerald-700 mb-2">Link copied to clipboard!</p>
+                <p className="text-[11px] font-semibold text-emerald-700 mb-2">Saree link copied to clipboard! Share it with friends and family.</p>
               )}
 
               {/* Title & Subtitle */}
@@ -438,6 +495,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   <span className="text-neutral-500">Recommended Occasion</span>
                   <span className="font-medium text-neutral-900">{product.occasion}</span>
                 </div>
+              </div>
+
+              {/* Cancellation & Refund Policy Notice on Product Front (User Request) */}
+              <div className="mb-6 p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-950 space-y-1">
+                <div className="flex items-center gap-2 font-bold text-amber-900">
+                  <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Important Order & Refund Notice</span>
+                </div>
+                <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                  No cancellation once order is placed. If you have paid and have any queries or negotiations regarding refunds, please contact our assigned boutique admin or concierge staff directly with your order reference.
+                </p>
               </div>
 
               {/* Customer Reviews & Feedback Section */}

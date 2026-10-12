@@ -9,6 +9,8 @@ import {
   StaffMember,
   StaffSectionPermissions,
   ProductReview,
+  StaffAssignmentLog,
+  AdminOnlineStatus,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -101,7 +103,8 @@ interface StoreContextType {
     shippingDetails: { courierName: string; trackingNumber: string; notes?: string }
   ) => void;
   markRefundProcessed: (orderId: string, refundUtr: string, notes?: string) => void;
-  assignOrderStaff: (orderId: string, staffId: string, staffName: string) => void;
+  assignOrderStaff: (orderId: string, staffId: string, staffName: string, reasonOrNote?: string) => void;
+  addOrderWorkLog: (orderId: string, action: string, note?: string) => void;
   requestOrderCancellation: (
     orderNumber: string,
     phone: string,
@@ -137,6 +140,7 @@ interface StoreContextType {
   // Auth (Google Login for Admin and Staff)
   currentUser: ActiveUser | null;
   isAdminLoggedIn: boolean;
+  adminOnlineStatus: AdminOnlineStatus;
   currentPermissions: StaffSectionPermissions;
   googleLogin: (
     firebaseUser: { email?: string | null; displayName?: string | null; photoURL?: string | null; uid: string },
@@ -204,18 +208,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const [settings, setSettings] = useState<StoreSettings>(() => {
     const loaded = loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
-    const boutiqueName =
-      !loaded.boutiqueName || loaded.boutiqueName.includes('Aara')
-        ? 'Neydhal Clothing'
-        : loaded.boutiqueName;
-    const logoUrl =
-      !loaded.logoUrl || loaded.logoUrl.includes('aara')
-        ? '/logo.png'
-        : loaded.logoUrl;
     const updated: StoreSettings = {
       ...loaded,
-      boutiqueName,
-      logoUrl,
       delivery: {
         shippingFee: loaded.delivery?.shippingFee ?? INITIAL_SETTINGS.delivery.shippingFee,
         freeDeliveryEnabled: loaded.delivery?.freeDeliveryEnabled ?? INITIAL_SETTINGS.delivery.freeDeliveryEnabled,
@@ -232,6 +226,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       storefrontDisplay: {
         ...loaded.storefrontDisplay,
         allowPublicCancellation: loaded.storefrontDisplay?.allowPublicCancellation ?? true,
+        allowPublicRefunds: loaded.storefrontDisplay?.allowPublicRefunds ?? true,
       },
     };
     if (updated && (updated.adminPin === '889900' || !updated.adminPin)) {
@@ -363,28 +358,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data() as Partial<StoreSettings>;
-          const sanitizedBoutiqueName =
-            !data.boutiqueName || data.boutiqueName.includes('Aara')
-              ? 'Neydhal Clothing'
-              : data.boutiqueName;
-          const sanitizedLogoUrl =
-            !data.logoUrl || data.logoUrl.includes('aara')
-              ? '/logo.png'
-              : data.logoUrl;
-
-          // If the Firestore document still has the outdated name or missing logo, update it
-          if (data.boutiqueName?.includes('Aara') || !data.logoUrl) {
-            updateDoc(doc(db, 'settings', 'store_config'), {
-              boutiqueName: 'Neydhal Clothing',
-              logoUrl: '/logo.png',
-            }).catch(() => {});
-          }
-
           setSettings((prev) => ({
             ...prev,
             ...data,
-            boutiqueName: sanitizedBoutiqueName,
-            logoUrl: sanitizedLogoUrl,
             delivery: {
               ...prev.delivery,
               ...(data.delivery || {}),
@@ -571,16 +547,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Cart operations
   const addToCart = (product: Product, quantity = 1) => {
+    // Prevent adding out of stock items
+    if (product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0)) {
+      return;
+    }
+
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
+      const availableStock = product.stockCount ?? 99;
       if (existing) {
+        const nextQty = Math.min(existing.quantity + quantity, availableStock);
         return prev.map((item) =>
           item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: nextQty }
             : item
         );
       }
-      return [...prev, { product, quantity }];
+      return [...prev, { product, quantity: Math.min(quantity, availableStock) }];
     });
   };
 
@@ -655,6 +638,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateProduct = (id: string, updates: Partial<Product>) => {
+    const existingProd = products.find((p) => p.id === id);
+    const wasOutOfStock = existingProd && (existingProd.stockStatus === 'out_of_stock' || existingProd.stockCount <= 0);
+    const willBeRestocked =
+      (updates.stockStatus === 'in_stock' || updates.stockStatus === 'limited') &&
+      ((updates.stockCount !== undefined && updates.stockCount > 0) || (existingProd && existingProd.stockCount > 0));
+
+    // If restocked, automatically announce on the public store front like a notification to customers
+    if (wasOutOfStock && willBeRestocked && existingProd) {
+      const restockedTitle = updates.title || existingProd.title;
+      const announcementMsg = `✨ Back in Stock: "${restockedTitle}" has been restocked and is now available for ordering!`;
+      updateSettings({
+        announcement: {
+          enabled: true,
+          text: announcementMsg,
+          badgeLabel: 'RESTOCKED',
+        },
+      });
+    }
+
     setProducts((prev) =>
       prev.map((prod) => (prod.id === id ? { ...prod, ...updates } : prod))
     );
@@ -858,9 +860,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const totalAmount = subtotal + shippingFee;
     const orderNumber = `AARA-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    // Auto-assign to first active concierge staff if available
-    const availableStaff = (settings.staffMembers || []).find((s) => !s.isLocked);
-
+    // User request: when user places an order it should NOT assign to staff by default;
+    // it must appear in the unassigned queue for staff to assign and close the deal.
     const newOrder: Order = {
       id: `order-${Date.now()}`,
       orderNumber,
@@ -879,14 +880,38 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       status: 'Pending',
       checkoutMethod,
       notes,
-      assignedStaffId: availableStaff?.id,
-      assignedStaffName: availableStaff?.name,
-      lastUpdatedBy: currentUser?.username || 'system',
+      assignedStaffId: undefined,
+      assignedStaffName: undefined,
+      lastUpdatedBy: 'customer',
+      assignmentHistory: [
+        {
+          id: `log-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          staffId: 'unassigned',
+          staffName: 'Unassigned Queue',
+          assignedBy: 'Storefront Intake',
+          action: 'Order Placed in Queue',
+          note: 'Customer completed checkout. Waiting for boutique concierge staff to claim & close deal.',
+        },
+      ],
     };
 
     setOrders((prev) => [newOrder, ...prev]);
     clearCart();
     setLastPlacedOrder(newOrder);
+
+    // Deduct stock for ordered items and update stockStatus to out_of_stock if stock reaches 0
+    items.forEach((item) => {
+      const prod = products.find((p) => p.id === item.product.id);
+      if (prod) {
+        const remainingCount = Math.max(0, (prod.stockCount ?? 1) - item.quantity);
+        const nextStatus = remainingCount === 0 ? 'out_of_stock' : remainingCount <= 2 ? 'limited' : prod.stockStatus;
+        updateProduct(prod.id, {
+          stockCount: remainingCount,
+          stockStatus: nextStatus,
+        });
+      }
+    });
 
     // Persist new order directly to Firestore
     setDoc(doc(db, 'orders', newOrder.id), sanitizeForFirestore(newOrder)).catch((err) =>
@@ -944,6 +969,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           };
         }
 
+        // Live work tracking entry for stage change
+        const actorName = currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+        const actorUsername = currentUser?.username || 'system';
+        const isCrossStaff = ord.assignedStaffId && currentUser?.staffId && ord.assignedStaffId !== currentUser.staffId;
+        const crossStaffNote = isCrossStaff ? ` (Handled by @${actorUsername} on @${ord.assignedStaffName || 'unassigned'}'s bucket)` : '';
+        const stageLog: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          staffId: currentUser?.staffId || ord.assignedStaffId || 'admin',
+          staffName: actorName,
+          assignedBy: actorName,
+          action: `Stage changed from ${ord.status} to ${status}${crossStaffNote}`,
+          note: nextReason || (isCrossStaff ? `Cross-staff action performed by @${actorUsername}` : undefined),
+        };
+        const updatedHistory = [...(ord.assignmentHistory || []), stageLog];
+
         const updated: Order = {
           ...ord,
           status,
@@ -951,6 +992,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           cancellationReason: nextReason,
           cancellationRequest: nextCancelRequest,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: updatedHistory,
           refundDetails: {
             ...ord.refundDetails,
             refundStatus: nextRefundStatus,
@@ -990,12 +1032,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           };
         }
 
+        const actorName = currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+        const actorUsername = currentUser?.username || 'system';
+        const isCrossStaff = ord.assignedStaffId && currentUser?.staffId && ord.assignedStaffId !== currentUser.staffId;
+        const crossStaffNote = isCrossStaff ? ` (Handled by @${actorUsername} on @${ord.assignedStaffName || 'unassigned'}'s bucket)` : '';
+        const shippingLog: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          staffId: currentUser?.staffId || ord.assignedStaffId || 'admin',
+          staffName: actorName,
+          assignedBy: actorName,
+          action: `Dispatched shipment via ${shippingDetails.courierName.trim()} (Tracking #${shippingDetails.trackingNumber.trim()})${crossStaffNote}`,
+          note: shippingDetails.notes?.trim() || 'Courier tracking assigned and order marked Shipped',
+        };
+        const updatedHistory = [...(ord.assignmentHistory || []), shippingLog];
+
         const updated: Order = {
           ...ord,
           status: 'Shipped',
           cancellationReason: undefined,
           cancellationRequest: nextCancelRequest,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: updatedHistory,
           refundDetails: {
             ...ord.refundDetails,
             refundStatus: 'not_required',
@@ -1024,9 +1082,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
+        const actorName = currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+        const actorUsername = currentUser?.username || 'system';
+        const isCrossStaff = ord.assignedStaffId && currentUser?.staffId && ord.assignedStaffId !== currentUser.staffId;
+        const crossStaffNote = isCrossStaff ? ` (Handled by @${actorUsername} on @${ord.assignedStaffName || 'unassigned'}'s bucket)` : '';
+        const refundLog: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          staffId: currentUser?.staffId || ord.assignedStaffId || 'admin',
+          staffName: actorName,
+          assignedBy: actorName,
+          action: `Processed refund of ₹${ord.totalAmount} (UTR: ${refundUtr.trim()})${crossStaffNote}`,
+          note: notes?.trim() || 'Refund processed to customer bank account / UPI',
+        };
+        const updatedHistory = [...(ord.assignmentHistory || []), refundLog];
+
         const updated: Order = {
           ...ord,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: updatedHistory,
           refundDetails: {
             ...ord.refundDetails,
             refundStatus: 'processed',
@@ -1047,16 +1121,80 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
-  const assignOrderStaff = (orderId: string, staffId: string, staffName: string) => {
+  const assignOrderStaff = (orderId: string, staffId: string, staffName: string, reasonOrNote?: string) => {
     let orderToSync: Partial<Order> | null = null;
+    const actorName = currentUser?.name || (currentUser?.type === 'admin' ? 'Store Administrator' : 'Staff');
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
+
+        const isReassignment = ord.assignedStaffId && ord.assignedStaffId !== staffId;
+        const prevStaffName = ord.assignedStaffName || 'Previous Staff';
+
+        const actionText = !staffId
+          ? `Order unassigned by ${actorName}`
+          : isReassignment
+          ? `Reassigned from ${prevStaffName} to ${staffName}`
+          : `Assigned to ${staffName}`;
+
+        const noteText = reasonOrNote?.trim() || (isReassignment ? 'Reassigned & handed over for work execution' : 'Started working on order');
+
+        const newLogEntry: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          staffId,
+          staffName,
+          assignedBy: actorName,
+          action: actionText,
+          note: noteText,
+        };
+
+        const updatedHistory = [...(ord.assignmentHistory || []), newLogEntry];
+
         const updated: Order = {
           ...ord,
           assignedStaffId: staffId,
           assignedStaffName: staffName,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: updatedHistory,
+        };
+        orderToSync = updated;
+        return updated;
+      })
+    );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
+  };
+
+  const addOrderWorkLog = (orderId: string, action: string, note?: string) => {
+    let orderToSync: Partial<Order> | null = null;
+    const actorName = currentUser?.name || 'Staff';
+    const actorStaffId = currentUser?.staffId || '';
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+
+        const newLogEntry: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          staffId: actorStaffId || ord.assignedStaffId || '',
+          staffName: actorName,
+          assignedBy: actorName,
+          action,
+          note: note?.trim(),
+        };
+
+        const updatedHistory = [...(ord.assignmentHistory || []), newLogEntry];
+        const updated: Order = {
+          ...ord,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: updatedHistory,
         };
         orderToSync = updated;
         return updated;
@@ -1410,6 +1548,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
       setCurrentUser(staffUser);
       saveToStorage(STORAGE_KEYS.CURRENT_USER, staffUser);
+
+      // Persist staff online status
+      setSettings((prev) => {
+        const updatedStaff = (prev.staffMembers || []).map((s) =>
+          s.id === matchedStaff!.id
+            ? { ...s, isLoggedIn: true, lastLoginAt: new Date().toISOString() }
+            : s
+        );
+        const next = { ...prev, staffMembers: updatedStaff };
+        saveToStorage(STORAGE_KEYS.SETTINGS, next);
+        setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: updatedStaff }), { merge: true }).catch(() => {});
+        return next;
+      });
+
       return { success: true, role: 'staff' };
     }
 
@@ -1450,6 +1602,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
     setCurrentUser(adminUser);
     saveToStorage(STORAGE_KEYS.CURRENT_USER, adminUser);
+
+    // Update live admin online status
+    setSettings((prev) => {
+      const nextAdminOnline: AdminOnlineStatus = {
+        isLoggedIn: true,
+        lastLoginAt: new Date().toISOString(),
+        lastLogoutAt: prev.adminOnlineStatus?.lastLogoutAt,
+      };
+      const next = { ...prev, adminOnlineStatus: nextAdminOnline };
+      saveToStorage(STORAGE_KEYS.SETTINGS, next);
+      setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ adminOnlineStatus: nextAdminOnline }), { merge: true }).catch(() => {});
+      return next;
+    });
+
     return { success: true, role: 'admin' };
   };
 
@@ -1462,6 +1628,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         name: 'Store Owner',
       };
       setCurrentUser(user);
+      saveToStorage(STORAGE_KEYS.CURRENT_USER, user);
+
+      // Update live admin online status
+      setSettings((prev) => {
+        const nextAdminOnline: AdminOnlineStatus = {
+          isLoggedIn: true,
+          lastLoginAt: new Date().toISOString(),
+          lastLogoutAt: prev.adminOnlineStatus?.lastLogoutAt,
+        };
+        const next = { ...prev, adminOnlineStatus: nextAdminOnline };
+        saveToStorage(STORAGE_KEYS.SETTINGS, next);
+        setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ adminOnlineStatus: nextAdminOnline }), { merge: true }).catch(() => {});
+        return next;
+      });
+
       return true;
     }
     return false;
@@ -1492,16 +1673,73 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       staffId: staff.id,
     };
     setCurrentUser(user);
+    saveToStorage(STORAGE_KEYS.CURRENT_USER, user);
+
+    // Persist staff online status
+    setSettings((prev) => {
+      const updatedStaff = (prev.staffMembers || []).map((s) =>
+        s.id === staff.id
+          ? { ...s, isLoggedIn: true, lastLoginAt: new Date().toISOString() }
+          : s
+      );
+      const next = { ...prev, staffMembers: updatedStaff };
+      saveToStorage(STORAGE_KEYS.SETTINGS, next);
+      setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: updatedStaff }), { merge: true }).catch(() => {});
+      return next;
+    });
+
     return { success: true };
   };
 
   const adminLogout = async () => {
+    if (currentUser?.type === 'admin') {
+      setSettings((prev) => {
+        const nextAdminOnline: AdminOnlineStatus = {
+          isLoggedIn: false,
+          lastLogoutAt: new Date().toISOString(),
+          lastLoginAt: prev.adminOnlineStatus?.lastLoginAt,
+        };
+        const next = { ...prev, adminOnlineStatus: nextAdminOnline };
+        saveToStorage(STORAGE_KEYS.SETTINGS, next);
+        setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ adminOnlineStatus: nextAdminOnline }), { merge: true }).catch(() => {});
+        return next;
+      });
+    } else if (currentUser?.staffId) {
+      const sId = currentUser.staffId;
+      setSettings((prev) => {
+        const updatedStaff = (prev.staffMembers || []).map((s) =>
+          s.id === sId
+            ? { ...s, isLoggedIn: false, lastLogoutAt: new Date().toISOString() }
+            : s
+        );
+        const next = { ...prev, staffMembers: updatedStaff };
+        saveToStorage(STORAGE_KEYS.SETTINGS, next);
+        setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: updatedStaff }), { merge: true }).catch(() => {});
+        return next;
+      });
+    }
     setCurrentUser(null);
     saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
     await googleSignOut();
   };
 
   const isAdminLoggedIn = !!currentUser;
+
+  const adminOnlineStatus = useMemo<AdminOnlineStatus>(() => {
+    if (currentUser?.type === 'admin') {
+      return {
+        isLoggedIn: true,
+        lastLoginAt: settings.adminOnlineStatus?.lastLoginAt || new Date().toISOString(),
+        lastLogoutAt: settings.adminOnlineStatus?.lastLogoutAt,
+      };
+    }
+    return (
+      settings.adminOnlineStatus || {
+        isLoggedIn: false,
+        lastLogoutAt: new Date().toISOString(),
+      }
+    );
+  }, [currentUser, settings.adminOnlineStatus]);
 
   const currentPermissions = useMemo<StaffSectionPermissions>(() => {
     if (!currentUser) {
@@ -1563,6 +1801,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateOrderShipping,
         markRefundProcessed,
         assignOrderStaff,
+        addOrderWorkLog,
         requestOrderCancellation,
         resolveCancellationRequest,
         findOrdersByQuery,
@@ -1581,6 +1820,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         resetToInitialData,
         currentUser,
         isAdminLoggedIn,
+        adminOnlineStatus,
         currentPermissions,
         googleLogin,
         adminLogin,

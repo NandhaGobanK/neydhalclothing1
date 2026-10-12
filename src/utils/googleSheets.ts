@@ -1,4 +1,4 @@
-import { Order, Product } from '../types/store';
+import { Order, Product, StaffMember } from '../types/store';
 import { getAccessToken, clearCachedToken } from './firebaseAuth';
 
 export interface SheetSyncResult {
@@ -183,6 +183,8 @@ export async function syncOrdersToGoogleSheet(
     'Email',
     'Shipping Address',
     'Status',
+    'Assigned Handling Staff',
+    'Last Handled Username',
     'Total Amount (₹)',
     'Payment UTR',
     'Items Summary',
@@ -192,6 +194,7 @@ export async function syncOrdersToGoogleSheet(
     'Refund Status',
     'Refund UTR',
     'Customer Comments / Instructions',
+    'Staff Work Tracking History',
   ];
 
   const orderRows =
@@ -204,6 +207,8 @@ export async function syncOrdersToGoogleSheet(
           o.customer.email,
           `${o.customer.address}, ${o.customer.city}, ${o.customer.state} - ${o.customer.pincode}`,
           o.status,
+          o.assignedStaffName || 'Unassigned',
+          o.lastUpdatedBy || '',
           o.totalAmount,
           o.upiTransactionId || 'Pending Verification',
           o.items
@@ -218,6 +223,12 @@ export async function syncOrdersToGoogleSheet(
           o.refundDetails?.refundStatus || '',
           o.refundDetails?.refundUtr || '',
           o.notes || '',
+          (o.assignmentHistory || [])
+            .map(
+              (h) =>
+                `[${new Date(h.timestamp).toLocaleDateString('en-IN')}] ${h.staffName}: ${h.action}${h.note ? ` (${h.note})` : ''}`
+            )
+            .join('; '),
         ])
       : [
           [
@@ -228,9 +239,12 @@ export async function syncOrdersToGoogleSheet(
             '-',
             '-',
             'Ready',
+            '-',
+            '-',
             0,
             '-',
             'Columns configured for incoming orders',
+            '-',
             '-',
             '-',
             '-',
@@ -463,6 +477,104 @@ export async function syncAllToGoogleSheet(
     spreadsheetUrl: ordersResult.spreadsheetUrl,
     rowsUpdated: ordersResult.rowsUpdated + analyticsResult.rowsUpdated,
     message: `Successfully synchronized all ${orders.length} orders and complete sales analytics to your Master Google Sheets document!`,
+  };
+}
+
+/**
+ * Synchronizes the Staff Order Assignments Ledger to the admin's Master Google Sheet
+ * under the dedicated 'Staff Attribution' tab, capturing all assignments and live tracking logs.
+ */
+export async function syncStaffLedgerToGoogleSheet(
+  orders: Order[],
+  staffMembers: StaffMember[],
+  boutiqueName: string,
+  existingSpreadsheetId?: string
+): Promise<SheetSyncResult> {
+  const { spreadsheetId, spreadsheetUrl } = await getOrCreateMasterSpreadsheet(
+    boutiqueName,
+    existingSpreadsheetId
+  );
+
+  const ledgerHeader = [
+    'Order Number',
+    'Customer Name',
+    'Customer Phone',
+    'Order Status',
+    'Total Amount (₹)',
+    'Assigned Boutique Staff',
+    'Staff Username',
+    'Staff Role',
+    'Last Action / Work Tracking Log',
+  ];
+
+  const ledgerRows = orders.length > 0
+    ? orders.map((ord) => {
+        const staff = staffMembers.find((s) => s.id === ord.assignedStaffId);
+        const lastLog = ord.assignmentHistory && ord.assignmentHistory.length > 0
+          ? ord.assignmentHistory[ord.assignmentHistory.length - 1]
+          : null;
+        const lastLogText = lastLog
+          ? `[${new Date(lastLog.timestamp).toLocaleTimeString('en-IN')}] ${lastLog.staffName}: ${lastLog.action}${lastLog.note ? ` (${lastLog.note})` : ''}`
+          : 'No work update logged yet';
+
+        return [
+          ord.orderNumber,
+          ord.customer.name,
+          ord.customer.phone,
+          ord.status,
+          ord.totalAmount,
+          ord.assignedStaffName || 'Unassigned',
+          staff ? `@${staff.username}` : (ord.lastUpdatedBy ? `@${ord.lastUpdatedBy}` : '-'),
+          staff ? staff.role : '-',
+          lastLogText,
+        ];
+      })
+    : [
+        [
+          'TEMPLATE',
+          'Demo Customer',
+          '+919876543210',
+          'Pending',
+          0,
+          'Unassigned',
+          '-',
+          '-',
+          'Ledger initialized',
+        ],
+      ];
+
+  const staffValues = [ledgerHeader, ...ledgerRows];
+
+  // Clear and update Staff Attribution sheet tab
+  await fetchSheetsApi(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Staff Attribution'!A1:Z5000:clear`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+  ).catch(() => {});
+
+  const writeRes = await fetchSheetsApi(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Staff Attribution'!A1?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        range: "'Staff Attribution'!A1",
+        majorDimension: 'ROWS',
+        values: staffValues,
+      }),
+    }
+  );
+
+  if (!writeRes.ok) {
+    const errData = await writeRes.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || 'Failed to update Staff Attribution tab in Google Sheet');
+  }
+
+  return {
+    success: true,
+    spreadsheetId,
+    spreadsheetUrl,
+    rowsUpdated: ledgerRows.length,
+    message: `Successfully synchronized ${ledgerRows.length} staff order assignment records to your Google Sheets document!`,
   };
 }
 
