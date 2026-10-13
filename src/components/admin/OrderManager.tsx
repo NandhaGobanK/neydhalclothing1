@@ -69,6 +69,21 @@ export const OrderManager: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Clickable / expandable order cards (User Request: each Item ordered display is too lengthy, make orders in clickable format)
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
+
+  const toggleOrderExpand = (orderId: string) => {
+    setExpandedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  };
+
   // Sound Notification on New Order Received (User Request)
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [newOrderAlert, setNewOrderAlert] = useState<Order | null>(null);
@@ -730,22 +745,135 @@ export const OrderManager: React.FC = () => {
           <p className="text-xs text-neutral-500 mt-1">Try switching status filters or clear search.</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
+          {/* Clickable Orders Control Bar (User Request) */}
+          <div className="flex items-center justify-between gap-3 text-xs text-neutral-600 px-1 py-1">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-neutral-800">
+                {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
+              </span>
+              <span className="text-neutral-400">·</span>
+              <span className="text-neutral-500 text-[11px]">
+                {expandedOrderIds.size === 0
+                  ? 'Click any order to view details'
+                  : `${expandedOrderIds.size} of ${filteredOrders.length} expanded`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setExpandedOrderIds(new Set(filteredOrders.map((o) => o.id)))}
+                className="px-2.5 py-1 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-medium text-[11px] transition flex items-center gap-1 cursor-pointer"
+                title="Expand all orders"
+              >
+                <Maximize2 className="w-3 h-3 text-neutral-500" />
+                <span>Expand All</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpandedOrderIds(new Set())}
+                className="px-2.5 py-1 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-medium text-[11px] transition flex items-center gap-1 cursor-pointer"
+                title="Collapse all orders"
+              >
+                <Minimize2 className="w-3 h-3 text-neutral-500" />
+                <span>Collapse All</span>
+              </button>
+            </div>
+          </div>
+
           {filteredOrders.map((order) => {
             const isCancelledOrRejected = order.status === 'Cancelled' || order.status === 'Rejected';
             const refundPending = isCancelledOrRejected && order.refundDetails?.refundStatus === 'pending';
+            const isExpanded = expandedOrderIds.has(order.id);
 
             return (
               <div
                 key={order.id}
-                className={`bg-white rounded-2xl border transition shadow-xs p-5 ${
+                className={`bg-white rounded-2xl border transition shadow-xs overflow-hidden ${
                   refundPending
                     ? 'border-amber-400 bg-gradient-to-r from-amber-50/20 to-white'
                     : 'border-neutral-200/90'
                 }`}
               >
-                {/* Header row */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-100">
+                {/* Clickable Order Summary Header (User Request: clickable format to avoid lengthy scrolling) */}
+                <div
+                  onClick={() => toggleOrderExpand(order.id)}
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 transition cursor-pointer select-none ${
+                    isExpanded ? 'bg-neutral-50/90 border-b border-neutral-200' : 'hover:bg-neutral-50/70'
+                  }`}
+                  title="Click to expand/collapse order details"
+                >
+                  <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+                    <span
+                      className={`p-1 rounded-md border transition ${
+                        isExpanded ? 'bg-amber-100 border-amber-300 text-amber-900' : 'bg-neutral-100 border-neutral-200 text-neutral-500'
+                      }`}
+                    >
+                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </span>
+                    <span className="font-mono text-xs font-bold text-rose-950 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
+                      #{order.orderNumber}
+                    </span>
+                    <span className="text-xs font-bold text-neutral-900">{order.customer.name}</span>
+                    <span className="text-xs text-neutral-500 font-mono hidden md:inline">
+                      {order.customer.phone}
+                    </span>
+                    <span className="text-xs text-neutral-400">·</span>
+                    <span className="text-xs font-medium text-neutral-600">
+                      {order.items.length} {order.items.length === 1 ? 'saree' : 'sarees'}
+                    </span>
+                    <span className="font-bold text-neutral-900 tabular-nums">
+                      {formatPrice(order.totalAmount)}
+                    </span>
+                    <span className="text-xs text-neutral-400 hidden sm:inline">·</span>
+                    <span className="text-xs text-neutral-500 hidden sm:inline">
+                      {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    {order.assignedStaffName ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        👤 {order.assignedStaffName}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                        ⚠️ Unassigned
+                      </span>
+                    )}
+
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                        order.status === 'Cancelled' || order.status === 'Rejected'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                          : order.status === 'Delivered'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : order.status === 'Shipped'
+                          ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                          : order.status === 'Confirmed'
+                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                          : 'bg-amber-100 text-amber-800 border border-amber-200'
+                      }`}
+                    >
+                      {order.status}
+                    </span>
+
+                    <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                      {isExpanded ? 'Hide ▲' : 'View Details ▼'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Expanded Details Body */}
+                {isExpanded && (
+                  <div className="p-4 sm:p-5 pt-3 space-y-4">
+                    {/* Header row with Stage Switcher */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-100">
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-xs font-bold text-rose-950 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
                       #{order.orderNumber}
@@ -875,14 +1003,20 @@ export const OrderManager: React.FC = () => {
                       {/* Interactive Assignment Buttons for Staff & Admins */}
                       {canEditOrders && (
                         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          {/* Claim button for current user */}
+                          {/* Claim button for current user (Admin needs no reason, staff must provide reason) */}
                           {currentUser && order.assignedStaffId !== (currentUser.staffId || 'admin') && (
                             <button
                               type="button"
                               onClick={() => {
                                 const myId = currentUser.staffId || 'admin';
                                 const myName = currentUser.name || (isAdmin ? 'Store Owner' : 'Staff Concierge');
-                                assignOrderStaff(order.id, myId, myName, 'Claimed by staff & started working on order');
+                                if (isAdmin) {
+                                  assignOrderStaff(order.id, myId, myName, 'Claimed by Store Owner');
+                                } else {
+                                  setAssignModalOrder(order);
+                                  setTargetStaffId(myId);
+                                  setAssignmentReason('');
+                                }
                               }}
                               className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-[11px] transition shadow-2xs flex items-center gap-1 cursor-pointer"
                               title="Assign this order to yourself and begin working"
@@ -1168,7 +1302,9 @@ export const OrderManager: React.FC = () => {
                   </div>
                 </div>
               </div>
-            );
+            )}
+          </div>
+        );
           })}
         </div>
       )}
@@ -1818,16 +1954,33 @@ export const OrderManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-bold text-neutral-800 mb-1">
-                  Assignment / Handover Reason (Recorded in live log)
+                <label className="block font-bold text-neutral-800 mb-1 flex items-center justify-between">
+                  <span>Assignment / Handover Reason</span>
+                  {isAdmin ? (
+                    <span className="text-[11px] font-normal text-neutral-400">Optional for Admin</span>
+                  ) : (
+                    <span className="text-[11px] font-bold text-rose-600">* Required for Staff</span>
+                  )}
                 </label>
                 <input
                   type="text"
+                  required={!isAdmin}
                   value={assignmentReason}
                   onChange={(e) => setAssignmentReason(e.target.value)}
-                  placeholder="e.g. Assigned to Gugan due to emergency leave of Nandha"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900"
+                  placeholder={
+                    isAdmin
+                      ? 'Optional note (e.g. VIP bridal priority, weaver verification)'
+                      : 'Required: state reason for assignment (e.g. emergency leave handover, shift duty)'
+                  }
+                  className={`w-full p-2.5 rounded-xl border bg-white text-neutral-900 ${
+                    !isAdmin && !assignmentReason.trim() ? 'border-amber-400 focus:border-rose-500' : 'border-neutral-300'
+                  }`}
                 />
+                {!isAdmin && (
+                  <p className="text-[10px] text-neutral-500 mt-1">
+                    * Assignee must state why this order is being claimed or reassigned.
+                  </p>
+                )}
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[10px]">
                   <span className="text-neutral-400 font-semibold">Quick Presets:</span>
                   {[
@@ -1867,11 +2020,16 @@ export const OrderManager: React.FC = () => {
                       alert('Please select a staff member to assign.');
                       return;
                     }
+                    if (!isAdmin && !assignmentReason.trim()) {
+                      alert('Please state a reason for assigning or reassigning the order. Staff members must record an assignment reason.');
+                      return;
+                    }
                     const selectedStaff = staffMembers.find((s) => s.id === targetStaffId);
                     const sName = targetStaffId === 'admin'
                       ? 'Store Owner'
                       : (selectedStaff?.name || 'Staff Specialist');
-                    assignOrderStaff(assignModalOrder.id, targetStaffId, sName, assignmentReason);
+                    const finalReason = assignmentReason.trim() || (isAdmin ? 'Assigned by Store Owner' : 'Assigned to staff');
+                    assignOrderStaff(assignModalOrder.id, targetStaffId, sName, finalReason);
                     setAssignModalOrder(null);
                   }}
                   className="px-5 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold transition shadow-xs flex items-center gap-1.5"

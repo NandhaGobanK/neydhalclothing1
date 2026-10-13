@@ -4,6 +4,7 @@ import { OrderManager } from './OrderManager';
 import { ProductManager } from './ProductManager';
 import { AnalyticsManager } from './AnalyticsManager';
 import { StaffManager } from './StaffManager';
+import { StaffBucketManager } from './StaffBucketManager';
 import { SettingsManager } from './SettingsManager';
 import { playOrderNotificationSound } from '../../utils/audio';
 import { formatPrice } from '../../utils/upi';
@@ -20,6 +21,7 @@ import {
   Bell,
   Volume2,
   X,
+  Layers,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -27,11 +29,16 @@ interface AdminLayoutProps {
 }
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => {
-  const { settings, adminLogout, orders, currentUser, currentPermissions } = useStore();
+  const { settings, adminLogout, orders, currentUser, currentPermissions, adminOnlineStatus } = useStore();
   const isAdmin = currentUser?.type === 'admin';
+
+  const myBucketOrdersCount = orders.filter(
+    (o) => o.assignedStaffId === currentUser?.staffId
+  ).length;
 
   // Determine allowed tabs based on permissions
   const canSeeOrders = isAdmin || currentPermissions?.orders?.canView !== false;
+  const canSeeStaffBuckets = canSeeOrders;
   const canSeeProducts = isAdmin || currentPermissions?.products?.canView !== false;
   const canSeeAnalytics = isAdmin || currentPermissions?.analytics?.canView !== false;
   const canSeeStaff = isAdmin || currentPermissions?.staff?.canView !== false;
@@ -53,7 +60,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     ? 'staff'
     : 'settings';
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'analytics' | 'staff' | 'settings'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<
+    'orders' | 'staff_buckets' | 'products' | 'analytics' | 'staff' | 'settings'
+  >(defaultTab);
+  const [selectedStaffBucketId, setSelectedStaffBucketId] = useState<string | undefined>(undefined);
 
   // Sound notification when admins or staff receive orders (User Request)
   const prevOrdersCountRef = useRef(orders.length);
@@ -97,8 +107,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
           <div className="py-2 sm:py-2.5 flex items-center justify-between flex-wrap gap-2 sm:gap-3 border-b border-neutral-800/80">
             {/* Brand & Portal Badge */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap">
-              <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-amber-600 to-rose-700 flex items-center justify-center text-amber-100 font-serif font-bold text-xs sm:text-sm shadow-inner shrink-0">
-                Aa
+              <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-[#7e1ba8] via-[#52126e] to-[#2d053f] flex items-center justify-center text-[#faebd7] font-serif font-bold text-xs sm:text-sm shadow-[0_2px_10px_rgba(82,18,110,0.65),inset_0_1px_1.5px_rgba(255,255,255,0.7)] ring-1 ring-amber-300/40 relative overflow-hidden shrink-0">
+                <span className="absolute inset-0 bg-gradient-to-b from-white/35 via-white/5 to-transparent h-1/2 pointer-events-none rounded-t-lg"></span>
+                <span className="relative z-10 drop-shadow-sm">N</span>
               </span>
               <div className="min-w-0 flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <h1 className="font-serif text-sm sm:text-base font-bold text-white truncate max-w-[120px] sm:max-w-[200px] md:max-w-xs">
@@ -116,6 +127,35 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                     ? (currentUser?.email ? `Admin: ${currentUser.email}` : 'Admin: Owner')
                     : `Staff: @${currentUser?.username || 'Staff'}`}
                 </span>
+
+                {/* Live Admin Online/Offline Status for Staff Members (User Request) */}
+                {!isAdmin && (
+                  <span
+                    className={`px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1.5 ${
+                      adminOnlineStatus?.isLoggedIn
+                        ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300 shadow-xs'
+                        : 'bg-neutral-900 border-neutral-700 text-neutral-400'
+                    }`}
+                    title={
+                      adminOnlineStatus?.isLoggedIn
+                        ? `Store Owner is currently active and logged in (since ${new Date(adminOnlineStatus.lastLoginAt || '').toLocaleTimeString('en-IN')})`
+                        : `Store Owner is currently locked/logged out (last active ${adminOnlineStatus?.lastLogoutAt ? new Date(adminOnlineStatus.lastLogoutAt).toLocaleTimeString('en-IN') : 'recently'})`
+                    }
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        adminOnlineStatus?.isLoggedIn
+                          ? 'bg-emerald-400 animate-pulse'
+                          : 'bg-neutral-500'
+                      }`}
+                    />
+                    <span>
+                      {adminOnlineStatus?.isLoggedIn
+                        ? 'Admin Logged In'
+                        : 'Admin Logged Out'}
+                    </span>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -159,6 +199,25 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                     {pendingRefundsCount}
                   </span>
                 )}
+              </button>
+            )}
+
+            {canSeeStaffBuckets && (
+              <button
+                onClick={() => setActiveTab('staff_buckets')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
+                  activeTab === 'staff_buckets'
+                    ? 'bg-amber-400 text-neutral-950 font-bold shadow-xs'
+                    : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
+                }`}
+                title="Dedicated staff bucket column for managing orders separately"
+              >
+                <Layers className="w-3.5 h-3.5 text-amber-500" />
+                <span>
+                  {currentUser?.staffId
+                    ? `My Bucket (${myBucketOrdersCount})`
+                    : 'Staff Buckets'}
+                </span>
               </button>
             )}
 
@@ -272,9 +331,22 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
       {/* Main Admin View Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'orders' && <OrderManager />}
+        {activeTab === 'staff_buckets' && (
+          <StaffBucketManager
+            initialStaffId={selectedStaffBucketId}
+            onNavigateToTab={(t) => setActiveTab(t)}
+          />
+        )}
         {activeTab === 'products' && <ProductManager />}
         {activeTab === 'analytics' && <AnalyticsManager />}
-        {activeTab === 'staff' && <StaffManager />}
+        {activeTab === 'staff' && (
+          <StaffManager
+            onNavigateToBucket={(staffId) => {
+              setSelectedStaffBucketId(staffId);
+              setActiveTab('staff_buckets');
+            }}
+          />
+        )}
         {activeTab === 'settings' && <SettingsManager />}
       </main>
     </div>

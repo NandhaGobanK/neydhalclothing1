@@ -45,18 +45,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
     return `https://www.youtube.com/${username}`;
   };
 
-  const handleOpenExternal = (url: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    try {
-      const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!win) {
-        window.location.assign(url);
-      }
-    } catch {
-      window.location.assign(url);
-    }
-  };
-
   return (
     <footer className={`${themeColors.footerBg} ${themeColors.footerText} border-t ${themeColors.footerBorder} text-xs mt-16 transition-colors duration-200`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -132,7 +120,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
                   <Instagram className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                   <a
                     href={getInstagramUrl(settings.instagramHandle)}
-                    onClick={(e) => handleOpenExternal(getInstagramUrl(settings.instagramHandle), e)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-neutral-300 hover:text-amber-200 transition inline-flex items-center gap-1 group cursor-pointer"
@@ -148,7 +135,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
                   <Youtube className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                   <a
                     href={getYoutubeUrl(settings.youtubeHandle)}
-                    onClick={(e) => handleOpenExternal(getYoutubeUrl(settings.youtubeHandle), e)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-neutral-300 hover:text-amber-200 transition inline-flex items-center gap-1 group cursor-pointer"

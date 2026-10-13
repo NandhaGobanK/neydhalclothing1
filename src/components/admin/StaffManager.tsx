@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { StaffMember } from '../../types/store';
+import { StaffMember, Order, OrderStatus } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
 import { syncStaffLedgerToGoogleSheet } from '../../utils/googleSheets';
 import {
@@ -31,9 +31,24 @@ import {
   Download,
   RefreshCw,
   Activity,
+  ShieldCheck,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  History,
+  ArrowRight,
+  BarChart3,
+  Layers,
+  UserCheck,
+  Edit,
+  MessageSquare,
 } from 'lucide-react';
 
-export const StaffManager: React.FC = () => {
+interface StaffManagerProps {
+  onNavigateToBucket?: (staffId: string) => void;
+}
+
+export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }) => {
   const {
     staffMembers,
     addStaffMember,
@@ -46,6 +61,10 @@ export const StaffManager: React.FC = () => {
     updateSettings,
     currentUser,
     currentPermissions,
+    adminOnlineStatus,
+    updateOrderStatus,
+    assignOrderStaff,
+    addOrderWorkLog,
   } = useStore();
   const isAdmin = currentUser?.type === 'admin';
   const canEditStaff = isAdmin || currentPermissions?.staff?.canEdit !== false;
@@ -269,6 +288,94 @@ export const StaffManager: React.FC = () => {
     setIsAddModalOpen(false);
   };
 
+  // Staff Orders Bar Dashboard & Drill-down Bucket State (User Request)
+  const [expandedStaffIds, setExpandedStaffIds] = useState<Set<string>>(new Set());
+  const [selectedDetailOrder, setSelectedDetailOrder] = useState<Order | null>(null);
+
+  // Assignment Modal for assigning / reassigning from dashboard
+  const [assignModalOrder, setAssignModalOrder] = useState<Order | null>(null);
+  const [targetStaffId, setTargetStaffId] = useState('');
+  const [assignmentReason, setAssignmentReason] = useState('');
+
+  // Live Work Note Modal
+  const [workNoteModalOrder, setWorkNoteModalOrder] = useState<Order | null>(null);
+  const [workNoteText, setWorkNoteText] = useState('');
+
+  const toggleStaffExpand = (staffId: string) => {
+    setExpandedStaffIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(staffId)) {
+        next.delete(staffId);
+      } else {
+        next.add(staffId);
+      }
+      return next;
+    });
+  };
+
+  const handleStageChange = (order: Order, newStatus: OrderStatus) => {
+    updateOrderStatus(order.id, newStatus);
+    if (selectedDetailOrder?.id === order.id) {
+      setSelectedDetailOrder((prev) => (prev ? { ...prev, status: newStatus } : null));
+    }
+  };
+
+  const handleConfirmAssignment = () => {
+    if (!assignModalOrder) return;
+    if (!targetStaffId) {
+      alert('Please select a staff member to assign.');
+      return;
+    }
+    // Staff must state a reason; admin does not have to state reason
+    if (!isAdmin && !assignmentReason.trim()) {
+      alert('Please state a reason for assigning or reassigning the order. Staff members must record an assignment reason.');
+      return;
+    }
+    const targetStaff = staffMembers.find((s) => s.id === targetStaffId);
+    const targetName = targetStaffId === 'admin' ? 'Store Owner' : targetStaff?.name || 'Staff Member';
+    const finalReason = assignmentReason.trim() || (isAdmin ? 'Assigned by Store Owner' : 'Assigned to staff');
+
+    assignOrderStaff(assignModalOrder.id, targetStaffId, targetName, finalReason);
+    setAssignModalOrder(null);
+  };
+
+  const handleAddWorkNote = () => {
+    if (!workNoteModalOrder || !workNoteText.trim()) return;
+    const isOtherStaff = workNoteModalOrder.assignedStaffId && workNoteModalOrder.assignedStaffId !== currentUser?.staffId;
+    const notePrefix = isOtherStaff ? `[Note by @${currentUser?.username || 'colleague'}] ` : '';
+    addOrderWorkLog(workNoteModalOrder.id, 'Staff Progress Note', `${notePrefix}${workNoteText.trim()}`);
+    setWorkNoteModalOrder(null);
+    setWorkNoteText('');
+  };
+
+  const staffWorkloadData = useMemo(() => {
+    return staffMembers.map((staff) => {
+      const staffOrders = orders.filter((o) => o.assignedStaffId === staff.id);
+      const pending = staffOrders.filter((o) => o.status === 'Pending').length;
+      const confirmed = staffOrders.filter((o) => o.status === 'Confirmed').length;
+      const shipped = staffOrders.filter((o) => o.status === 'Shipped').length;
+      const delivered = staffOrders.filter((o) => o.status === 'Delivered').length;
+      const cancelled = staffOrders.filter((o) => o.status === 'Cancelled' || o.status === 'Rejected').length;
+      const totalAmount = staffOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+      return {
+        staff,
+        orders: staffOrders,
+        total: staffOrders.length,
+        pending,
+        confirmed,
+        shipped,
+        delivered,
+        cancelled,
+        totalAmount,
+      };
+    });
+  }, [staffMembers, orders]);
+
+  const unassignedOrders = useMemo(() => {
+    return orders.filter((o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned');
+  }, [orders]);
+
   return (
     <div className="space-y-6">
       {/* Top Header & Actions */}
@@ -327,6 +434,65 @@ export const StaffManager: React.FC = () => {
               Staff View-Only
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Live Admin Online / Offline Presence Status Banner (User Request) */}
+      <div
+        className={`p-4 sm:p-4.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+          adminOnlineStatus?.isLoggedIn
+            ? 'bg-gradient-to-r from-emerald-950 via-neutral-900 to-emerald-950/80 border-emerald-500/40 text-emerald-100 shadow-md'
+            : 'bg-neutral-900 border-neutral-800 text-neutral-300'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+              adminOnlineStatus?.isLoggedIn
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 shadow-xs'
+                : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+            }`}
+          >
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-serif font-bold text-sm text-white">
+                Boutique Owner / Administrator Presence
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                  adminOnlineStatus?.isLoggedIn
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-neutral-800 text-neutral-400 border border-neutral-700'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    adminOnlineStatus?.isLoggedIn
+                      ? 'bg-emerald-400 animate-pulse'
+                      : 'bg-neutral-500'
+                  }`}
+                ></span>
+                <span>
+                  {adminOnlineStatus?.isLoggedIn ? 'Admin Logged In' : 'Admin Logged Out'}
+                </span>
+              </span>
+            </div>
+            <p className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
+              {adminOnlineStatus?.isLoggedIn
+                ? `Owner is actively logged in to the boutique dashboard (session active since ${
+                    adminOnlineStatus.lastLoginAt
+                      ? new Date(adminOnlineStatus.lastLoginAt).toLocaleTimeString('en-IN')
+                      : 'recently'
+                  }). Staff order assignments & modifications are monitored live.`
+                : `Owner is currently logged out / portal locked${
+                    adminOnlineStatus?.lastLogoutAt
+                      ? ` (last logged out: ${new Date(adminOnlineStatus.lastLogoutAt).toLocaleTimeString('en-IN')})`
+                      : ''
+                  }. Boutique staff members can independently handle assigned customer buckets.`}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -648,68 +814,754 @@ export const StaffManager: React.FC = () => {
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-600 uppercase font-semibold text-[11px]">
-              <tr>
-                <th className="py-3 px-3">Order Number</th>
-                <th className="py-3 px-3">Customer</th>
-                <th className="py-3 px-3">Items</th>
-                <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3">Assigned Staff</th>
-                <th className="py-3 px-3">Last Updated By</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {orders.map((ord) => {
-                const assignedStaff = staffMembers.find((s) => s.id === ord.assignedStaffId);
-                return (
-                  <tr key={ord.id} className="hover:bg-neutral-50/60 transition">
-                    <td className="py-3 px-3 font-mono font-bold text-rose-950">
-                      #{ord.orderNumber}
-                    </td>
-                    <td className="py-3 px-3">
-                      <p className="font-semibold text-neutral-900">{ord.customer.name}</p>
-                      <p className="text-[11px] text-neutral-500">{ord.customer.phone}</p>
-                    </td>
-                    <td className="py-3 px-3">
-                      <p className="font-medium text-neutral-800">{ord.items.length} saree(s)</p>
-                      <p className="text-[11px] text-neutral-500">{formatPrice(ord.totalAmount)}</p>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="font-bold text-[11px] px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-800">
-                        {ord.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      {ord.assignedStaffName ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold flex items-center justify-center">
-                            {ord.assignedStaffName.charAt(0)}
-                          </span>
-                          <div>
-                            <p className="font-bold text-neutral-900">{ord.assignedStaffName}</p>
-                            {assignedStaff && (
-                              <p className="text-[10px] text-neutral-500 font-mono">
-                                @{assignedStaff.username}
-                              </p>
-                            )}
+        {/* Summary Metric Counters */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+          <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
+            <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">Total Boutique Orders</span>
+            <p className="font-serif text-xl font-bold text-neutral-900 mt-0.5">{orders.length}</p>
+          </div>
+          <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200">
+            <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Claimed by Staff</span>
+            <p className="font-serif text-xl font-bold text-emerald-700 mt-0.5">
+              {orders.filter((o) => o.assignedStaffId && o.assignedStaffId !== 'unassigned').length}
+            </p>
+          </div>
+          <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200">
+            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Unassigned Queue</span>
+            <p className="font-serif text-xl font-bold text-amber-700 mt-0.5">{unassignedOrders.length}</p>
+          </div>
+          <div className="bg-purple-50/60 p-3 rounded-xl border border-purple-200">
+            <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider block">Total Orders Value</span>
+            <p className="font-serif text-xl font-bold text-purple-900 mt-0.5">
+              {formatPrice(orders.reduce((sum, o) => sum + o.totalAmount, 0))}
+            </p>
+          </div>
+        </div>
+
+        {/* Bar Form Dashboard (User Request) */}
+        <div className="space-y-4 pt-2">
+          {/* Unassigned Intake Queue Bar */}
+          <div className="p-4 rounded-2xl border border-amber-200 bg-amber-50/40 hover:bg-amber-50/70 transition space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-3">
+                <span className="w-8 h-8 rounded-full bg-amber-500 text-neutral-950 flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                  <Clock className="w-4 h-4 text-neutral-950" />
+                </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-serif font-bold text-sm text-neutral-900">
+                      Unassigned Intake Queue
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900">
+                      Awaiting Concierge Claim
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-600 mt-0.5">
+                    Orders placed by customers on public storefront waiting for concierge staff to claim & close deal
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-xs font-bold text-neutral-900 tabular-nums">
+                  {unassignedOrders.length} {unassignedOrders.length === 1 ? 'order' : 'orders'} ({formatPrice(unassignedOrders.reduce((sum, o) => sum + o.totalAmount, 0))})
+                </span>
+                {onNavigateToBucket && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToBucket('unassigned')}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <span>Open Unassigned Bucket</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleStaffExpand('unassigned')}
+                  className="px-2.5 py-1.5 rounded-xl border border-amber-300 hover:bg-amber-100 text-neutral-800 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>{expandedStaffIds.has('unassigned') ? 'Hide Orders ▲' : 'View Orders ▼'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Queue Bar */}
+            <div className="w-full bg-neutral-200/80 h-3 rounded-full overflow-hidden">
+              <div
+                className="bg-amber-500 h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${orders.length > 0 ? (unassignedOrders.length / orders.length) * 100 : 0}%`,
+                }}
+              />
+            </div>
+
+            {/* Expanded Unassigned Orders */}
+            {expandedStaffIds.has('unassigned') && (
+              <div className="pt-3 border-t border-amber-200/80 space-y-2">
+                {unassignedOrders.length === 0 ? (
+                  <p className="text-xs text-neutral-500 italic py-2">No unassigned orders in the queue! All orders claimed.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {unassignedOrders.map((ord) => (
+                      <div
+                        key={ord.id}
+                        onClick={() => setSelectedDetailOrder(ord)}
+                        className="p-3 rounded-xl bg-white border border-amber-300 hover:border-amber-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono font-bold text-rose-950 text-xs">#{ord.orderNumber}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-900">{ord.status}</span>
                           </div>
+                          <p className="text-xs font-bold text-neutral-900 mt-1">{ord.customer.name}</p>
+                          <p className="text-[11px] text-neutral-500">{ord.items.length} saree(s) • {formatPrice(ord.totalAmount)}</p>
                         </div>
-                      ) : (
-                        <span className="text-neutral-400 italic">Unassigned</span>
+                        <span className="text-[11px] font-bold text-amber-800 hover:underline mt-2 flex items-center gap-1">
+                          <span>Click to View & Claim</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Each Staff Member Workload Bar Card */}
+          {staffWorkloadData.map(({ staff, orders: staffOrders, total, pending, confirmed, shipped, delivered, cancelled, totalAmount }) => {
+            const isExpanded = expandedStaffIds.has(staff.id);
+            const isMe = currentUser?.staffId === staff.id;
+
+            return (
+              <div
+                key={staff.id}
+                className={`p-4 rounded-2xl border transition-all space-y-3.5 ${
+                  staff.isLocked
+                    ? 'bg-neutral-50/70 border-neutral-300 opacity-90'
+                    : isMe
+                    ? 'bg-amber-50/20 border-amber-300 shadow-xs'
+                    : 'bg-white border-neutral-200 hover:border-neutral-300 shadow-2xs'
+                }`}
+              >
+                {/* Staff Header Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-600 via-rose-700 to-purple-800 text-white font-serif font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
+                      {staff.name.charAt(0)}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-serif font-bold text-sm text-neutral-900 truncate">
+                          {staff.name}
+                        </h4>
+                        <span className="text-[11px] font-mono text-neutral-500">
+                          @{staff.username}
+                        </span>
+                        {isMe && (
+                          <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-neutral-950">
+                            You
+                          </span>
+                        )}
+                        <span
+                          className={`px-2 py-0.2 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                            staff.role === 'manager'
+                              ? 'bg-purple-100 text-purple-800'
+                              : staff.role === 'fulfillment'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {staff.role}
+                        </span>
+                        {/* Staff Online Status Indicator */}
+                        {staff.isLoggedIn || (currentUser?.type === 'staff' && (currentUser.staffId === staff.id || currentUser.username === staff.username)) ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                            <span>Online</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-500">
+                            <span>Offline</span>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        {staff.email ? `${staff.email}` : 'Google Auth'} {staff.phone ? `• ${staff.phone}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right Actions & Workload Counter */}
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap self-start sm:self-auto">
+                    <div className="text-right mr-1">
+                      <span className="text-xs font-bold text-neutral-950 block tabular-nums">
+                        {total} {total === 1 ? 'Order' : 'Orders'} Assigned
+                      </span>
+                      <span className="text-[11px] text-neutral-500 font-semibold tabular-nums">
+                        {formatPrice(totalAmount)}
+                      </span>
+                    </div>
+
+                    {/* Move to Staff Bucket button (User Request) */}
+                    {onNavigateToBucket && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToBucket(staff.id)}
+                        className="px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition flex items-center gap-1 shadow-xs cursor-pointer"
+                        title={`Move to ${staff.name}'s order bucket column`}
+                      >
+                        <Layers className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Move to Staff Bucket</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
+
+                    {/* Expand Inline Orders Button */}
+                    <button
+                      type="button"
+                      onClick={() => toggleStaffExpand(staff.id)}
+                      className="px-3 py-1.5 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-800 text-xs font-semibold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                    >
+                      <span>{isExpanded ? 'Hide Orders ▲' : `View Orders (${total}) ▼`}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* The Workload Horizontal Bar (User Request: bar form dashboard) */}
+                <div
+                  onClick={() => toggleStaffExpand(staff.id)}
+                  className="space-y-1.5 cursor-pointer group"
+                  title="Click to expand/collapse orders"
+                >
+                  <div className="w-full bg-neutral-100 h-4 rounded-full overflow-hidden flex border border-neutral-200/80 p-0.5 shadow-inner">
+                    {total === 0 ? (
+                      <div className="w-full h-full rounded-full bg-neutral-200/60 flex items-center justify-center text-[9px] text-neutral-400 font-medium">
+                        No orders currently assigned to this staff member
+                      </div>
+                    ) : (
+                      <>
+                        {pending > 0 && (
+                          <div
+                            style={{ width: `${(pending / total) * 100}%` }}
+                            className="bg-amber-500 h-full rounded-l-full transition-all duration-300 relative group-hover:brightness-110"
+                            title={`Pending: ${pending} orders`}
+                          />
+                        )}
+                        {confirmed > 0 && (
+                          <div
+                            style={{ width: `${(confirmed / total) * 100}%` }}
+                            className="bg-purple-500 h-full transition-all duration-300 relative group-hover:brightness-110"
+                            title={`Confirmed: ${confirmed} orders`}
+                          />
+                        )}
+                        {shipped > 0 && (
+                          <div
+                            style={{ width: `${(shipped / total) * 100}%` }}
+                            className="bg-blue-500 h-full transition-all duration-300 relative group-hover:brightness-110"
+                            title={`Shipped: ${shipped} orders`}
+                          />
+                        )}
+                        {delivered > 0 && (
+                          <div
+                            style={{ width: `${(delivered / total) * 100}%` }}
+                            className="bg-emerald-500 h-full rounded-r-full transition-all duration-300 relative group-hover:brightness-110"
+                            title={`Delivered: ${delivered} orders`}
+                          />
+                        )}
+                        {cancelled > 0 && (
+                          <div
+                            style={{ width: `${(cancelled / total) * 100}%` }}
+                            className="bg-rose-500 h-full transition-all duration-300 relative group-hover:brightness-110"
+                            title={`Cancelled/Rejected: ${cancelled} orders`}
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Micro Legend & Stage Counters */}
+                  <div className="flex items-center justify-between text-[11px] text-neutral-600 flex-wrap gap-2 pt-0.5">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="flex items-center gap-1 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                        <span>Pending ({pending})</span>
+                      </span>
+                      <span className="flex items-center gap-1 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
+                        <span>Confirmed ({confirmed})</span>
+                      </span>
+                      <span className="flex items-center gap-1 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                        <span>Shipped ({shipped})</span>
+                      </span>
+                      <span className="flex items-center gap-1 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                        <span>Delivered ({delivered})</span>
+                      </span>
+                      {cancelled > 0 && (
+                        <span className="flex items-center gap-1 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                          <span>Cancelled ({cancelled})</span>
+                        </span>
                       )}
-                    </td>
-                    <td className="py-3 px-3 font-mono text-[11px] text-neutral-500">
-                      {ord.lastUpdatedBy ? `@${ord.lastUpdatedBy}` : 'system'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 italic">
+                      Click bar to {isExpanded ? 'collapse' : 'view order details'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Inline Expandable Bucket Orders (User Request: when we click that respective staff bar, we can see that staff orders they were working and click to see details) */}
+                {isExpanded && (
+                  <div className="pt-3 border-t border-neutral-100 space-y-2.5 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-serif font-bold text-xs text-neutral-900 flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Orders Handled by {staff.name} ({staffOrders.length}):</span>
+                      </h5>
+                      <span className="text-[11px] text-neutral-500">
+                        Click any order to view details, update stage, or add live work tracking logs
+                      </span>
+                    </div>
+
+                    {staffOrders.length === 0 ? (
+                      <p className="text-xs text-neutral-500 italic py-2">
+                        No orders currently assigned to {staff.name}. You can assign orders from the intake queue.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {staffOrders.map((ord) => {
+                          const lastLog = ord.assignmentHistory?.[ord.assignmentHistory.length - 1];
+                          return (
+                            <div
+                              key={ord.id}
+                              onClick={() => setSelectedDetailOrder(ord)}
+                              className="p-3.5 rounded-xl bg-neutral-50 hover:bg-white border border-neutral-200 hover:border-amber-400 hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-2"
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-mono font-bold text-rose-950 text-xs">#{ord.orderNumber}</span>
+                                  <span
+                                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                                      ord.status === 'Delivered'
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : ord.status === 'Shipped'
+                                        ? 'bg-blue-100 text-blue-800'
+                                        : ord.status === 'Confirmed'
+                                        ? 'bg-purple-100 text-purple-800'
+                                        : ord.status === 'Cancelled'
+                                        ? 'bg-rose-100 text-rose-800'
+                                        : 'bg-amber-100 text-amber-800'
+                                    }`}
+                                  >
+                                    {ord.status}
+                                  </span>
+                                </div>
+                                <h5 className="font-bold text-xs text-neutral-900 mt-1">{ord.customer.name}</h5>
+                                <p className="text-[11px] text-neutral-500 font-mono">{ord.customer.phone}</p>
+                                <p className="text-[11px] text-neutral-700 mt-0.5">
+                                  {ord.items.length} saree(s) • <strong className="text-neutral-900">{formatPrice(ord.totalAmount)}</strong>
+                                </p>
+                                {lastLog && (
+                                  <p className="text-[10px] text-neutral-500 mt-1.5 truncate border-t border-neutral-100 pt-1">
+                                    Last action by <strong>{lastLog.staffName}</strong>: "{lastLog.action}"
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="pt-2 border-t border-neutral-200/60 flex items-center justify-between text-[11px] text-amber-800 font-bold">
+                                <span>View Full Order Details →</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
+
+      {/* Detailed Order Modal (User Request: click staff order to open and see all details, stage, and work log) */}
+      {selectedDetailOrder && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+          <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 bg-neutral-950 text-white flex items-center justify-between border-b border-neutral-800">
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-sm font-bold text-rose-400 bg-rose-950/80 px-2.5 py-1 rounded-lg border border-rose-900/60">
+                  #{selectedDetailOrder.orderNumber}
+                </span>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                    <span>Order Details & Staff Handling</span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        selectedDetailOrder.status === 'Delivered'
+                          ? 'bg-emerald-500 text-neutral-950'
+                          : selectedDetailOrder.status === 'Shipped'
+                          ? 'bg-blue-500 text-neutral-950'
+                          : selectedDetailOrder.status === 'Confirmed'
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-amber-400 text-neutral-950'
+                      }`}
+                    >
+                      {selectedDetailOrder.status}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Placed on {new Date(selectedDetailOrder.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDetailOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto text-xs">
+              {/* Handling Concierge Banner */}
+              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Assigned Boutique Staff</span>
+                  <p className="font-serif text-base font-bold text-neutral-950 mt-0.5">
+                    {selectedDetailOrder.assignedStaffName || '⚠️ Unassigned (Intake Queue)'}
+                  </p>
+                  <p className="text-[11px] text-neutral-600">
+                    All staff members can assist with this order; actions are recorded live with actor identity.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssignModalOrder(selectedDetailOrder);
+                      setTargetStaffId(selectedDetailOrder.assignedStaffId || (staffMembers[0]?.id || ''));
+                      setAssignmentReason('');
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{selectedDetailOrder.assignedStaffId ? 'Reassign Order' : 'Assign to Staff'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWorkNoteModalOrder(selectedDetailOrder);
+                      setWorkNoteText('');
+                    }}
+                    className="px-3 py-2 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-800 font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit className="w-3.5 h-3.5 text-neutral-600" />
+                    <span>Add Work Note</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Stage Switcher Buttons */}
+              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-2">
+                <span className="font-bold text-neutral-700 text-xs block">Update Order Stage:</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(['Pending', 'Confirmed', 'Shipped', 'Delivered', 'Cancelled'] as OrderStatus[]).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => handleStageChange(selectedDetailOrder, st)}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                        selectedDetailOrder.status === st
+                          ? 'bg-neutral-950 text-white shadow-xs'
+                          : 'bg-white border border-neutral-300 text-neutral-700 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Customer & Shipping Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-1.5">
+                  <span className="font-bold text-neutral-700 uppercase tracking-wider text-[10px] block">Customer Information</span>
+                  <p className="font-bold text-sm text-neutral-900">{selectedDetailOrder.customer.name}</p>
+                  <p className="text-xs text-neutral-600 font-mono">{selectedDetailOrder.customer.phone}</p>
+                  <p className="text-xs text-neutral-600">{selectedDetailOrder.customer.email}</p>
+                  <p className="text-xs text-neutral-600 pt-1 leading-relaxed">
+                    {selectedDetailOrder.customer.address}, {selectedDetailOrder.customer.city}, {selectedDetailOrder.customer.state} - {selectedDetailOrder.customer.pincode}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-1.5">
+                  <span className="font-bold text-neutral-700 uppercase tracking-wider text-[10px] block">Payment & Delivery</span>
+                  <p className="text-xs text-neutral-600">
+                    Payment Method: <strong className="text-neutral-900 font-semibold">{selectedDetailOrder.checkoutMethod}</strong>
+                  </p>
+                  <p className="text-xs text-neutral-600">
+                    UPI Reference / UTR:{' '}
+                    <strong className="text-neutral-900 font-mono">{selectedDetailOrder.upiTransactionId || 'Verification Pending'}</strong>
+                  </p>
+                  {selectedDetailOrder.shippingDetails && (
+                    <div className="pt-1 text-xs text-neutral-700">
+                      <p>Courier: <strong>{selectedDetailOrder.shippingDetails.courierName}</strong></p>
+                      <p>Tracking: <strong className="font-mono">{selectedDetailOrder.shippingDetails.trackingNumber}</strong></p>
+                    </div>
+                  )}
+                  <p className="pt-1 text-sm font-bold text-neutral-950">
+                    Total Amount: {formatPrice(selectedDetailOrder.totalAmount)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Saree Items List */}
+              <div className="p-4 rounded-2xl bg-white border border-neutral-200 space-y-2">
+                <span className="font-bold text-neutral-700 text-xs block">
+                  Ordered Sarees ({selectedDetailOrder.items.length}):
+                </span>
+                <div className="divide-y divide-neutral-100">
+                  {selectedDetailOrder.items.map((it, idx) => (
+                    <div key={idx} className="py-2.5 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {it.product.images?.[0] && (
+                          <img
+                            src={it.product.images[0]}
+                            alt={it.product.title}
+                            className="w-11 h-11 rounded-lg object-cover border border-neutral-200 shrink-0"
+                          />
+                        )}
+                        <div>
+                          <p className="font-bold text-neutral-900">{it.product.title}</p>
+                          <p className="text-[11px] text-neutral-500 font-mono">
+                            {it.product.productCode} • {it.product.fabric} - {it.product.color}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-neutral-900 tabular-nums">
+                          {formatPrice(it.product.price * it.quantity)}
+                        </span>
+                        <span className="text-[11px] text-neutral-500 block">
+                          Qty: {it.quantity} × {formatPrice(it.product.price)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Work & Assignment Log (User Request: recorded on the order "Live Work & Assignment Log:") */}
+              <div className="p-4 rounded-2xl bg-neutral-900 text-white space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-serif font-bold text-xs sm:text-sm text-amber-300 flex items-center gap-1.5">
+                    <History className="w-4 h-4 text-amber-400" />
+                    <span>Live Work & Assignment Log:</span>
+                  </h4>
+                  <span className="text-[10px] text-neutral-400">
+                    Timestamped audit trail of all staff & admin changes
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {(!selectedDetailOrder.assignmentHistory || selectedDetailOrder.assignmentHistory.length === 0) ? (
+                    <p className="text-xs text-neutral-400 italic">No work log recorded yet.</p>
+                  ) : (
+                    selectedDetailOrder.assignmentHistory.map((log) => (
+                      <div
+                        key={log.id}
+                        className="p-2.5 rounded-xl bg-neutral-800/80 border border-neutral-700/80 text-[11px] space-y-0.5"
+                      >
+                        <div className="flex items-center justify-between text-neutral-400 text-[10px]">
+                          <span className="font-bold text-amber-300">{log.staffName}</span>
+                          <span className="font-mono">
+                            {new Date(log.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                          </span>
+                        </div>
+                        <p className="font-semibold text-white">{log.action}</p>
+                        {log.note && <p className="text-neutral-300 italic">{log.note}</p>}
+                        {log.assignedBy && (
+                          <p className="text-[10px] text-neutral-400">By: {log.assignedBy}</p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedDetailOrder(null)}
+                className="px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition cursor-pointer"
+              >
+                Close Order Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assignment Modal (Staff must state a reason; Admin does not have to state reason) */}
+      {assignModalOrder && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-neutral-900 text-white flex items-center justify-between">
+              <div>
+                <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-amber-400" />
+                  <span>Assign Order Staff</span>
+                </h3>
+                <p className="text-[11px] text-neutral-400 font-mono">
+                  Order #{assignModalOrder.orderNumber}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAssignModalOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1.5">
+                  Select Assignee Staff Member *
+                </label>
+                <select
+                  value={targetStaffId}
+                  onChange={(e) => setTargetStaffId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-medium"
+                >
+                  <option value="">-- Choose staff specialist --</option>
+                  <option value="admin">Store Owner (Admin)</option>
+                  {staffMembers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} (@{s.username}) - {s.role}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-neutral-800">
+                    Assignment Reason {isAdmin ? '(Optional for Admin)' : '(Mandatory for Staff) *'}
+                  </label>
+                  {!isAdmin && (
+                    <span className="text-[10px] text-rose-600 font-bold">Reason Required</span>
+                  )}
+                </div>
+                <textarea
+                  rows={2}
+                  value={assignmentReason}
+                  onChange={(e) => setAssignmentReason(e.target.value)}
+                  placeholder={
+                    isAdmin
+                      ? 'e.g. Standard intake allocation, specialized weaver follow-up...'
+                      : 'e.g. Claiming client inquiry, language preference, shift handover...'
+                  }
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 resize-none"
+                />
+                {!isAdmin && (
+                  <p className="text-[10px] text-neutral-500 mt-1">
+                    Staff members must state an assignment reason to maintain audit trail transparency.
+                  </p>
+                )}
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAssignModalOrder(null)}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAssignment}
+                  className="px-5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold transition shadow-xs flex items-center gap-1.5"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Confirm Assignment</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Work Note Modal */}
+      {workNoteModalOrder && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-neutral-900 text-white flex items-center justify-between">
+              <div>
+                <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                  <Edit className="w-4 h-4 text-amber-400" />
+                  <span>Add Live Work Note</span>
+                </h3>
+                <p className="text-[11px] text-neutral-400 font-mono">
+                  Order #{workNoteModalOrder.orderNumber}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWorkNoteModalOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Work Progress Note *
+                </label>
+                <textarea
+                  rows={3}
+                  value={workNoteText}
+                  onChange={(e) => setWorkNoteText(e.target.value)}
+                  placeholder="e.g. Saree zari verified at Salem loom, packaged in royal wooden gift box..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWorkNoteModalOrder(null)}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddWorkNote}
+                  disabled={!workNoteText.trim()}
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-neutral-950 font-bold transition shadow-xs"
+                >
+                  Save to Work Log
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add / Edit Staff Modal */}
       {isAddModalOpen && (
