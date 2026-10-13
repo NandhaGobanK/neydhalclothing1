@@ -29,12 +29,14 @@ interface AdminLayoutProps {
 }
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => {
-  const { settings, adminLogout, orders, currentUser, currentPermissions, adminOnlineStatus } = useStore();
+  const { settings, adminLogout, orders, staffMembers, currentUser, currentPermissions, adminOnlineStatus } = useStore();
   const isAdmin = currentUser?.type === 'admin';
 
   const myBucketOrdersCount = orders.filter(
-    (o) => o.assignedStaffId === currentUser?.staffId
+    (o) => o.assignedStaffId === (currentUser?.staffId || (isAdmin ? 'admin' : ''))
   ).length;
+  const adminBucketOrdersCount = orders.filter((o) => o.assignedStaffId === 'admin').length;
+  const unassignedOrdersCount = orders.filter((o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned').length;
 
   // Determine allowed tabs based on permissions
   const canSeeOrders = isAdmin || currentPermissions?.orders?.canView !== false;
@@ -61,7 +63,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     : 'settings';
 
   const [activeTab, setActiveTab] = useState<
-    'orders' | 'staff_buckets' | 'products' | 'analytics' | 'staff' | 'settings'
+    'orders' | 'admin_bucket' | 'staff_buckets' | 'products' | 'analytics' | 'staff' | 'settings'
   >(defaultTab);
   const [selectedStaffBucketId, setSelectedStaffBucketId] = useState<string | undefined>(undefined);
 
@@ -181,19 +183,20 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
             </div>
           </div>
 
-          {/* Navigation Bar Row: Single Unified Scrollable Tab Strip */}
-          <div className="py-1.5 sm:py-2 flex items-center gap-1 overflow-x-auto scrollbar-thin">
+          {/* Navigation Bar Row: Responsive Multi-line Wrapping Strip (User Request: entries come below first line without scrolling) */}
+          <div className="py-1.5 sm:py-2 flex flex-wrap items-center gap-1.5">
             {canSeeOrders && (
               <button
                 onClick={() => setActiveTab('orders')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   activeTab === 'orders'
                     ? 'bg-white text-neutral-950 shadow-xs'
                     : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
                 }`}
+                title="Unassigned incoming orders triage queue"
               >
                 <ShoppingBag className="w-3.5 h-3.5" />
-                <span>Orders ({orders.length})</span>
+                <span>Orders ({unassignedOrdersCount})</span>
                 {pendingRefundsCount > 0 && (
                   <span className="w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] flex items-center justify-center font-bold">
                     {pendingRefundsCount}
@@ -202,10 +205,33 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
               </button>
             )}
 
+            {canSeeOrders && (
+              <button
+                onClick={() => {
+                  setSelectedStaffBucketId('admin');
+                  setActiveTab('admin_bucket');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                  activeTab === 'admin_bucket'
+                    ? 'bg-amber-400 text-neutral-950 font-bold shadow-xs'
+                    : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
+                }`}
+                title="Dedicated admin bucket for orders assigned to store owner"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
+                <span>Admin Bucket ({adminBucketOrdersCount})</span>
+              </button>
+            )}
+
             {canSeeStaffBuckets && (
               <button
-                onClick={() => setActiveTab('staff_buckets')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
+                onClick={() => {
+                  if (activeTab === 'admin_bucket' || selectedStaffBucketId === 'admin') {
+                    setSelectedStaffBucketId(currentUser?.staffId || (staffMembers[0]?.id || 'unassigned'));
+                  }
+                  setActiveTab('staff_buckets');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   activeTab === 'staff_buckets'
                     ? 'bg-amber-400 text-neutral-950 font-bold shadow-xs'
                     : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
@@ -216,7 +242,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                 <span>
                   {currentUser?.staffId
                     ? `My Bucket (${myBucketOrdersCount})`
-                    : 'Staff Buckets'}
+                    : `Staff Buckets (${orders.filter((o) => o.assignedStaffId && o.assignedStaffId !== 'admin').length})`}
                 </span>
               </button>
             )}
@@ -224,7 +250,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
             {canSeeProducts && (
               <button
                 onClick={() => setActiveTab('products')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   activeTab === 'products'
                     ? 'bg-white text-neutral-950 shadow-xs'
                     : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
@@ -238,7 +264,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
             {canSeeAnalytics && (
               <button
                 onClick={() => setActiveTab('analytics')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   activeTab === 'analytics'
                     ? 'bg-white text-neutral-950 shadow-xs'
                     : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
@@ -252,7 +278,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
             {canSeeStaff && (
               <button
                 onClick={() => setActiveTab('staff')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   activeTab === 'staff'
                     ? 'bg-white text-neutral-950 shadow-xs'
                     : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
@@ -266,7 +292,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
             {canSeeSettings && (
               <button
                 onClick={() => setActiveTab('settings')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   activeTab === 'settings'
                     ? 'bg-white text-neutral-950 shadow-xs'
                     : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
@@ -331,10 +357,16 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
       {/* Main Admin View Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'orders' && <OrderManager />}
+        {activeTab === 'admin_bucket' && (
+          <StaffBucketManager
+            initialStaffId="admin"
+            onNavigateToTab={(t) => setActiveTab(t as any)}
+          />
+        )}
         {activeTab === 'staff_buckets' && (
           <StaffBucketManager
             initialStaffId={selectedStaffBucketId}
-            onNavigateToTab={(t) => setActiveTab(t)}
+            onNavigateToTab={(t) => setActiveTab(t as any)}
           />
         )}
         {activeTab === 'products' && <ProductManager />}

@@ -117,6 +117,8 @@ interface StoreContextType {
     refundUtr?: string
   ) => void;
   findOrdersByQuery: (query: string) => Order[];
+  closeOrder: (orderId: string, closedBy?: string) => void;
+  reopenOrder: (orderId: string, reopenedBy: string, reason: string) => void;
 
   // Staff Management
   staffMembers: StaffMember[];
@@ -1208,6 +1210,81 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const closeOrder = (orderId: string, closedBy?: string) => {
+    let orderToSync: Partial<Order> | null = null;
+    const actorName = closedBy || currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+    const nowIso = new Date().toISOString();
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+        const closeLog: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: nowIso,
+          staffId: currentUser?.staffId || ord.assignedStaffId || 'admin',
+          staffName: actorName,
+          assignedBy: actorName,
+          action: 'Order Closed (Delivered & Verified)',
+          note: 'Completed delivered order marked as closed',
+        };
+        const updated: Order = {
+          ...ord,
+          isClosed: true,
+          closedAt: nowIso,
+          closedBy: actorName,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: [...(ord.assignmentHistory || []), closeLog],
+        };
+        orderToSync = updated;
+        return updated;
+      })
+    );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
+  };
+
+  const reopenOrder = (orderId: string, reopenedBy: string, reason: string) => {
+    let orderToSync: Partial<Order> | null = null;
+    const actorName = reopenedBy || currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+    const nowIso = new Date().toISOString();
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+        const reopenLog: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: nowIso,
+          staffId: currentUser?.staffId || ord.assignedStaffId || 'admin',
+          staffName: actorName,
+          assignedBy: actorName,
+          action: 'Order Reopened for Active Handling',
+          note: `Reopened reason: ${reason.trim()}`,
+        };
+        const updated: Order = {
+          ...ord,
+          isClosed: false,
+          reopenedAt: nowIso,
+          reopenedBy: actorName,
+          reopenReason: reason.trim(),
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: [...(ord.assignmentHistory || []), reopenLog],
+        };
+        orderToSync = updated;
+        return updated;
+      })
+    );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
+  };
+
   // Customer Cancellation Request
   const requestOrderCancellation = (orderNumber: string, phone: string, reason: string) => {
     // Check if public cancellation is disabled
@@ -1805,6 +1882,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         requestOrderCancellation,
         resolveCancellationRequest,
         findOrdersByQuery,
+        closeOrder,
+        reopenOrder,
         staffMembers,
         addStaffMember,
         updateStaffMember,

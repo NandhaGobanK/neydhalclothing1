@@ -18,16 +18,33 @@ import {
   AlertCircle,
   Copy,
   Search,
+  ChevronRight,
+  Package,
+  ShoppingBag,
+  ExternalLink,
 } from 'lucide-react';
 
 export const ProductManager: React.FC = () => {
-  const { products, addProduct, updateProduct, deleteProduct, toggleProductVisibility, currentPermissions } = useStore();
+  const { products, orders, addProduct, updateProduct, deleteProduct, toggleProductVisibility, currentPermissions } = useStore();
 
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [selectedInventoryProduct, setSelectedInventoryProduct] = useState<Product | null>(null);
   const [tableSearchQuery, setTableSearchQuery] = useState('');
   const [copiedSku, setCopiedSku] = useState<string | null>(null);
+
+  // Orders linked to the clicked saree inventory (User Request 6)
+  const matchingInventoryOrders = useMemo(() => {
+    if (!selectedInventoryProduct) return [];
+    return orders.filter((ord) =>
+      ord.items.some(
+        (it) =>
+          it.product.id === selectedInventoryProduct.id ||
+          it.product.productCode.trim().toUpperCase() === selectedInventoryProduct.productCode.trim().toUpperCase()
+      )
+    );
+  }, [orders, selectedInventoryProduct]);
 
   // Auto Generate & Confirmation States (Prompt: Auto generate enabled on add, can be disabled once colour confirmed)
   const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(true);
@@ -660,23 +677,29 @@ export const ProductManager: React.FC = () => {
                     )}
                   </td>
 
-                  {/* Stock */}
+                  {/* Stock - Clickable to see orders (User Request 6) */}
                   <td className="py-3 px-4">
-                    <span
-                      className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                    <button
+                      type="button"
+                      onClick={() => setSelectedInventoryProduct(product)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold cursor-pointer transition hover:opacity-85 shadow-2xs border ${
                         product.stockStatus === 'in_stock'
-                          ? 'bg-emerald-100 text-emerald-800'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
                           : product.stockStatus === 'limited'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-rose-100 text-rose-800'
+                          ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                          : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
                       }`}
+                      title="Click inventory count to see all orders for this saree"
                     >
-                      {product.stockStatus === 'in_stock'
-                        ? `In Stock (${product.stockCount})`
-                        : product.stockStatus === 'limited'
-                        ? `Limited (${product.stockCount})`
-                        : 'Out of Stock'}
-                    </span>
+                      <span>
+                        {product.stockStatus === 'in_stock'
+                          ? `In Stock (${product.stockCount})`
+                          : product.stockStatus === 'limited'
+                          ? `Limited (${product.stockCount})`
+                          : 'Out of Stock (0)'}
+                      </span>
+                      <ChevronRight className="w-3 h-3 opacity-60" />
+                    </button>
                   </td>
 
                   {/* Visibility Toggle Button */}
@@ -1307,6 +1330,199 @@ export const ProductManager: React.FC = () => {
                   <span>Yes, Delete Saree</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saree Inventory Orders Inspection Modal (User Request 6: clickable inventory to see orders) */}
+      {selectedInventoryProduct && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-neutral-900 via-neutral-950 to-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30">
+                      {selectedInventoryProduct.productCode}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        selectedInventoryProduct.stockStatus === 'in_stock'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : selectedInventoryProduct.stockStatus === 'limited'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {selectedInventoryProduct.stockStatus === 'in_stock'
+                        ? `Available Stock: ${selectedInventoryProduct.stockCount}`
+                        : selectedInventoryProduct.stockStatus === 'limited'
+                        ? `Limited Stock: ${selectedInventoryProduct.stockCount}`
+                        : 'Out of Stock (0)'}
+                    </span>
+                  </div>
+                  <h3 className="font-serif font-bold text-lg text-white mt-1">
+                    {selectedInventoryProduct.title}
+                  </h3>
+                  <p className="text-xs text-neutral-400">
+                    {selectedInventoryProduct.fabric} · {selectedInventoryProduct.color} · {formatPrice(selectedInventoryProduct.price)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedInventoryProduct(null)}
+                className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            <div className="bg-neutral-50 border-b border-neutral-200 p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="bg-white p-3 rounded-xl border border-neutral-200">
+                <span className="text-[10px] uppercase font-bold text-neutral-500 block">Available in Hand</span>
+                <p className="font-serif text-xl font-bold text-neutral-900 mt-0.5">
+                  {selectedInventoryProduct.stockCount} units
+                </p>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-neutral-200">
+                <span className="text-[10px] uppercase font-bold text-neutral-500 block">Orders Containing Saree</span>
+                <p className="font-serif text-xl font-bold text-amber-700 mt-0.5">
+                  {matchingInventoryOrders.length} {matchingInventoryOrders.length === 1 ? 'order' : 'orders'}
+                </p>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-neutral-200">
+                <span className="text-[10px] uppercase font-bold text-neutral-500 block">Total Units Ordered</span>
+                <p className="font-serif text-xl font-bold text-neutral-900 mt-0.5">
+                  {matchingInventoryOrders.reduce((sum, ord) => {
+                    const item = ord.items.find(
+                      (it) =>
+                        it.product.id === selectedInventoryProduct.id ||
+                        it.product.productCode.toUpperCase() === selectedInventoryProduct.productCode.toUpperCase()
+                    );
+                    return sum + (item?.quantity || 0);
+                  }, 0)} units
+                </p>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-neutral-200">
+                <span className="text-[10px] uppercase font-bold text-neutral-500 block">Active vs Fulfilled</span>
+                <p className="font-bold text-xs text-neutral-900 mt-1">
+                  <span className="text-amber-700 font-bold">
+                    {matchingInventoryOrders.filter((o) => o.status !== 'Delivered' && o.status !== 'Cancelled').length} Active
+                  </span>
+                  {' · '}
+                  <span className="text-emerald-700 font-bold">
+                    {matchingInventoryOrders.filter((o) => o.status === 'Delivered').length} Delivered
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {/* Orders Table / List */}
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              {matchingInventoryOrders.length === 0 ? (
+                <div className="p-12 text-center bg-neutral-50 rounded-2xl border border-neutral-200">
+                  <ShoppingBag className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
+                  <p className="font-serif font-bold text-base text-neutral-800">
+                    No orders placed for this saree yet
+                  </p>
+                  <p className="text-xs text-neutral-500 mt-1 max-w-sm mx-auto">
+                    When customers purchase this saree code ({selectedInventoryProduct.productCode}), all orders and fulfillment statuses will appear right here.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-neutral-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-neutral-100 text-neutral-700 border-b border-neutral-200 font-semibold uppercase text-[10px] tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3">Order #</th>
+                        <th className="py-2.5 px-3">Date</th>
+                        <th className="py-2.5 px-3">Customer</th>
+                        <th className="py-2.5 px-3 text-center">Ordered Qty</th>
+                        <th className="py-2.5 px-3">Stage / Status</th>
+                        <th className="py-2.5 px-3">Assigned Handler</th>
+                        <th className="py-2.5 px-3 text-right">Order Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-200">
+                      {matchingInventoryOrders.map((ord) => {
+                        const matchedItem = ord.items.find(
+                          (it) =>
+                            it.product.id === selectedInventoryProduct.id ||
+                            it.product.productCode.toUpperCase() === selectedInventoryProduct.productCode.toUpperCase()
+                        );
+                        return (
+                          <tr key={ord.id} className="hover:bg-neutral-50/70 transition">
+                            <td className="py-2.5 px-3 font-mono font-bold text-rose-950">
+                              #{ord.orderNumber}
+                            </td>
+                            <td className="py-2.5 px-3 text-[11px] text-neutral-600">
+                              {new Date(ord.createdAt).toLocaleDateString('en-IN', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <p className="font-semibold text-neutral-900">{ord.customer.name}</p>
+                              <p className="text-[10px] text-neutral-500 font-mono">{ord.customer.phone}</p>
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-bold text-neutral-900 font-mono">
+                              {matchedItem?.quantity || 1}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  ord.status === 'Delivered'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : ord.status === 'Shipped'
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                    : ord.status === 'Confirmed'
+                                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                    : ord.status === 'Cancelled'
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                {ord.status}
+                                {ord.isClosed ? ' (Closed)' : ''}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-[11px] text-neutral-700">
+                              {ord.assignedStaffName || (
+                                <span className="text-neutral-400 italic">Unassigned</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-neutral-900 tabular-nums">
+                              {formatPrice(ord.totalAmount)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-between">
+              <span className="text-xs text-neutral-500 font-medium">
+                Showing all {matchingInventoryOrders.length} customer records for this saree SKU
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedInventoryProduct(null)}
+                className="px-5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs transition cursor-pointer"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

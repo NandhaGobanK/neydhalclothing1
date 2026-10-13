@@ -374,34 +374,36 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 </p>
               )}
 
-              {/* Rating and Reviews Counter */}
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center text-amber-500">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star
-                      key={star}
-                      className={`w-3.5 h-3.5 ${
-                        star <= Math.round(avgRating)
-                          ? 'fill-amber-400 text-amber-500'
-                          : 'text-neutral-300'
-                      }`}
-                    />
-                  ))}
-                  <span className="font-bold text-neutral-900 ml-1.5 text-xs">{avgRating.toFixed(1)}</span>
+              {/* Rating and Reviews Counter (Controlled by Storefront Display Toggle) */}
+              {settings.storefrontDisplay?.showCustomerReviews !== false && (
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center text-amber-500">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-3.5 h-3.5 ${
+                          star <= Math.round(avgRating)
+                            ? 'fill-amber-400 text-amber-500'
+                            : 'text-neutral-300'
+                        }`}
+                      />
+                    ))}
+                    <span className="font-bold text-neutral-900 ml-1.5 text-xs">{avgRating.toFixed(1)}</span>
+                  </div>
+                  <span className="text-neutral-400 text-xs">·</span>
+                  <span className="text-neutral-600 text-xs font-medium">
+                    {reviewCount} {reviewCount === 1 ? 'Customer Review' : 'Customer Reviews'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewForm(!showReviewForm)}
+                    className="ml-auto text-xs font-semibold text-rose-800 hover:text-rose-950 underline flex items-center gap-1"
+                  >
+                    <MessageSquarePlus className="w-3.5 h-3.5" />
+                    <span>{showReviewForm ? 'Close form' : 'Write a review'}</span>
+                  </button>
                 </div>
-                <span className="text-neutral-400 text-xs">·</span>
-                <span className="text-neutral-600 text-xs font-medium">
-                  {reviewCount} {reviewCount === 1 ? 'Customer Review' : 'Customer Reviews'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowReviewForm(!showReviewForm)}
-                  className="ml-auto text-xs font-semibold text-rose-800 hover:text-rose-950 underline flex items-center gap-1"
-                >
-                  <MessageSquarePlus className="w-3.5 h-3.5" />
-                  <span>{showReviewForm ? 'Close form' : 'Write a review'}</span>
-                </button>
-              </div>
+              )}
 
               {/* Pricing & Offer Details (MRP, Selling Price, % Tag and Amount Saved) */}
               {(() => {
@@ -508,9 +510,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 </p>
               </div>
 
-              {/* Customer Reviews & Feedback Section */}
-              <div className="pt-2 border-t border-neutral-200/80 mb-6 space-y-4">
-                <div className="flex items-center justify-between">
+              {/* Customer Reviews & Feedback Section (Controlled by Storefront Display Toggle) */}
+              {settings.storefrontDisplay?.showCustomerReviews !== false && (
+                <div className="pt-2 border-t border-neutral-200/80 mb-6 space-y-4">
+                  <div className="flex items-center justify-between">
                   <div>
                     <h3 className="font-serif text-lg font-bold text-neutral-900 flex items-center gap-2">
                       <span>Customer Reviews</span>
@@ -687,7 +690,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   )}
                 </div>
               </div>
-            </div>
+            )}
+          </div>
 
             {/* Quantity Selector Module (User Request: add number of products before buy or add to bag) */}
             {!isOutOfStock && (

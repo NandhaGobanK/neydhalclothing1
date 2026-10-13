@@ -136,16 +136,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           {product.title}
         </h3>
 
-        {/* Customer Rating and Review Count */}
-        <div className="flex items-center gap-1.5 text-xs mt-1 mb-1.5">
-          <div className="flex items-center text-amber-500">
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-            <span className={`font-bold ml-1 text-xs ${isDark ? 'text-neutral-200' : 'text-neutral-900'}`}>{rating.toFixed(1)}</span>
+        {/* Customer Rating and Review Count (Controlled by Storefront Display Toggle) */}
+        {settings.storefrontDisplay?.showCustomerReviews !== false && (
+          <div className="flex items-center gap-1.5 text-xs mt-1 mb-1.5">
+            <div className="flex items-center text-amber-500">
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+              <span className={`font-bold ml-1 text-xs ${isDark ? 'text-neutral-200' : 'text-neutral-900'}`}>{rating.toFixed(1)}</span>
+            </div>
+            <span className="text-neutral-400 text-[11px]">
+              ({count > 0 ? `${count} ${count === 1 ? 'review' : 'reviews'}` : 'New drape'})
+            </span>
           </div>
-          <span className="text-neutral-400 text-[11px]">
-            ({count > 0 ? `${count} ${count === 1 ? 'review' : 'reviews'}` : 'New drape'})
-          </span>
-        </div>
+        )}
 
         <p className={`text-xs line-clamp-2 mt-0.5 mb-3 ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
           {product.subtitle || product.description}

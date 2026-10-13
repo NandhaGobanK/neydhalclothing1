@@ -86,6 +86,9 @@ export const SettingsManager: React.FC = () => {
   const [allowPublicRefunds, setAllowPublicRefunds] = useState(
     settings.storefrontDisplay?.allowPublicRefunds !== false
   );
+  const [showCustomerReviews, setShowCustomerReviews] = useState(
+    settings.storefrontDisplay?.showCustomerReviews !== false
+  );
   const [showCraftsmanshipStory, setShowCraftsmanshipStory] = useState(defaultDisplay.showCraftsmanshipStory);
   const [storyTitle, setStoryTitle] = useState(defaultDisplay.storyTitle);
   const [storyContent, setStoryContent] = useState(defaultDisplay.storyContent);
@@ -158,6 +161,7 @@ export const SettingsManager: React.FC = () => {
         if (disp.showTrackOrder !== undefined) setShowTrackOrder(disp.showTrackOrder !== false);
         if (disp.allowPublicCancellation !== undefined) setAllowPublicCancellation(disp.allowPublicCancellation !== false);
         if (disp.allowPublicRefunds !== undefined) setAllowPublicRefunds(disp.allowPublicRefunds !== false);
+        if (disp.showCustomerReviews !== undefined) setShowCustomerReviews(disp.showCustomerReviews !== false);
         if (disp.showCraftsmanshipStory !== undefined) setShowCraftsmanshipStory(disp.showCraftsmanshipStory);
         if (disp.storyTitle !== undefined) setStoryTitle(disp.storyTitle);
         if (disp.storyContent !== undefined) setStoryContent(disp.storyContent);
@@ -404,6 +408,7 @@ export const SettingsManager: React.FC = () => {
         showTrackOrder,
         allowPublicCancellation,
         allowPublicRefunds,
+        showCustomerReviews,
         freeShippingText: freeShippingText.trim(),
       },
       announcement: {
@@ -732,6 +737,30 @@ export const SettingsManager: React.FC = () => {
                     </span>
                     <span className="text-[11px] text-neutral-500 font-normal">
                       When enabled, customer refund UPI information is collected and processed upon cancellation. When disabled, the boutique operates with a strict no-cancellation / manual concierge negotiation policy.
+                    </span>
+                  </div>
+                </label>
+
+                {/* Customer Reviews Section Display Toggle (User Request) */}
+                <label className="flex items-center gap-2 cursor-pointer sm:col-span-3 pt-2 border-t border-neutral-200">
+                  <input
+                    type="checkbox"
+                    disabled={!canEditStorefront}
+                    checked={showCustomerReviews}
+                    onChange={(e) => setShowCustomerReviews(e.target.checked)}
+                    className="rounded text-rose-900"
+                  />
+                  <div className="flex-1">
+                    <span className="font-semibold text-neutral-800 block flex items-center gap-2">
+                      <span>Enable Customer Reviews Section on Storefront</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        showCustomerReviews ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
+                      }`}>
+                        {showCustomerReviews ? 'Reviews Visible' : 'Reviews Hidden'}
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-neutral-500 font-normal">
+                      When enabled, customer reviews, star ratings, and review submission forms are displayed on product detail views. When disabled, the entire review section and star ratings are completely hidden from the customer storefront.
                     </span>
                   </div>
                 </label>

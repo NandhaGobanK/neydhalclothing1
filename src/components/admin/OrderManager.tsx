@@ -134,6 +134,12 @@ export const OrderManager: React.FC = () => {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [shippingNotes, setShippingNotes] = useState('');
 
+  // Mandatory Assignment Modal State before stage change (User Request 5 & Confirmed Choice)
+  const [mandatoryAssignPromptOrder, setMandatoryAssignPromptOrder] = useState<{
+    order: Order;
+    intendedStatus?: OrderStatus;
+  } | null>(null);
+
   // Refund Modal State
   const [refundModalOrder, setRefundModalOrder] = useState<Order | null>(null);
   const [refundUtr, setRefundUtr] = useState('');
@@ -223,19 +229,17 @@ export const OrderManager: React.FC = () => {
     );
   }, [orders]);
 
+  const unassignedOrders = useMemo(() => {
+    return orders.filter((o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned');
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
+    return unassignedOrders.filter((o) => {
       if (selectedStatus === 'needs_refund') {
         if (!((o.status === 'Cancelled' || o.status === 'Rejected') && o.refundDetails?.refundStatus === 'pending')) {
           return false;
         }
       } else if (selectedStatus !== 'all' && o.status !== selectedStatus) {
-        return false;
-      }
-
-      if (selectedStaffFilter === 'unassigned' && o.assignedStaffId) {
-        return false;
-      } else if (selectedStaffFilter !== 'all' && selectedStaffFilter !== 'unassigned' && o.assignedStaffId !== selectedStaffFilter) {
         return false;
       }
 
@@ -251,9 +255,15 @@ export const OrderManager: React.FC = () => {
       }
       return true;
     });
-  }, [orders, selectedStatus, selectedStaffFilter, searchQuery]);
+  }, [unassignedOrders, selectedStatus, searchQuery]);
 
   const handleStatusChange = (order: Order, newStatus: OrderStatus) => {
+    // User Requirement 5: Order must be assigned before changing stages and working on it
+    if (!order.assignedStaffId || order.assignedStaffId === 'unassigned') {
+      setMandatoryAssignPromptOrder({ order, intendedStatus: newStatus });
+      return;
+    }
+
     if (newStatus === 'Shipped' && !order.shippingDetails?.trackingNumber) {
       // Open Shipping details modal
       setShippingModalOrder(order);
@@ -272,6 +282,37 @@ export const OrderManager: React.FC = () => {
     }
 
     updateOrderStatus(order.id, newStatus);
+  };
+
+  // One-click claim and continue stage for unassigned orders (User Request 5 & Confirmed Choice)
+  const handleClaimAndContinueStage = () => {
+    if (!mandatoryAssignPromptOrder) return;
+    const { order, intendedStatus } = mandatoryAssignPromptOrder;
+    const myId = currentUser?.staffId || (isAdmin ? 'admin' : '');
+    const myName = currentUser?.name || (isAdmin ? 'Store Owner' : 'Staff Concierge');
+    const claimReason = isAdmin
+      ? 'Claimed by Store Owner to process stage'
+      : `Claimed by ${myName} to transition order stage`;
+
+    if (myId) {
+      assignOrderStaff(order.id, myId, myName, claimReason);
+      const updatedOrder: Order = {
+        ...order,
+        assignedStaffId: myId,
+        assignedStaffName: myName,
+      };
+
+      setMandatoryAssignPromptOrder(null);
+
+      if (intendedStatus) {
+        handleStatusChange(updatedOrder, intendedStatus);
+      }
+    } else {
+      setMandatoryAssignPromptOrder(null);
+      setAssignModalOrder(order);
+      setTargetStaffId(staffMembers[0]?.id || 'admin');
+      setAssignmentReason('Assigned to start work');
+    }
   };
 
   const handleSaveCancellation = (e: React.FormEvent) => {
@@ -500,11 +541,14 @@ export const OrderManager: React.FC = () => {
       {/* Top Header & Export */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900">
-            Boutique Order Manager
+          <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 flex items-center gap-2">
+            <span>Orders Intake & Triage</span>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-sans font-semibold border border-amber-300">
+              Unassigned Queue
+            </span>
           </h2>
           <p className="text-xs text-neutral-500 mt-0.5">
-            Total {orders.length} orders recorded · Multi-stage WhatsApp updates & Refund automation
+            {unassignedOrders.length} unassigned incoming {unassignedOrders.length === 1 ? 'order' : 'orders'} · Assign to staff or admin to move into their dedicated bucket
           </p>
         </div>
 
@@ -531,41 +575,6 @@ export const OrderManager: React.FC = () => {
               <Bell className="w-3.5 h-3.5" />
             </button>
           </div>
-
-          {settings.ordersSpreadsheetUrl && (
-            <a
-              href={settings.ordersSpreadsheetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-semibold shadow-xs transition"
-              title="Open Google Sheet in new tab"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Open in Google Sheets</span>
-              <ExternalLink className="w-3 h-3 text-emerald-600" />
-            </a>
-          )}
-
-          <button
-            onClick={() => setIsConfirmSyncOpen(true)}
-            disabled={isSyncingSheets}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition disabled:opacity-50 cursor-pointer"
-          >
-            {isSyncingSheets ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
-            )}
-            <span>{isSyncingSheets ? 'Syncing...' : 'Sync with Google Sheets'}</span>
-          </button>
-
-          <button
-            onClick={handleExportCsv}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold shadow-xs transition"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
         </div>
       </div>
 
@@ -684,7 +693,7 @@ export const OrderManager: React.FC = () => {
       <div className="flex flex-col lg:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-neutral-200 shadow-xs">
         <div className="flex items-center gap-1 overflow-x-auto w-full lg:w-auto pb-1 lg:pb-0">
           {[
-            { id: 'all', label: `All (${orders.length})` },
+            { id: 'all', label: `All Unassigned (${unassignedOrders.length})` },
             { id: 'Pending', label: 'Pending' },
             { id: 'Confirmed', label: 'Confirmed' },
             { id: 'Shipped', label: 'Shipped' },
@@ -708,21 +717,10 @@ export const OrderManager: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 w-full lg:w-auto">
-          {/* Staff Filter */}
-          <div className="shrink-0">
-            <select
-              value={selectedStaffFilter}
-              onChange={(e) => setSelectedStaffFilter(e.target.value)}
-              className="py-1.5 px-2.5 rounded-xl border border-neutral-300 text-xs bg-neutral-50/70 text-neutral-800"
-            >
-              <option value="all">All Staff</option>
-              <option value="unassigned">Unassigned Orders</option>
-              {staffMembers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  Staff: {s.name}
-                </option>
-              ))}
-            </select>
+          {/* Unassigned Intake Indicator */}
+          <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold">
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span>Unassigned ({unassignedOrders.length})</span>
           </div>
 
           <div className="relative flex-1 sm:w-56">
@@ -2115,6 +2113,93 @@ export const OrderManager: React.FC = () => {
                 >
                   <Check className="w-4 h-4 text-emerald-400" />
                   <span>Log Work Update</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mandatory Assignment Prompt Modal before stage changes (User Request 5 & Confirmed Choice) */}
+      {mandatoryAssignPromptOrder && (
+        <div className="fixed inset-0 z-70 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto">
+            <div className="p-5 bg-gradient-to-r from-amber-950 via-neutral-900 to-amber-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <AlertCircle className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Assignment Required
+                  </h3>
+                  <p className="text-[11px] text-amber-300">
+                    Order #{mandatoryAssignPromptOrder.order.orderNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMandatoryAssignPromptOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs text-neutral-700">
+              <p className="leading-relaxed">
+                Before updating the order stage to{' '}
+                <strong className="text-neutral-950 font-bold bg-neutral-100 px-1.5 py-0.5 rounded">
+                  {mandatoryAssignPromptOrder.intendedStatus || 'next stage'}
+                </strong>
+                , this order must be assigned to an active boutique staff concierge or store owner.
+              </p>
+
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 space-y-1.5 text-[11px] text-amber-950">
+                <span className="font-bold flex items-center gap-1.5 text-amber-900">
+                  <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                  <span>One-Click Assignment:</span>
+                </span>
+                <p>
+                  Claim as{' '}
+                  <strong className="font-bold">
+                    {currentUser?.name || (isAdmin ? 'Store Owner' : 'Staff Concierge')}
+                  </strong>{' '}
+                  ({isAdmin ? 'Store Owner' : `@${currentUser?.username || 'staff'}`}) to proceed immediately.
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={handleClaimAndContinueStage}
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>Assign to Me & Continue</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ord = mandatoryAssignPromptOrder.order;
+                    setMandatoryAssignPromptOrder(null);
+                    setAssignModalOrder(ord);
+                    setTargetStaffId(staffMembers[0]?.id || 'admin');
+                    setAssignmentReason('');
+                  }}
+                  className="w-full py-2 px-4 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-800 font-semibold text-xs transition cursor-pointer"
+                >
+                  Assign to Another Staff Member...
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMandatoryAssignPromptOrder(null)}
+                  className="w-full py-1.5 text-neutral-500 hover:text-neutral-800 text-[11px] transition cursor-pointer"
+                >
+                  Cancel
                 </button>
               </div>
             </div>

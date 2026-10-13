@@ -184,6 +184,12 @@ export interface Order {
   assignedStaffName?: string;
   lastUpdatedBy?: string; // Staff username who made the last change
   assignmentHistory?: StaffAssignmentLog[]; // Work and assignment tracking history
+  isClosed?: boolean; // Order closed after delivery completion
+  closedAt?: string;
+  closedBy?: string;
+  reopenedAt?: string;
+  reopenedBy?: string;
+  reopenReason?: string; // Mandatory explanation required upon reopening a closed order
 }
 
 export type ThemeMode = 'light' | 'dark';
@@ -234,6 +240,7 @@ export interface StorefrontDisplaySettings {
   showTrackOrder: boolean;
   allowPublicCancellation: boolean;
   allowPublicRefunds?: boolean; // Refund feature enable/disable toggle option
+  showCustomerReviews?: boolean; // Enable or disable review section display on customer front
   freeShippingText: string;
   footerAboutText?: string;
   footerCertifications?: string[];

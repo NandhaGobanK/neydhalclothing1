@@ -160,6 +160,7 @@ export const INITIAL_SETTINGS: StoreSettings = {
     showTrackOrder: true,
     allowPublicCancellation: true,
     allowPublicRefunds: true,
+    showCustomerReviews: true,
     freeShippingText: '',
   },
   adminPin: '889988', // 6-digit access PIN
