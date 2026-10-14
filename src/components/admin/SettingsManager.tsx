@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { StoreTheme, ThemeMode, OrderStatusChatTemplates, StaffSectionPermissions, Order } from '../../types/store';
+import { StoreTheme, ThemeMode, OrderStatusChatTemplates, StaffSectionPermissions, Order, CourierService } from '../../types/store';
 import { ACTIVE_THEME_KEYS, THEME_TEMPLATES } from '../../utils/theme';
 import { DEFAULT_CHAT_TEMPLATES, DEFAULT_STAFF_PERMISSIONS } from '../../data/initialData';
 import { applyTemplateTokens } from '../../utils/upi';
@@ -33,10 +33,23 @@ import {
   Navigation,
   FileText,
   ExternalLink,
+  Plus,
+  Phone,
+  Mail,
+  Edit,
 } from 'lucide-react';
 
 export const SettingsManager: React.FC = () => {
-  const { settings, updateSettings, resetToInitialData, currentUser, currentPermissions } = useStore();
+  const {
+    settings,
+    updateSettings,
+    resetToInitialData,
+    currentUser,
+    currentPermissions,
+    addCourierService,
+    updateCourierService,
+    deleteCourierService,
+  } = useStore();
 
   const isAdmin = currentUser?.type === 'admin';
 
@@ -89,9 +102,29 @@ export const SettingsManager: React.FC = () => {
   const [showCustomerReviews, setShowCustomerReviews] = useState(
     settings.storefrontDisplay?.showCustomerReviews !== false
   );
+  const [allowCustomerDeliveryDisputes, setAllowCustomerDeliveryDisputes] = useState(
+    settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false
+  );
   const [showCraftsmanshipStory, setShowCraftsmanshipStory] = useState(defaultDisplay.showCraftsmanshipStory);
   const [storyTitle, setStoryTitle] = useState(defaultDisplay.storyTitle);
   const [storyContent, setStoryContent] = useState(defaultDisplay.storyContent);
+
+  // Dynamic Courier Services Configuration State (User Request 6)
+  const [isCourierModalOpen, setIsCourierModalOpen] = useState(false);
+  const [editingCourierId, setEditingCourierId] = useState<string | null>(null);
+  const [courierForm, setCourierForm] = useState<Omit<CourierService, 'id'>>({
+    name: '',
+    code: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: 'Salem',
+    pincode: '',
+    phone: '',
+    supportEmail: '',
+    mapsUrl: '',
+    trackingUrlTemplate: '',
+    isActive: true,
+  });
 
   // Announcement Comments Board
   const [announcementEnabled, setAnnouncementEnabled] = useState(settings.announcement.enabled);
@@ -162,6 +195,7 @@ export const SettingsManager: React.FC = () => {
         if (disp.allowPublicCancellation !== undefined) setAllowPublicCancellation(disp.allowPublicCancellation !== false);
         if (disp.allowPublicRefunds !== undefined) setAllowPublicRefunds(disp.allowPublicRefunds !== false);
         if (disp.showCustomerReviews !== undefined) setShowCustomerReviews(disp.showCustomerReviews !== false);
+        if (disp.allowCustomerDeliveryDisputes !== undefined) setAllowCustomerDeliveryDisputes(disp.allowCustomerDeliveryDisputes !== false);
         if (disp.showCraftsmanshipStory !== undefined) setShowCraftsmanshipStory(disp.showCraftsmanshipStory);
         if (disp.storyTitle !== undefined) setStoryTitle(disp.storyTitle);
         if (disp.storyContent !== undefined) setStoryContent(disp.storyContent);
@@ -409,6 +443,7 @@ export const SettingsManager: React.FC = () => {
         allowPublicCancellation,
         allowPublicRefunds,
         showCustomerReviews,
+        allowCustomerDeliveryDisputes,
         freeShippingText: freeShippingText.trim(),
       },
       announcement: {
@@ -434,6 +469,85 @@ export const SettingsManager: React.FC = () => {
 
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
+  };
+
+  // Courier Partner Management Handlers (User Request 6)
+  const handleOpenAddCourier = () => {
+    setEditingCourierId(null);
+    setCourierForm({
+      name: '',
+      code: '',
+      addressLine1: '',
+      addressLine2: '',
+      city: 'Salem',
+      pincode: '',
+      phone: '',
+      supportEmail: '',
+      mapsUrl: '',
+      trackingUrlTemplate: '',
+      isActive: true,
+    });
+    setIsCourierModalOpen(true);
+  };
+
+  const handleOpenEditCourier = (c: CourierService) => {
+    setEditingCourierId(c.id);
+    setCourierForm({
+      name: c.name,
+      code: c.code,
+      addressLine1: c.addressLine1,
+      addressLine2: c.addressLine2 || '',
+      city: c.city,
+      pincode: c.pincode,
+      phone: c.phone,
+      supportEmail: c.supportEmail,
+      mapsUrl: c.mapsUrl,
+      trackingUrlTemplate: c.trackingUrlTemplate || '',
+      isActive: c.isActive,
+    });
+    setIsCourierModalOpen(true);
+  };
+
+  const handleSaveCourierSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courierForm.name.trim() || !courierForm.city.trim() || !courierForm.phone.trim()) return;
+
+    if (editingCourierId) {
+      await updateCourierService(editingCourierId, {
+        name: courierForm.name.trim(),
+        code: courierForm.code.trim().toUpperCase() || courierForm.name.slice(0, 4).toUpperCase(),
+        addressLine1: courierForm.addressLine1.trim(),
+        addressLine2: courierForm.addressLine2?.trim() || '',
+        city: courierForm.city.trim(),
+        pincode: courierForm.pincode.trim(),
+        phone: courierForm.phone.trim(),
+        supportEmail: courierForm.supportEmail.trim(),
+        mapsUrl: courierForm.mapsUrl.trim(),
+        trackingUrlTemplate: courierForm.trackingUrlTemplate?.trim() || '',
+        isActive: courierForm.isActive,
+      });
+    } else {
+      await addCourierService({
+        name: courierForm.name.trim(),
+        code: courierForm.code.trim().toUpperCase() || courierForm.name.slice(0, 4).toUpperCase(),
+        addressLine1: courierForm.addressLine1.trim(),
+        addressLine2: courierForm.addressLine2?.trim() || '',
+        city: courierForm.city.trim(),
+        pincode: courierForm.pincode.trim(),
+        phone: courierForm.phone.trim(),
+        supportEmail: courierForm.supportEmail.trim(),
+        mapsUrl: courierForm.mapsUrl.trim(),
+        trackingUrlTemplate: courierForm.trackingUrlTemplate?.trim() || '',
+        isActive: courierForm.isActive,
+      });
+    }
+    setIsCourierModalOpen(false);
+  };
+
+  const handleDeleteCourierConfirm = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to remove courier service "${name}"?`)) {
+      await deleteCourierService(id);
+    }
   };
 
   // Check section visibility permissions for staff
@@ -761,6 +875,30 @@ export const SettingsManager: React.FC = () => {
                     </span>
                     <span className="text-[11px] text-neutral-500 font-normal">
                       When enabled, customer reviews, star ratings, and review submission forms are displayed on product detail views. When disabled, the entire review section and star ratings are completely hidden from the customer storefront.
+                    </span>
+                  </div>
+                </label>
+
+                {/* Customer Delivery Dispute Reporting Global Toggle (User Request 5) */}
+                <label className="flex items-center gap-2 cursor-pointer sm:col-span-3 pt-2 border-t border-neutral-200">
+                  <input
+                    type="checkbox"
+                    disabled={!canEditStorefront}
+                    checked={allowCustomerDeliveryDisputes}
+                    onChange={(e) => setAllowCustomerDeliveryDisputes(e.target.checked)}
+                    className="rounded text-rose-900"
+                  />
+                  <div className="flex-1">
+                    <span className="font-semibold text-neutral-800 flex items-center gap-2">
+                      <span>Enable Customer Delivery Issue Reporting (Non-Receipt Disputes)</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        allowCustomerDeliveryDisputes ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-neutral-100 text-neutral-600'
+                      }`}>
+                        {allowCustomerDeliveryDisputes ? 'Dispute Feature Active' : 'Dispute Feature Disabled'}
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-neutral-500 font-normal">
+                      When enabled, customers can report non-delivery disputes on the tracking modal and storefront footer if their parcel is marked Shipped/Delivered but not received. When disabled, this feature is hidden from customer view.
                     </span>
                   </div>
                 </label>
@@ -1236,6 +1374,155 @@ export const SettingsManager: React.FC = () => {
           </div>
         )}
 
+        {/* Section: Courier Services & Logistics Partners (User Request 6) */}
+        {canViewDelivery && (
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
+                  <Truck className="w-5 h-5 text-amber-600" />
+                  <h3>Courier Services & Logistics Partners</h3>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-sans font-semibold">
+                    {(settings.courierServices || []).length} Configured
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Manage multiple courier partner hubs with detailed office addresses, phone, support email, and Google Maps links. Newly added services dynamically reflect in the "Mark as Shipped" dropdown.
+                </p>
+              </div>
+
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddCourier}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Courier Partner</span>
+                </button>
+              )}
+            </div>
+
+            {/* Courier Services Grid */}
+            {(!settings.courierServices || settings.courierServices.length === 0) ? (
+              <div className="p-8 text-center bg-neutral-50 rounded-2xl border border-neutral-200 space-y-3">
+                <Truck className="w-8 h-8 text-neutral-400 mx-auto" />
+                <p className="text-xs text-neutral-600 font-medium">No courier services configured yet.</p>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddCourier}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold transition"
+                  >
+                    + Add First Courier Partner
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(settings.courierServices || []).map((courier) => (
+                  <div
+                    key={courier.id}
+                    className={`p-4 rounded-2xl border transition space-y-3 ${
+                      courier.isActive
+                        ? 'bg-neutral-50/80 border-neutral-200 hover:border-neutral-300'
+                        : 'bg-neutral-100/60 border-neutral-200 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 border-b border-neutral-200/70 pb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-xs font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                          {courier.code}
+                        </span>
+                        <h4 className="font-serif font-bold text-sm text-neutral-900 truncate">
+                          {courier.name}
+                        </h4>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => updateCourierService(courier.id, { isActive: !courier.isActive })}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer transition ${
+                            courier.isActive
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              : 'bg-neutral-200 text-neutral-600 border-neutral-300'
+                          }`}
+                          title="Click to toggle active status"
+                        >
+                          {courier.isActive ? 'Active in Shipped Menu' : 'Inactive'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Detailed Office Address Fields (User Request 6) */}
+                    <div className="space-y-1.5 text-xs text-neutral-700">
+                      <p className="flex items-start gap-1.5 text-neutral-900 font-medium">
+                        <MapPin className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                        <span>
+                          {courier.addressLine1}
+                          {courier.addressLine2 ? `, ${courier.addressLine2}` : ''}, {courier.city} - {courier.pincode}
+                        </span>
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                        <p className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-neutral-400" />
+                          <a href={`tel:${courier.phone}`} className="hover:text-amber-800 font-semibold font-mono">
+                            {courier.phone}
+                          </a>
+                        </p>
+                        <p className="flex items-center gap-1.5 truncate">
+                          <Mail className="w-3.5 h-3.5 text-neutral-400" />
+                          <a href={`mailto:${courier.supportEmail}`} className="hover:text-amber-800 truncate">
+                            {courier.supportEmail}
+                          </a>
+                        </p>
+                      </div>
+
+                      {courier.mapsUrl && (
+                        <div className="pt-1">
+                          <a
+                            href={courier.mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-800 hover:text-rose-950 underline"
+                          >
+                            <Navigation className="w-3 h-3 text-rose-600" />
+                            <span>Open Sharable Google Maps Location</span>
+                            <ExternalLink className="w-2.5 h-2.5 text-neutral-500" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    {isAdmin && (
+                      <div className="pt-2 border-t border-neutral-200/60 flex items-center justify-end gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditCourier(courier)}
+                          className="px-2.5 py-1 rounded-lg bg-neutral-200 hover:bg-neutral-300 text-neutral-800 font-semibold flex items-center gap-1 transition"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCourierConfirm(courier.id, courier.name)}
+                          className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 font-semibold flex items-center gap-1 transition"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Section 6: Payment Configuration (UPI ID & Downloadable QR Code) */}
         {canViewPayment && (
           <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
@@ -1681,13 +1968,243 @@ export const SettingsManager: React.FC = () => {
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs sm:text-sm shadow-md transition"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs sm:text-sm shadow-md transition cursor-pointer"
           >
             <Save className="w-4 h-4" />
             <span>Save All Boutique Settings</span>
           </button>
         </div>
       </form>
+
+      {/* Courier Partner Add/Edit Modal (User Request 6) */}
+      {isCourierModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-5 bg-neutral-950 text-white flex items-center justify-between border-b border-neutral-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                  <Truck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold">
+                    {editingCourierId ? 'Edit Courier Partner Hub' : 'Add Courier Partner Hub'}
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Detailed local hub address, phone, support email, and Google Maps location
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCourierModalOpen(false)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveCourierSubmit} className="p-5 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Courier Partner Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={courierForm.name}
+                    onChange={(e) => setCourierForm({ ...courierForm, name: e.target.value })}
+                    placeholder="e.g. DTDC Express"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Short Code / Identifier *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={courierForm.code}
+                    onChange={(e) => setCourierForm({ ...courierForm, code: e.target.value.toUpperCase() })}
+                    placeholder="e.g. DTDC"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-neutral-900 uppercase"
+                  />
+                </div>
+              </div>
+
+              {/* Detailed Office Address Fields */}
+              <div className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-3">
+                <h4 className="font-bold text-neutral-900 flex items-center gap-1.5 text-xs">
+                  <MapPin className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Local Office Address Fields (Salem & Hubs)</span>
+                </h4>
+
+                <div>
+                  <label className="block font-semibold text-neutral-700 mb-1">
+                    Office Address Line 1 *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={courierForm.addressLine1}
+                    onChange={(e) => setCourierForm({ ...courierForm, addressLine1: e.target.value })}
+                    placeholder="e.g. No. 14/B, Junction Main Road, Meyyanur"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-neutral-700 mb-1">
+                    Office Address Line 2 (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={courierForm.addressLine2 || ''}
+                    onChange={(e) => setCourierForm({ ...courierForm, addressLine2: e.target.value })}
+                    placeholder="e.g. Near New Bus Stand / Silk Bazaar"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">
+                      City *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={courierForm.city}
+                      onChange={(e) => setCourierForm({ ...courierForm, city: e.target.value })}
+                      placeholder="e.g. Salem"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">
+                      Pincode *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={courierForm.pincode}
+                      onChange={(e) => setCourierForm({ ...courierForm, pincode: e.target.value })}
+                      placeholder="e.g. 636004"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1 flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-neutral-500" />
+                    <span>Branch Phone Number *</span>
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={courierForm.phone}
+                    onChange={(e) => setCourierForm({ ...courierForm, phone: e.target.value })}
+                    placeholder="e.g. +91 427 244 8899"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1 flex items-center gap-1">
+                    <Mail className="w-3 h-3 text-neutral-500" />
+                    <span>Support Email *</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={courierForm.supportEmail}
+                    onChange={(e) => setCourierForm({ ...courierForm, supportEmail: e.target.value })}
+                    placeholder="e.g. salem.dtdc@express.in"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                  />
+                </div>
+              </div>
+
+              {/* Sharable Google Maps Link (User Request 6) */}
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1 flex items-center gap-1">
+                  <Navigation className="w-3 h-3 text-rose-600" />
+                  <span>Sharable Google Maps Link *</span>
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={courierForm.mapsUrl}
+                  onChange={(e) => setCourierForm({ ...courierForm, mapsUrl: e.target.value })}
+                  placeholder="https://maps.google.com/?q=DTDC+Express+Salem"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-mono text-[11px]"
+                />
+                <p className="text-[10px] text-neutral-500 mt-0.5">
+                  Staff and admins will see this link on disputed order pages to locate and contact the branch.
+                </p>
+              </div>
+
+              {/* Tracking URL Template */}
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1">
+                  Tracking URL Template (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={courierForm.trackingUrlTemplate || ''}
+                  onChange={(e) => setCourierForm({ ...courierForm, trackingUrlTemplate: e.target.value })}
+                  placeholder="e.g. https://www.dtdc.in/tracking/shipment-tracking.asp?strCnno="
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-mono text-[11px]"
+                />
+              </div>
+
+              {/* Active Toggle */}
+              <label className="flex items-center gap-2 p-3 rounded-xl bg-neutral-50 border border-neutral-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={courierForm.isActive}
+                  onChange={(e) => setCourierForm({ ...courierForm, isActive: e.target.checked })}
+                  className="rounded text-amber-600 w-4 h-4 cursor-pointer"
+                />
+                <div className="flex-1">
+                  <span className="font-semibold text-neutral-900 block text-xs">
+                    Show in "Mark as Shipped" Dropdown
+                  </span>
+                  <span className="text-[11px] text-neutral-500">
+                    When enabled, this partner is selectable by staff when dispatching saree parcels.
+                  </span>
+                </div>
+              </label>
+
+              {/* Modal Buttons */}
+              <div className="pt-3 border-t border-neutral-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCourierModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold text-xs hover:bg-neutral-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition shadow-sm cursor-pointer"
+                >
+                  {editingCourierId ? 'Update Courier Hub' : 'Add Courier Partner'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

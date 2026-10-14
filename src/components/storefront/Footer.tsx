@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Lock, Phone, Mail, MapPin, Instagram, Heart, Navigation, ExternalLink, ShieldCheck, FileText, Youtube } from 'lucide-react';
+import { Lock, Phone, Mail, MapPin, Instagram, Heart, Navigation, ExternalLink, ShieldCheck, FileText, Youtube, AlertCircle } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 
 interface FooterProps {
@@ -173,6 +173,20 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
                   </div>
                 </li>
               )}
+              {/* Customer Delivery Dispute Reporting Link (User Request 5) */}
+              {settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false && (
+                <li className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsTrackOrderOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-rose-400 hover:text-rose-300 transition text-[11px] font-medium cursor-pointer"
+                    title="Track order & report delivery dispute"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <span>Report Delivery Issue (Parcel Not Received)</span>
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 
@@ -196,7 +210,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
           </div>
         </div>
 
-        {/* Bottom Bar */}
+        {/* Bottom Bar with Duplicate Report Delivery Issue Button (User Request 5) */}
         <div className="pt-8 border-t border-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-neutral-400">
           <p>
             <span
@@ -208,6 +222,19 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
             </span>{' '}
             {new Date().getFullYear()} {settings.boutiqueName}. All rights reserved.
           </p>
+
+          {/* Duplicate Delivery Issue Action Button on Customer Front UI (User Request 5) */}
+          {settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false && (
+            <button
+              type="button"
+              onClick={() => setIsTrackOrderOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-rose-300 hover:text-rose-200 border border-neutral-800 hover:border-rose-800 text-xs font-semibold transition cursor-pointer shadow-2xs"
+              title="Report non-receipt of parcel"
+            >
+              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+              <span>Report Delivery Issue</span>
+            </button>
+          )}
         </div>
       </div>
     </footer>

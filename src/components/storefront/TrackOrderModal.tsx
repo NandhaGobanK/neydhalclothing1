@@ -28,7 +28,7 @@ interface TrackOrderModalProps {
 }
 
 export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => {
-  const { orders, requestOrderCancellation, settings } = useStore();
+  const { orders, requestOrderCancellation, reportCustomerDeliveryIssue, settings } = useStore();
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -42,6 +42,16 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
   const [cancelReason, setCancelReason] = useState('Change of wedding / event schedule');
   const [customReasonText, setCustomReasonText] = useState('');
   const [cancelStatusMsg, setCancelStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Delivery Issue Report Modal State (User Request 5)
+  const [reportingIssueOrder, setReportingIssueOrder] = useState<Order | null>(null);
+  const [issueDescription, setIssueDescription] = useState(
+    'Courier tracking and system shows Delivered, but parcel was not received at delivery address/door.'
+  );
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
+  const [issueFeedback, setIssueFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const isDeliveryDisputeEnabled = settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false;
 
   // Check URL params if present (e.g. ?order=AARA-1082, #track?order=AARA-1082, ?track=AARA-1082)
   useEffect(() => {
@@ -239,6 +249,37 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
       setCancellingOrder(null);
     } else {
       setCancelStatusMsg({ type: 'error', text: res.message });
+    }
+  };
+
+  // Delivery Dispute Submit Handler (User Request 5)
+  const handleSubmitDeliveryIssue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportingIssueOrder) return;
+    setIsSubmittingIssue(true);
+    setIssueFeedback(null);
+    try {
+      const res = await reportCustomerDeliveryIssue(
+        reportingIssueOrder.orderNumber,
+        reportingIssueOrder.customer.phone,
+        issueDescription.trim() || 'Customer reports non-delivery despite Delivered / Shipped status.'
+      );
+      if (res.success) {
+        setIssueFeedback({
+          type: 'success',
+          message: 'Delivery dispute successfully submitted! Our boutique concierge and Salem logistics hub will investigate immediately.',
+        });
+        setTimeout(() => {
+          setReportingIssueOrder(null);
+          setIssueFeedback(null);
+        }, 3000);
+      } else {
+        setIssueFeedback({ type: 'error', message: res.message });
+      }
+    } catch (err: any) {
+      setIssueFeedback({ type: 'error', message: err?.message || 'Failed to submit delivery dispute.' });
+    } finally {
+      setIsSubmittingIssue(false);
     }
   };
 
@@ -640,40 +681,81 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                       </div>
                     </div>
 
-                    {/* Bottom Actions: Cancel Request or WhatsApp Support */}
-                    <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100">
-                      {isPublicCancellationEnabled ? (
-                        canRequestCancel ? (
-                          <button
-                            onClick={() => setCancellingOrder(order)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 font-medium text-xs transition"
-                          >
-                            <Ban className="w-3.5 h-3.5" />
-                            <span>Request Order Cancellation</span>
-                          </button>
-                        ) : (
-                          <span className="text-[11px] text-neutral-400">
-                            {isCancelled
-                              ? 'Order already cancelled'
-                              : order.status === 'Shipped'
-                              ? 'Dispatched (Cancellations not permitted after shipping)'
-                              : order.status === 'Delivered'
-                              ? 'Delivered'
-                              : order.cancellationRequest?.requested
-                              ? 'Cancellation requested (Under Review)'
-                              : `Cannot cancel in ${order.status} state`}
+                    {/* Customer Delivery Dispute Notice if already reported (User Request 5) */}
+                    {order.deliveryIssue?.reported && (
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-950 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold flex items-center gap-1.5 text-rose-900">
+                            <AlertCircle className="w-4 h-4 text-rose-600" />
+                            <span>Delivery Issue Reported ({order.deliveryIssue.status.toUpperCase()})</span>
                           </span>
-                        )
-                      ) : null}
+                          <span className="text-[10px] text-neutral-500 font-medium">
+                            {new Date(order.deliveryIssue.reportedAt).toLocaleDateString('en-IN')}
+                          </span>
+                        </div>
+                        <p className="text-neutral-800 italic bg-white/70 p-2 rounded-lg border border-rose-100">
+                          "{order.deliveryIssue.issueDescription}"
+                        </p>
+                        <p className="text-[11px] text-rose-800 font-medium">
+                          Assigned concierge is actively investigating with {order.shippingDetails?.courierName || 'the courier partner'} local hub. This case is prioritized in our administrative portal.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Bottom Actions: Cancel Request, Delivery Dispute, or WhatsApp Support */}
+                    <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isPublicCancellationEnabled ? (
+                          canRequestCancel ? (
+                            <button
+                              onClick={() => setCancellingOrder(order)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 font-medium text-xs transition cursor-pointer"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Request Order Cancellation</span>
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-neutral-400">
+                              {isCancelled
+                                ? 'Order already cancelled'
+                                : order.status === 'Shipped'
+                                ? 'Dispatched (Cancellations not permitted after shipping)'
+                                : order.status === 'Delivered'
+                                ? 'Delivered'
+                                : order.cancellationRequest?.requested
+                                ? 'Cancellation requested (Under Review)'
+                                : `Cannot cancel in ${order.status} state`}
+                            </span>
+                          )
+                        ) : null}
+
+                        {/* Customer Delivery Dispute Reporting Button (User Request 5) */}
+                        {isDeliveryDisputeEnabled &&
+                          (order.status === 'Delivered' || order.status === 'Shipped') &&
+                          !order.deliveryIssue?.reported && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReportingIssueOrder(order);
+                                setIssueDescription(
+                                  `Courier tracking shows ${order.status}, but I have not received this parcel at my address.`
+                                );
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-semibold text-xs transition cursor-pointer"
+                              title="Report that your order was not received even though status shows Delivered"
+                            >
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Report Delivery Issue</span>
+                            </button>
+                          )}
+                      </div>
 
                       <button
                         onClick={() => {
                           const text = `Namaste! Regarding my saree order #${order.orderNumber} for ${formatPrice(order.totalAmount)}. Status: ${order.status}.`;
                           openWhatsApp(settings.contactPhone, text);
                         }}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition ${
-                          !isPublicCancellationEnabled ? 'w-full sm:w-auto justify-center' : 'ml-auto'
-                        }`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition ml-auto cursor-pointer"
                       >
                         <MessageSquare className="w-3.5 h-3.5 fill-white" />
                         <span>Chat with Boutique Concierge</span>
@@ -780,6 +862,115 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                   className="w-full py-2 rounded-xl text-neutral-600 hover:bg-neutral-100 font-semibold"
                 >
                   Keep My Order
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Delivery Dispute Modal (User Request 5) */}
+      {reportingIssueOrder && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in zoom-in-95 duration-200">
+            <div className="p-5 bg-neutral-950 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-600/30 text-rose-400">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold">Report Delivery Issue</h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Order #{reportingIssueOrder.orderNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setReportingIssueOrder(null);
+                  setIssueFeedback(null);
+                }}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitDeliveryIssue} className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 text-neutral-800 space-y-1">
+                <p>
+                  <strong>Customer:</strong> {reportingIssueOrder.customer.name} ({reportingIssueOrder.customer.phone})
+                </p>
+                <p>
+                  <strong>Delivery Status:</strong> {reportingIssueOrder.status}
+                </p>
+                {reportingIssueOrder.shippingDetails && (
+                  <p className="text-[11px] text-neutral-600">
+                    <strong>Courier:</strong> {reportingIssueOrder.shippingDetails.courierName} · Tracking: {reportingIssueOrder.shippingDetails.trackingNumber}
+                  </p>
+                )}
+                <p className="text-[11px] text-neutral-500 pt-1">
+                  Destination: {reportingIssueOrder.customer.address}, {reportingIssueOrder.customer.city} - {reportingIssueOrder.customer.pincode}
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Issue Description *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={issueDescription}
+                  onChange={(e) => setIssueDescription(e.target.value)}
+                  placeholder="Explain details: e.g. Courier system says delivered, but I have not received the package at my home or security."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-hidden focus:border-rose-500"
+                />
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  This report immediately notifies our boutique concierge and opens a dispute in our administrative portal with the courier hub.
+                </p>
+              </div>
+
+              {issueFeedback && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-semibold ${
+                    issueFeedback.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
+                      : 'bg-rose-50 text-rose-900 border border-rose-300'
+                  }`}
+                >
+                  {issueFeedback.message}
+                </div>
+              )}
+
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="submit"
+                  disabled={isSubmittingIssue}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmittingIssue ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Submitting Dispute...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Submit Delivery Dispute</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportingIssueOrder(null);
+                    setIssueFeedback(null);
+                  }}
+                  className="w-full py-2 rounded-xl text-neutral-600 hover:bg-neutral-100 font-semibold cursor-pointer"
+                >
+                  Cancel
                 </button>
               </div>
             </form>

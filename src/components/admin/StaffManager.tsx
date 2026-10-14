@@ -773,6 +773,20 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
               <span>{isSyncingLedger ? 'Syncing Sheets...' : 'Sync with Google Sheets'}</span>
             </button>
 
+            {(settings.ordersSpreadsheetUrl || settings.analyticsSpreadsheetUrl) && (
+              <a
+                href={settings.ordersSpreadsheetUrl || settings.analyticsSpreadsheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-900 text-xs font-semibold shadow-xs transition"
+                title="Open Master Google Sheets Ledger in new browser tab"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Open Sheets</span>
+                <ExternalLink className="w-3 h-3 text-emerald-600" />
+              </a>
+            )}
+
             <button
               onClick={handleExportLedgerCsv}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-800 text-xs font-semibold shadow-xs transition cursor-pointer"

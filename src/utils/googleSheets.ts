@@ -7,6 +7,7 @@ export interface SheetSyncResult {
   spreadsheetUrl: string;
   rowsUpdated: number;
   message?: string;
+  isNewlyCreated?: boolean;
 }
 
 const MASTER_TABS = [
@@ -16,6 +17,13 @@ const MASTER_TABS = [
   'Fabric Breakdown',
   'Staff Attribution',
 ];
+
+function sanitizeSheetCell(val: any): string | number | boolean {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (typeof val === 'boolean') return val;
+  return String(val).replace(/\r\n/g, ' ').replace(/[\r\n]/g, ' ').trim();
+}
 
 /**
  * Robust fetch wrapper for Google Sheets API.
@@ -71,13 +79,13 @@ async function fetchSheetsApi(
 }
 
 /**
- * Checks if a master spreadsheet exists, or creates one containing all 5 unified tabs
- * to maintain a single point of storage in the admin's Google Sheets.
+ * Checks if a master spreadsheet exists, or creates one containing all 5 unified tabs.
+ * If the synced file was deleted or missing from Google Drive, gracefully recreates a new master file.
  */
 async function getOrCreateMasterSpreadsheet(
   boutiqueName: string,
   existingSpreadsheetId?: string
-): Promise<{ spreadsheetId: string; spreadsheetUrl: string; token: string }> {
+): Promise<{ spreadsheetId: string; spreadsheetUrl: string; token: string; isNewlyCreated: boolean }> {
   let token = await getAccessToken(true, false);
   if (!token) {
     token = await getAccessToken(true, true);
@@ -88,6 +96,7 @@ async function getOrCreateMasterSpreadsheet(
 
   let spreadsheetId = existingSpreadsheetId;
   let needNewSpreadsheet = !spreadsheetId;
+  let wasMissingOrDeleted = false;
 
   if (spreadsheetId) {
     try {
@@ -124,10 +133,14 @@ async function getOrCreateMasterSpreadsheet(
 
         needNewSpreadsheet = false;
       } else {
+        // File was deleted or not found in Google Drive (404/403/400)
+        console.warn(`Spreadsheet ID ${spreadsheetId} is missing or deleted from Google Drive. Creating a fresh master spreadsheet.`);
         needNewSpreadsheet = true;
+        wasMissingOrDeleted = true;
       }
     } catch {
       needNewSpreadsheet = true;
+      wasMissingOrDeleted = true;
     }
   }
 
@@ -159,7 +172,7 @@ async function getOrCreateMasterSpreadsheet(
   const finalToken = (await getAccessToken(false, false)) || token;
   const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
-  return { spreadsheetId: spreadsheetId!, spreadsheetUrl, token: finalToken };
+  return { spreadsheetId: spreadsheetId!, spreadsheetUrl, token: finalToken, isNewlyCreated: wasMissingOrDeleted || !existingSpreadsheetId };
 }
 
 /**
@@ -170,65 +183,81 @@ export async function syncOrdersToGoogleSheet(
   boutiqueName: string,
   existingSpreadsheetId?: string
 ): Promise<SheetSyncResult> {
-  const { spreadsheetId, spreadsheetUrl } = await getOrCreateMasterSpreadsheet(
+  const { spreadsheetId, spreadsheetUrl, isNewlyCreated } = await getOrCreateMasterSpreadsheet(
     boutiqueName,
     existingSpreadsheetId
   );
 
   const headers = [
     'Order Number',
-    'Date Placed',
+    'Date Placed (IST)',
     'Customer Name',
-    'Phone',
-    'Email',
-    'Shipping Address',
-    'Status',
-    'Assigned Handling Staff',
-    'Last Handled Username',
+    'Customer Phone',
+    'Customer Email',
+    'Delivery Address',
+    'City',
+    'Pincode',
+    'Order Status',
+    'Lifecycle (Active/Closed)',
+    'Assigned Concierge Staff',
     'Total Amount (₹)',
-    'Payment UTR',
-    'Items Summary',
+    'Payment Reference / UTR',
+    'Ordered Sarees Summary',
     'Courier Partner',
-    'Tracking ID',
-    'Refund UPI ID',
+    'Tracking / Consignment ID',
+    'Customer Delivery Issue',
     'Refund Status',
     'Refund UTR',
-    'Customer Comments / Instructions',
+    'Cancellation Reason',
+    'Reopened Reason',
+    'Customer Comments / Notes',
     'Staff Work Tracking History',
   ];
 
   const orderRows =
     orders.length > 0
       ? orders.map((o) => [
-          o.orderNumber,
-          new Date(o.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-          o.customer.name,
-          o.customer.phone,
-          o.customer.email,
-          `${o.customer.address}, ${o.customer.city}, ${o.customer.state} - ${o.customer.pincode}`,
-          o.status,
-          o.assignedStaffName || 'Unassigned',
-          o.lastUpdatedBy || '',
-          o.totalAmount,
-          o.upiTransactionId || 'Pending Verification',
-          o.items
-            .map(
-              (item) =>
-                `${item.product.title} (${item.product.fabric} - ${item.product.color}) x${item.quantity}`
-            )
-            .join('; '),
-          o.shippingDetails?.courierName || 'Unassigned',
-          o.shippingDetails?.trackingNumber || '',
-          o.refundDetails?.refundUpiId || o.refundDetails?.refundUpiPhone || '',
-          o.refundDetails?.refundStatus || '',
-          o.refundDetails?.refundUtr || '',
-          o.notes || '',
-          (o.assignmentHistory || [])
-            .map(
-              (h) =>
-                `[${new Date(h.timestamp).toLocaleDateString('en-IN')}] ${h.staffName}: ${h.action}${h.note ? ` (${h.note})` : ''}`
-            )
-            .join('; '),
+          sanitizeSheetCell(o.orderNumber),
+          sanitizeSheetCell(new Date(o.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })),
+          sanitizeSheetCell(o.customer?.name || ''),
+          sanitizeSheetCell(o.customer?.phone || ''),
+          sanitizeSheetCell(o.customer?.email || ''),
+          sanitizeSheetCell(o.customer?.address || ''),
+          sanitizeSheetCell(o.customer?.city || ''),
+          sanitizeSheetCell(o.customer?.pincode || ''),
+          sanitizeSheetCell(o.status || 'Pending'),
+          sanitizeSheetCell(o.isClosed ? 'Closed' : 'Active'),
+          sanitizeSheetCell(o.assignedStaffName || 'Unassigned'),
+          o.totalAmount || 0,
+          sanitizeSheetCell(o.upiTransactionId || 'Pending Verification'),
+          sanitizeSheetCell(
+            (o.items || [])
+              .map(
+                (item) =>
+                  `${item.product?.title || 'Saree'} (${item.product?.fabric || ''} - ${item.product?.color || ''}) x${item.quantity}`
+              )
+              .join('; ')
+          ),
+          sanitizeSheetCell(o.shippingDetails?.courierName || 'Unassigned'),
+          sanitizeSheetCell(o.shippingDetails?.trackingNumber || ''),
+          sanitizeSheetCell(
+            o.deliveryIssue?.reported
+              ? `Reported: ${o.deliveryIssue.issueDescription}`
+              : 'None'
+          ),
+          sanitizeSheetCell(o.refundDetails?.refundStatus || 'not_required'),
+          sanitizeSheetCell(o.refundDetails?.refundUtr || ''),
+          sanitizeSheetCell(o.cancellationReason || ''),
+          sanitizeSheetCell(o.reopenReason || ''),
+          sanitizeSheetCell(o.notes || ''),
+          sanitizeSheetCell(
+            (o.assignmentHistory || [])
+              .map(
+                (h) =>
+                  `[${new Date(h.timestamp).toLocaleDateString('en-IN')}] ${h.staffName}: ${h.action}${h.note ? ` (${h.note})` : ''}`
+              )
+              .join('; ')
+          ),
         ])
       : [
           [
@@ -238,12 +267,16 @@ export async function syncOrdersToGoogleSheet(
             '-',
             '-',
             '-',
-            'Ready',
             '-',
+            '-',
+            'Ready',
+            'Active',
             '-',
             0,
             '-',
             'Columns configured for incoming orders',
+            '-',
+            '-',
             '-',
             '-',
             '-',
@@ -523,20 +556,20 @@ export async function syncStaffLedgerToGoogleSheet(
           : 'No work update logged yet';
 
         return [
-          ord.orderNumber,
-          ord.customer.name,
-          ord.customer.phone,
-          ord.status,
-          ord.totalAmount,
-          ord.assignedStaffName || 'Unassigned',
-          staff ? `@${staff.username}` : (ord.assignedStaffId === 'admin' ? '@owner' : '-'),
-          staff ? staff.role : (ord.assignedStaffId === 'admin' ? 'Store Owner' : '-'),
-          ord.shippingDetails?.courierName || '-',
-          ord.shippingDetails?.trackingNumber || '-',
-          ord.refundDetails?.refundStatus || '-',
-          ord.refundDetails?.refundUtr || '-',
-          ord.cancellationReason || '-',
-          lastLogText,
+          sanitizeSheetCell(ord.orderNumber),
+          sanitizeSheetCell(ord.customer?.name || ''),
+          sanitizeSheetCell(ord.customer?.phone || ''),
+          sanitizeSheetCell(ord.status || 'Pending'),
+          ord.totalAmount || 0,
+          sanitizeSheetCell(ord.assignedStaffName || 'Unassigned'),
+          sanitizeSheetCell(staff ? `@${staff.username}` : (ord.assignedStaffId === 'admin' ? '@owner' : '-')),
+          sanitizeSheetCell(staff ? staff.role : (ord.assignedStaffId === 'admin' ? 'Store Owner' : '-')),
+          sanitizeSheetCell(ord.shippingDetails?.courierName || '-'),
+          sanitizeSheetCell(ord.shippingDetails?.trackingNumber || '-'),
+          sanitizeSheetCell(ord.refundDetails?.refundStatus || '-'),
+          sanitizeSheetCell(ord.refundDetails?.refundUtr || '-'),
+          sanitizeSheetCell(ord.cancellationReason || '-'),
+          sanitizeSheetCell(lastLogText),
         ];
       })
     : [

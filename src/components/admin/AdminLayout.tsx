@@ -6,6 +6,7 @@ import { AnalyticsManager } from './AnalyticsManager';
 import { StaffManager } from './StaffManager';
 import { StaffBucketManager } from './StaffBucketManager';
 import { SettingsManager } from './SettingsManager';
+import { CustomerIssuesManager } from './CustomerIssuesManager';
 import { playOrderNotificationSound } from '../../utils/audio';
 import { formatPrice } from '../../utils/upi';
 import {
@@ -22,6 +23,7 @@ import {
   Volume2,
   X,
   Layers,
+  AlertCircle,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -62,10 +64,73 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     ? 'staff'
     : 'settings';
 
-  const [activeTab, setActiveTab] = useState<
-    'orders' | 'admin_bucket' | 'staff_buckets' | 'products' | 'analytics' | 'staff' | 'settings'
-  >(defaultTab);
-  const [selectedStaffBucketId, setSelectedStaffBucketId] = useState<string | undefined>(undefined);
+  type AdminTab =
+    | 'orders'
+    | 'admin_bucket'
+    | 'staff_buckets'
+    | 'products'
+    | 'analytics'
+    | 'staff'
+    | 'settings'
+    | 'customers_issue';
+
+  const getInitialTab = (): AdminTab => {
+    try {
+      if (typeof window !== 'undefined') {
+        const hashMatch = window.location.hash.match(/[?&]tab=([^&]+)/i);
+        const searchMatch = window.location.search.match(/[?&]tab=([^&]+)/i);
+        const queryTab = hashMatch?.[1] || searchMatch?.[1];
+        const validTabs: AdminTab[] = [
+          'orders',
+          'admin_bucket',
+          'staff_buckets',
+          'products',
+          'analytics',
+          'staff',
+          'settings',
+          'customers_issue',
+        ];
+        if (queryTab && validTabs.includes(queryTab as AdminTab)) {
+          return queryTab as AdminTab;
+        }
+        const saved = localStorage.getItem('boutique_admin_active_tab') as AdminTab;
+        if (saved && validTabs.includes(saved)) {
+          return saved;
+        }
+      }
+    } catch {}
+    return defaultTab;
+  };
+
+  const [activeTab, setActiveTab] = useState<AdminTab>(getInitialTab);
+  const [selectedStaffBucketId, setSelectedStaffBucketId] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem('boutique_admin_bucket_id') || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+
+  // Sync activeTab to localStorage and URL hash to guarantee persistence on refresh or navigation
+  useEffect(() => {
+    try {
+      localStorage.setItem('boutique_admin_active_tab', activeTab);
+      if (typeof window !== 'undefined') {
+        const baseHash = window.location.hash.split('?')[0] || '#admin';
+        window.history.replaceState(null, '', `${baseHash}?tab=${activeTab}`);
+      }
+    } catch {}
+  }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      if (selectedStaffBucketId) {
+        localStorage.setItem('boutique_admin_bucket_id', selectedStaffBucketId);
+      } else {
+        localStorage.removeItem('boutique_admin_bucket_id');
+      }
+    } catch {}
+  }, [selectedStaffBucketId]);
 
   // Sound notification when admins or staff receive orders (User Request)
   const prevOrdersCountRef = useRef(orders.length);
@@ -93,6 +158,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     (o) =>
       (o.status === 'Cancelled' || o.status === 'Rejected') &&
       o.refundDetails?.refundStatus === 'pending'
+  ).length;
+
+  const customerIssuesCount = orders.filter(
+    (o) => o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved'
   ).length;
 
   const handleLogout = () => {
@@ -289,6 +358,26 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
               </button>
             )}
 
+            {canSeeOrders && (
+              <button
+                onClick={() => setActiveTab('customers_issue')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                  activeTab === 'customers_issue'
+                    ? 'bg-rose-600 text-white font-bold shadow-xs'
+                    : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
+                }`}
+                title="Delivery dispute issues reported by customers"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                <span>Customers Issue</span>
+                {customerIssuesCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-bold animate-pulse">
+                    {customerIssuesCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {canSeeSettings && (
               <button
                 onClick={() => setActiveTab('settings')}
@@ -380,6 +469,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
           />
         )}
         {activeTab === 'settings' && <SettingsManager />}
+        {activeTab === 'customers_issue' && <CustomerIssuesManager />}
       </main>
     </div>
   );

@@ -113,6 +113,32 @@ export interface CancellationRequest {
   adminDecisionNotes?: string;
 }
 
+export interface CustomerDeliveryIssue {
+  reported: boolean;
+  reportedAt: string;
+  customerPhone: string;
+  issueDescription: string;
+  status: 'open' | 'investigating' | 'resolved';
+  resolutionNotes?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+export interface CourierService {
+  id: string;
+  name: string; // e.g. DTDC Express, Salem Professional Couriers, Blue Dart
+  code: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string; // e.g. Salem, Chennai, Coimbatore
+  pincode: string;
+  phone: string;
+  supportEmail: string;
+  mapsUrl: string; // Sharable Google Maps Link
+  trackingUrlTemplate?: string;
+  isActive: boolean;
+}
+
 export interface StaffSectionPermissions {
   orders: { canView: boolean; canEdit: boolean };
   products: { canView: boolean; canEdit: boolean };
@@ -190,6 +216,7 @@ export interface Order {
   reopenedAt?: string;
   reopenedBy?: string;
   reopenReason?: string; // Mandatory explanation required upon reopening a closed order
+  deliveryIssue?: CustomerDeliveryIssue; // Customer delivery non-receipt report / dispute
 }
 
 export type ThemeMode = 'light' | 'dark';
@@ -241,6 +268,7 @@ export interface StorefrontDisplaySettings {
   allowPublicCancellation: boolean;
   allowPublicRefunds?: boolean; // Refund feature enable/disable toggle option
   showCustomerReviews?: boolean; // Enable or disable review section display on customer front
+  allowCustomerDeliveryDisputes?: boolean; // Global toggle: Report delivery issue on customer front
   freeShippingText: string;
   footerAboutText?: string;
   footerCertifications?: string[];
@@ -280,6 +308,7 @@ export interface StoreSettings {
   ordersSpreadsheetUrl?: string;
   analyticsSpreadsheetId?: string;
   analyticsSpreadsheetUrl?: string;
+  courierServices?: CourierService[]; // Configured boutique courier partners with address and maps
   staffMembers: StaffMember[];
   chatTemplates: OrderStatusChatTemplates;
   defaultStaffPermissions?: StaffSectionPermissions;

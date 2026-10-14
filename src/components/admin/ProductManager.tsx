@@ -592,7 +592,97 @@ export const ProductManager: React.FC = () => {
 
       {/* Saree Inventory Table */}
       <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
+        {/* Responsive Mobile & Tablet Card Grid (User Request 3) */}
+        <div className="md:hidden divide-y divide-neutral-100 p-2 sm:p-3 space-y-3">
+          {filteredProducts.map((product) => (
+            <div
+              key={product.id}
+              onClick={() => openEditModal(product)}
+              className="bg-neutral-50/70 hover:bg-neutral-100/80 rounded-2xl p-3 border border-neutral-200/80 transition cursor-pointer flex flex-col justify-between space-y-2.5 active:scale-99"
+              title="Tap anywhere to edit this saree"
+            >
+              <div className="flex gap-3">
+                <img
+                  src={product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                  alt={product.title}
+                  className="w-16 h-20 sm:w-20 sm:h-24 object-cover rounded-xl bg-neutral-100 border border-neutral-200 shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="font-mono text-[10px] sm:text-xs font-bold text-rose-950 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 truncate">
+                      {product.productCode}
+                    </span>
+                    <span className="text-[10px] text-amber-700 font-bold flex items-center gap-0.5 shrink-0">
+                      <span>Edit</span>
+                      <Edit2 className="w-3 h-3" />
+                    </span>
+                  </div>
+                  <h4 className="font-serif font-bold text-xs sm:text-sm text-neutral-900 truncate">
+                    {product.title}
+                  </h4>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                    {product.fabric} · {product.color}
+                  </p>
+                  <div className="mt-1 flex items-baseline gap-1.5">
+                    <span className="font-bold text-sm text-neutral-900 tabular-nums">
+                      {formatPrice(product.price)}
+                    </span>
+                    {product.originalPrice && product.originalPrice > product.price && (
+                      <span className="text-[10px] text-neutral-400 line-through tabular-nums">
+                        MRP {formatPrice(product.originalPrice)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Card Footer Controls */}
+              <div
+                className="pt-2 border-t border-neutral-200/80 flex items-center justify-between text-xs flex-wrap gap-1.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Stock count button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedInventoryProduct(product);
+                  }}
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border cursor-pointer ${
+                    product.stockStatus === 'in_stock'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                      : product.stockStatus === 'limited'
+                      ? 'bg-amber-50 text-amber-800 border-amber-300'
+                      : 'bg-rose-50 text-rose-800 border-rose-300'
+                  }`}
+                  title="Click to see orders for this saree"
+                >
+                  Stock: {product.stockCount}
+                </button>
+
+                {/* Visibility Toggle */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (canEditProducts) toggleProductVisibility(product.id);
+                  }}
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 cursor-pointer ${
+                    product.isVisible
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : 'bg-neutral-100 text-neutral-500 border-neutral-300'
+                  }`}
+                >
+                  {product.isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  <span>{product.isVisible ? 'Visible' : 'Hidden'}</span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop & Tablet Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-500 uppercase tracking-wider font-semibold">
               <tr>
@@ -607,16 +697,24 @@ export const ProductManager: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {filteredProducts.map((product) => (
-                <tr key={product.id} className="hover:bg-neutral-50/50 transition">
+                <tr
+                  key={product.id}
+                  onClick={() => openEditModal(product)}
+                  className="hover:bg-neutral-50/80 transition cursor-pointer group"
+                  title="Click anywhere on this saree row to edit details"
+                >
                   {/* SKU Unique Code */}
                   <td className="py-3 px-3">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       <span className="font-mono text-xs font-bold text-rose-950 bg-rose-50 px-2 py-1 rounded-md border border-rose-200">
                         {product.productCode}
                       </span>
                       <button
                         type="button"
-                        onClick={() => copySkuToClipboard(product.productCode)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copySkuToClipboard(product.productCode);
+                        }}
                         className="p-1 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition"
                         title="Copy Unique Code"
                       >
@@ -635,10 +733,10 @@ export const ProductManager: React.FC = () => {
                       <img
                         src={product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={product.title}
-                        className="w-12 h-14 object-cover rounded-lg bg-neutral-100 border border-neutral-200 shrink-0"
+                        className="w-12 h-14 object-cover rounded-lg bg-neutral-100 border border-neutral-200 shrink-0 group-hover:scale-102 transition"
                       />
                       <div className="min-w-0 max-w-xs">
-                        <p className="font-serif font-bold text-sm text-neutral-900 truncate">
+                        <p className="font-serif font-bold text-sm text-neutral-900 group-hover:text-amber-800 transition truncate">
                           {product.title}
                         </p>
                         <div className="flex items-center gap-2 text-[11px] text-neutral-500 mt-0.5">
@@ -649,6 +747,9 @@ export const ProductManager: React.FC = () => {
                             </span>
                           )}
                           <span>{product.images.length} photos</span>
+                          <span className="text-amber-700 font-medium text-[10px] opacity-0 group-hover:opacity-100 transition">
+                            (Click to Edit)
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -678,10 +779,13 @@ export const ProductManager: React.FC = () => {
                   </td>
 
                   {/* Stock - Clickable to see orders (User Request 6) */}
-                  <td className="py-3 px-4">
+                  <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
-                      onClick={() => setSelectedInventoryProduct(product)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedInventoryProduct(product);
+                      }}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold cursor-pointer transition hover:opacity-85 shadow-2xs border ${
                         product.stockStatus === 'in_stock'
                           ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
@@ -703,9 +807,12 @@ export const ProductManager: React.FC = () => {
                   </td>
 
                   {/* Visibility Toggle Button */}
-                  <td className="py-3 px-4">
+                  <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                     <button
-                      onClick={() => canEditProducts && toggleProductVisibility(product.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        canEditProducts && toggleProductVisibility(product.id);
+                      }}
                       disabled={!canEditProducts}
                       className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition ${
                         product.isVisible
@@ -729,19 +836,25 @@ export const ProductManager: React.FC = () => {
                   </td>
 
                   {/* Actions */}
-                  <td className="py-3 px-4 text-right">
+                  <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
                       {canEditProducts ? (
                         <>
                           <button
-                            onClick={() => openEditModal(product)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(product);
+                            }}
                             className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition"
                             title="Edit Saree Details"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => setProductToDelete(product)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProductToDelete(product);
+                            }}
                             className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition"
                             title="Delete Saree"
                           >
@@ -750,7 +863,10 @@ export const ProductManager: React.FC = () => {
                         </>
                       ) : (
                         <button
-                          onClick={() => openEditModal(product)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal(product);
+                          }}
                           className="px-2 py-1 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 text-[11px] font-medium"
                           title="View Saree Details"
                         >

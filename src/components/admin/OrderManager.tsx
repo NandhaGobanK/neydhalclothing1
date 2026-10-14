@@ -575,6 +575,34 @@ export const OrderManager: React.FC = () => {
               <Bell className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Sync & Open Google Sheets (User Request 2) */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={handleAuthorizeAndSync}
+              disabled={isSyncingSheets}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-semibold shadow-xs transition cursor-pointer disabled:opacity-50"
+              title="Sync unassigned orders to Google Sheets"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{isSyncingSheets ? 'Syncing...' : 'Sync Sheets'}</span>
+            </button>
+
+            {(settings.ordersSpreadsheetUrl || settings.analyticsSpreadsheetUrl) && (
+              <a
+                href={settings.ordersSpreadsheetUrl || settings.analyticsSpreadsheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-900 text-xs font-semibold shadow-xs transition"
+                title="Open Master Google Sheets Ledger in new browser tab"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Open Sheets</span>
+                <ExternalLink className="w-3 h-3 text-emerald-600" />
+              </a>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1414,12 +1442,20 @@ export const OrderManager: React.FC = () => {
                   onChange={(e) => setCourierName(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900"
                 >
-                  <option value="DTDC Express">DTDC Express</option>
-                  <option value="Blue Dart Express">Blue Dart Express</option>
-                  <option value="India Post (Speed Post)">India Post (Speed Post)</option>
-                  <option value="Delhivery Express">Delhivery Express</option>
-                  <option value="Professional Couriers">The Professional Couriers</option>
-                  <option value="Shadowfax">Shadowfax</option>
+                  {(settings.courierServices && settings.courierServices.length > 0
+                    ? settings.courierServices.filter((c) => c.isActive)
+                    : [
+                        { id: 'dtdc', name: 'DTDC Express', city: 'Salem' },
+                        { id: 'bluedart', name: 'Blue Dart Express', city: 'Salem' },
+                        { id: 'speedpost', name: 'India Post (Speed Post)', city: 'Salem' },
+                        { id: 'delhivery', name: 'Delhivery Express', city: 'Salem' },
+                        { id: 'tpc', name: 'The Professional Couriers', city: 'Salem' },
+                      ]
+                  ).map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name} {c.city ? `(${c.city} Hub)` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 

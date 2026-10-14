@@ -3,6 +3,7 @@ import { useStore } from '../../context/StoreContext';
 import { Order, OrderStatus } from '../../types/store';
 import { formatPrice, openWhatsApp, formatWhatsAppStageUpdateMessage } from '../../utils/upi';
 import { syncStaffLedgerToGoogleSheet } from '../../utils/googleSheets';
+import { exportOrdersToCleanCsv } from '../../utils/csvExport';
 import {
   Users,
   Package,
@@ -33,11 +34,17 @@ import {
   CheckCircle2,
   Crown,
   RotateCcw,
+  MapPin,
+  Building,
+  Phone,
+  Mail,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface StaffBucketManagerProps {
   initialStaffId?: string;
-  onNavigateToTab?: (tab: 'orders' | 'staff' | 'products' | 'analytics' | 'settings') => void;
+  onNavigateToTab?: (tab: 'orders' | 'staff' | 'products' | 'analytics' | 'settings' | 'customers_issue') => void;
 }
 
 export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
@@ -80,7 +87,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
   }, [initialStaffId]);
 
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
-  const [bucketViewMode, setBucketViewMode] = useState<'active' | 'closed'>('active');
+  const [bucketViewMode, setBucketViewMode] = useState<'all' | 'active' | 'closed'>('active');
   const [bucketSearchQuery, setBucketSearchQuery] = useState('');
   const [selectedDetailOrder, setSelectedDetailOrder] = useState<Order | null>(null);
 
@@ -126,6 +133,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [sheetSyncSuccess, setSheetSyncSuccess] = useState<{ url: string; count: number } | null>(null);
   const [sheetSyncError, setSheetSyncError] = useState<string | null>(null);
+  const [showOnlyDisputes, setShowOnlyDisputes] = useState(false);
 
   // Active bucket flags
   const isViewingAdmin = activeBucketStaffId === 'admin';
@@ -160,6 +168,9 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
   // Filtered bucket orders
   const filteredBucketOrders = useMemo(() => {
     return bucketOrders.filter((o) => {
+      // Disputed orders filter (from clicking Customers Issue card)
+      if (showOnlyDisputes && !o.deliveryIssue?.reported) return false;
+
       // Filter by bucketViewMode ('active' vs 'closed')
       if (bucketViewMode === 'closed' && !o.isClosed) return false;
       if (bucketViewMode === 'active' && o.isClosed) return false;
@@ -174,7 +185,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         o.items.some((it) => it.product.title.toLowerCase().includes(q) || it.product.productCode.toLowerCase().includes(q));
       return matchStatus && matchQuery;
     });
-  }, [bucketOrders, bucketViewMode, selectedStatusFilter, bucketSearchQuery]);
+  }, [bucketOrders, bucketViewMode, selectedStatusFilter, bucketSearchQuery, showOnlyDisputes]);
 
   // Metrics for active bucket
   const bucketMetrics = useMemo(() => {
@@ -183,9 +194,10 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
     const confirmed = bucketOrders.filter((o) => o.status === 'Confirmed').length;
     const shipped = bucketOrders.filter((o) => o.status === 'Shipped').length;
     const delivered = bucketOrders.filter((o) => o.status === 'Delivered').length;
+    const customerIssues = bucketOrders.filter((o) => o.deliveryIssue?.reported).length;
     const closed = bucketOrders.filter((o) => o.isClosed).length;
     const totalValue = bucketOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-    return { total, pending, confirmed, shipped, delivered, closed, totalValue };
+    return { total, pending, confirmed, shipped, delivered, customerIssues, closed, totalValue };
   }, [bucketOrders]);
 
   // Staff Performance Breakdown for Whole Store Analytics & Appreciation (User Request)
@@ -449,69 +461,9 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
     setWorkNoteText('');
   };
 
-  // Universal CSV exporter for individual bucket or whole store
+  // Universal CSV exporter for individual bucket or whole store (RFC 4180 aligned)
   const exportOrdersListToCsv = (ordersList: Order[], fileSuffix: string) => {
-    const headers = [
-      'Order Number',
-      'Created Date',
-      'Customer Name',
-      'Customer Phone',
-      'Customer Email',
-      'Customer Address',
-      'Order Stage / Status',
-      'Lifecycle (Active/Closed)',
-      'Total Amount (₹)',
-      'Payment / UTR',
-      'Ordered Items',
-      'Assigned Staff',
-      'Courier Partner',
-      'Tracking ID',
-      'Refund Status',
-      'Refund UTR',
-      'Cancellation Reason',
-      'Reopen Reason',
-      'Last Work Tracking Update',
-    ];
-
-    const rows = ordersList.map((ord) => {
-      const lastLog = ord.assignmentHistory && ord.assignmentHistory.length > 0
-        ? ord.assignmentHistory[ord.assignmentHistory.length - 1]
-        : null;
-      const lastLogText = lastLog
-        ? `[${new Date(lastLog.timestamp).toLocaleTimeString('en-IN')}] ${lastLog.staffName}: ${lastLog.action}${lastLog.note ? ` (${lastLog.note})` : ''}`
-        : 'Initial assignment';
-
-      return [
-        ord.orderNumber,
-        new Date(ord.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-        `"${ord.customer.name.replace(/"/g, '""')}"`,
-        `"${ord.customer.phone}"`,
-        `"${ord.customer.email || ''}"`,
-        `"${`${ord.customer.address}, ${ord.customer.city}, ${ord.customer.state} - ${ord.customer.pincode}`.replace(/"/g, '""')}"`,
-        ord.status,
-        ord.isClosed ? 'Closed' : 'Active',
-        ord.totalAmount,
-        `"${ord.upiTransactionId || 'Pending'}"`,
-        `"${ord.items.map((it) => `${it.product.title} (${it.product.fabric}) x${it.quantity}`).join('; ').replace(/"/g, '""')}"`,
-        `"${ord.assignedStaffName || 'Unassigned'}"`,
-        `"${ord.shippingDetails?.courierName || ''}"`,
-        `"${ord.shippingDetails?.trackingNumber || ''}"`,
-        ord.refundDetails?.refundStatus || '',
-        `"${ord.refundDetails?.refundUtr || ''}"`,
-        `"${(ord.cancellationReason || '').replace(/"/g, '""')}"`,
-        `"${(ord.reopenReason || '').replace(/"/g, '""')}"`,
-        `"${lastLogText.replace(/"/g, '""')}"`,
-      ];
-    });
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `orders_report_${fileSuffix}_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportOrdersToCleanCsv(ordersList, fileSuffix);
   };
 
   // Google Sheets sync for active bucket
@@ -664,6 +616,21 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                 <span>Bucket CSV</span>
               </button>
             </div>
+
+            {/* Open Sheets Option (User Request 2) */}
+            {(settings.ordersSpreadsheetUrl || settings.analyticsSpreadsheetUrl) && (
+              <a
+                href={settings.ordersSpreadsheetUrl || settings.analyticsSpreadsheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2.5 sm:px-3 py-1.5 rounded-2xl text-xs font-semibold transition flex items-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/50 shadow-xs cursor-pointer"
+                title="Open Master Google Sheets Ledger in a new browser tab"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Open Sheets</span>
+                <ExternalLink className="w-3 h-3 text-emerald-300" />
+              </a>
+            )}
 
             {/* Staff Performance & Appreciation Ledger Button (User Request) */}
             <button
@@ -931,47 +898,243 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         </div>
       )}
 
-      {/* Metrics Row for Selected Bucket */}
+      {/* Metrics Row for Selected Bucket: 6 Interactive Clickable Metric Cards (User Request 8) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="bg-white p-3.5 rounded-2xl border border-neutral-200/90 shadow-2xs">
-          <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">Total in Bucket</span>
-          <p className="font-serif text-2xl font-bold text-neutral-950 mt-0.5">{bucketMetrics.total}</p>
-          <span className="text-[11px] text-neutral-500 font-semibold">{formatPrice(bucketMetrics.totalValue)}</span>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-2xl border border-amber-200 bg-amber-50/20 shadow-2xs">
-          <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Pending</span>
-          <p className="font-serif text-2xl font-bold text-amber-700 mt-0.5">{bucketMetrics.pending}</p>
-          <span className="text-[10px] text-neutral-500">Intake / verify</span>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-2xl border border-purple-200 bg-purple-50/20 shadow-2xs">
-          <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider block">Confirmed</span>
-          <p className="font-serif text-2xl font-bold text-purple-700 mt-0.5">{bucketMetrics.confirmed}</p>
-          <span className="text-[10px] text-neutral-500">Loom reserving</span>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-2xs">
-          <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">Shipped</span>
-          <p className="font-serif text-2xl font-bold text-blue-700 mt-0.5">{bucketMetrics.shipped}</p>
-          <span className="text-[10px] text-neutral-500">In courier transit</span>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-2xs">
-          <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Delivered</span>
-          <p className="font-serif text-2xl font-bold text-emerald-700 mt-0.5">{bucketMetrics.delivered}</p>
-          <span className="text-[10px] text-neutral-500">Closed deal ✓</span>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-2xl border border-neutral-200 flex flex-col justify-center shadow-2xs">
-          <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">Staff Role</span>
-          <p className="font-bold text-xs text-neutral-900 capitalize mt-0.5 truncate">
-            {isViewingUnassigned ? 'Intake Queue' : activeStaff?.role || 'Boutique Staff'}
-          </p>
-          <span className="text-[10px] text-neutral-500 font-mono truncate">
-            {isViewingUnassigned ? 'Public Store' : `@${activeStaff?.username || 'staff'}`}
+        {/* 1. Total in Bucket */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatusFilter('all');
+            setBucketViewMode('active');
+            setShowOnlyDisputes(false);
+          }}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatusFilter === 'all' && !showOnlyDisputes
+              ? 'bg-neutral-900 text-white border-neutral-900 ring-2 ring-neutral-900 shadow-sm'
+              : 'bg-white hover:bg-neutral-50/80 border-neutral-200/90 text-neutral-900 hover:border-neutral-300'
+          }`}
+          title="Click to view all active orders in this bucket"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatusFilter === 'all' && !showOnlyDisputes ? 'text-neutral-400' : 'text-neutral-500'
+            }`}
+          >
+            Total in Bucket
           </span>
-        </div>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatusFilter === 'all' && !showOnlyDisputes ? 'text-amber-300' : 'text-neutral-950'
+            }`}
+          >
+            {bucketMetrics.total}
+          </p>
+          <span
+            className={`text-[11px] font-semibold ${
+              selectedStatusFilter === 'all' && !showOnlyDisputes ? 'text-neutral-300' : 'text-neutral-500'
+            }`}
+          >
+            {formatPrice(bucketMetrics.totalValue)}
+          </span>
+        </button>
+
+        {/* 2. Pending */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatusFilter('Pending');
+            setBucketViewMode('active');
+            setShowOnlyDisputes(false);
+          }}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatusFilter === 'Pending' && !showOnlyDisputes
+              ? 'bg-amber-500 text-neutral-950 border-amber-500 ring-2 ring-amber-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-amber-50/40 border-amber-200 bg-amber-50/20 text-neutral-900 hover:border-amber-300'
+          }`}
+          title="Click to filter Pending orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatusFilter === 'Pending' && !showOnlyDisputes ? 'text-neutral-950 font-extrabold' : 'text-amber-800'
+            }`}
+          >
+            Pending
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatusFilter === 'Pending' && !showOnlyDisputes ? 'text-neutral-950' : 'text-amber-700'
+            }`}
+          >
+            {bucketMetrics.pending}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatusFilter === 'Pending' && !showOnlyDisputes ? 'text-neutral-900 font-medium' : 'text-neutral-500'
+            }`}
+          >
+            Intake / verify
+          </span>
+        </button>
+
+        {/* 3. Confirmed */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatusFilter('Confirmed');
+            setBucketViewMode('active');
+            setShowOnlyDisputes(false);
+          }}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatusFilter === 'Confirmed' && !showOnlyDisputes
+              ? 'bg-purple-700 text-white border-purple-700 ring-2 ring-purple-500 font-bold shadow-sm'
+              : 'bg-white hover:bg-purple-50/40 border-purple-200 bg-purple-50/20 text-neutral-900 hover:border-purple-300'
+          }`}
+          title="Click to filter Confirmed orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatusFilter === 'Confirmed' && !showOnlyDisputes ? 'text-purple-200' : 'text-purple-800'
+            }`}
+          >
+            Confirmed
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatusFilter === 'Confirmed' && !showOnlyDisputes ? 'text-white' : 'text-purple-700'
+            }`}
+          >
+            {bucketMetrics.confirmed}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatusFilter === 'Confirmed' && !showOnlyDisputes ? 'text-purple-200' : 'text-neutral-500'
+            }`}
+          >
+            Loom reserving
+          </span>
+        </button>
+
+        {/* 4. Shipped */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatusFilter('Shipped');
+            setBucketViewMode('active');
+            setShowOnlyDisputes(false);
+          }}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatusFilter === 'Shipped' && !showOnlyDisputes
+              ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-blue-50/40 border-blue-200 bg-blue-50/20 text-neutral-900 hover:border-blue-300'
+          }`}
+          title="Click to filter Shipped orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatusFilter === 'Shipped' && !showOnlyDisputes ? 'text-blue-200' : 'text-blue-800'
+            }`}
+          >
+            Shipped
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatusFilter === 'Shipped' && !showOnlyDisputes ? 'text-white' : 'text-blue-700'
+            }`}
+          >
+            {bucketMetrics.shipped}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatusFilter === 'Shipped' && !showOnlyDisputes ? 'text-blue-200' : 'text-neutral-500'
+            }`}
+          >
+            In courier transit
+          </span>
+        </button>
+
+        {/* 5. Delivered */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatusFilter('Delivered');
+            setBucketViewMode('all');
+            setShowOnlyDisputes(false);
+          }}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatusFilter === 'Delivered' && !showOnlyDisputes
+              ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-emerald-50/40 border-emerald-200 bg-emerald-50/20 text-neutral-900 hover:border-emerald-300'
+          }`}
+          title="Click to filter Delivered orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatusFilter === 'Delivered' && !showOnlyDisputes ? 'text-emerald-200' : 'text-emerald-800'
+            }`}
+          >
+            Delivered
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatusFilter === 'Delivered' && !showOnlyDisputes ? 'text-white' : 'text-emerald-700'
+            }`}
+          >
+            {bucketMetrics.delivered}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatusFilter === 'Delivered' && !showOnlyDisputes ? 'text-emerald-200' : 'text-neutral-500'
+            }`}
+          >
+            Closed deal ✓
+          </span>
+        </button>
+
+        {/* 6. Customers Issue */}
+        <button
+          type="button"
+          onClick={() => {
+            if (onNavigateToTab) {
+              onNavigateToTab('customers_issue');
+            } else {
+              setShowOnlyDisputes(true);
+              setSelectedStatusFilter('all');
+            }
+          }}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            showOnlyDisputes
+              ? 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-rose-50/40 border-rose-200 bg-rose-50/20 text-neutral-900 hover:border-rose-300'
+          }`}
+          title="Click to view Customers Issue & delivery disputes"
+        >
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider block ${
+                showOnlyDisputes ? 'text-rose-200' : 'text-rose-800'
+              }`}
+            >
+              Customers Issue
+            </span>
+            {bucketMetrics.customerIssues > 0 && (
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            )}
+          </div>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              showOnlyDisputes ? 'text-white' : 'text-rose-700'
+            }`}
+          >
+            {bucketMetrics.customerIssues}
+          </p>
+          <span
+            className={`text-[10px] ${
+              showOnlyDisputes ? 'text-rose-200' : 'text-neutral-500'
+            }`}
+          >
+            {bucketMetrics.customerIssues === 0 ? 'Zero disputes' : `${bucketMetrics.customerIssues} non-delivery`}
+          </span>
+        </button>
       </div>
 
       {/* Filter and Search Bar for Bucket */}
@@ -1392,6 +1555,101 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                 </div>
               </div>
 
+              {/* Courier Partner & Local Hub Details (User Request 6) */}
+              {selectedDetailOrder.shippingDetails && (
+                (() => {
+                  const matchedCourier = (settings.courierServices || []).find(
+                    (c) => c.name.toLowerCase().trim() === selectedDetailOrder.shippingDetails?.courierName.toLowerCase().trim()
+                  );
+                  return (
+                    <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-serif font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                          <Truck className="w-4 h-4 text-amber-700" />
+                          <span>Courier Consignment & Hub Details</span>
+                        </h4>
+                        <span className="font-mono font-bold bg-white px-2 py-0.5 rounded-md border border-amber-300 text-neutral-900">
+                          {selectedDetailOrder.shippingDetails.trackingNumber}
+                        </span>
+                      </div>
+
+                      {matchedCourier ? (
+                        <div className="space-y-1.5 text-neutral-800">
+                          <p className="font-bold text-neutral-950 flex items-center gap-1.5">
+                            <Building className="w-3.5 h-3.5 text-amber-700" />
+                            <span>{matchedCourier.name} ({matchedCourier.city} Branch)</span>
+                          </p>
+                          <p className="text-[11px] text-neutral-700 flex items-start gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                            <span>
+                              {matchedCourier.addressLine1}
+                              {matchedCourier.addressLine2 ? `, ${matchedCourier.addressLine2}` : ''}, {matchedCourier.city} - {matchedCourier.pincode}
+                            </span>
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                            <p className="flex items-center gap-1.5">
+                              <Phone className="w-3.5 h-3.5 text-neutral-500" />
+                              <a href={`tel:${matchedCourier.phone}`} className="hover:text-amber-800 font-semibold font-mono">
+                                {matchedCourier.phone}
+                              </a>
+                            </p>
+                            <p className="flex items-center gap-1.5">
+                              <Mail className="w-3.5 h-3.5 text-neutral-500" />
+                              <a href={`mailto:${matchedCourier.supportEmail}`} className="hover:text-amber-800">
+                                {matchedCourier.supportEmail}
+                              </a>
+                            </p>
+                          </div>
+                          {matchedCourier.mapsUrl && (
+                            <div className="pt-1.5">
+                              <a
+                                href={matchedCourier.mapsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-neutral-100 text-amber-950 border border-amber-300 text-[11px] font-semibold transition shadow-2xs"
+                              >
+                                <MapPin className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Open Hub on Google Maps</span>
+                                <ExternalLink className="w-3 h-3 text-neutral-500" />
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-neutral-700 text-xs">
+                          Courier Partner: <strong>{selectedDetailOrder.shippingDetails.courierName}</strong>
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
+
+              {/* Delivery Dispute Alert Banner in Order Detail */}
+              {selectedDetailOrder.deliveryIssue?.reported && (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-rose-950 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold flex items-center gap-1.5 text-rose-900">
+                      <AlertCircle className="w-4 h-4 text-rose-600" />
+                      <span>Customer Delivery Issue Reported ({selectedDetailOrder.deliveryIssue.status.toUpperCase()})</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDetailOrder(null);
+                        onNavigateToTab?.('customers_issue');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] transition cursor-pointer"
+                    >
+                      Investigate in Customers Issue &rarr;
+                    </button>
+                  </div>
+                  <p className="bg-white/80 p-2.5 rounded-xl border border-rose-200 font-medium">
+                    "{selectedDetailOrder.deliveryIssue.issueDescription}"
+                  </p>
+                </div>
+              )}
+
               {/* Live Work & Assignment Log */}
               <div className="p-4 rounded-2xl bg-white border border-neutral-200 space-y-3">
                 <div className="flex items-center justify-between">
@@ -1681,12 +1939,20 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                   onChange={(e) => setCourierName(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-medium"
                 >
-                  <option value="DTDC Express">DTDC Express</option>
-                  <option value="Blue Dart Express">Blue Dart Express</option>
-                  <option value="India Post (Speed Post)">India Post (Speed Post)</option>
-                  <option value="Delhivery Express">Delhivery Express</option>
-                  <option value="Professional Couriers">The Professional Couriers</option>
-                  <option value="Shadowfax">Shadowfax</option>
+                  {(settings.courierServices && settings.courierServices.length > 0
+                    ? settings.courierServices.filter((c) => c.isActive)
+                    : [
+                        { id: 'dtdc', name: 'DTDC Express', city: 'Salem' },
+                        { id: 'bluedart', name: 'Blue Dart Express', city: 'Salem' },
+                        { id: 'speedpost', name: 'India Post (Speed Post)', city: 'Salem' },
+                        { id: 'delhivery', name: 'Delhivery Express', city: 'Salem' },
+                        { id: 'tpc', name: 'The Professional Couriers', city: 'Salem' },
+                      ]
+                  ).map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name} {c.city ? `(${c.city} Hub)` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 

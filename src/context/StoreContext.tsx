@@ -11,6 +11,8 @@ import {
   ProductReview,
   StaffAssignmentLog,
   AdminOnlineStatus,
+  CustomerDeliveryIssue,
+  CourierService,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -119,6 +121,21 @@ interface StoreContextType {
   findOrdersByQuery: (query: string) => Order[];
   closeOrder: (orderId: string, closedBy?: string) => void;
   reopenOrder: (orderId: string, reopenedBy: string, reason: string) => void;
+  reportCustomerDeliveryIssue: (
+    orderNumber: string,
+    phone: string,
+    issueDescription: string
+  ) => Promise<{ success: boolean; message: string }>;
+  resolveDeliveryIssue: (
+    orderId: string,
+    resolutionNotes: string,
+    action: 'reopen' | 'resolve'
+  ) => Promise<void>;
+
+  // Courier Services Management
+  addCourierService: (courier: Omit<CourierService, 'id'>) => Promise<void>;
+  updateCourierService: (id: string, updates: Partial<CourierService>) => Promise<void>;
+  deleteCourierService: (id: string) => Promise<void>;
 
   // Staff Management
   staffMembers: StaffMember[];
@@ -257,11 +274,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [lastPlacedOrder, setLastPlacedOrder] = useState<Order | null>(null);
 
   const [currentView, setCurrentView] = useState<'store' | 'admin'>(() => {
-    if (typeof window !== 'undefined' && window.location.hash.startsWith('#admin')) {
-      return 'admin';
+    if (typeof window !== 'undefined') {
+      const savedView = localStorage.getItem('boutique_current_view');
+      if (
+        savedView === 'admin' ||
+        window.location.hash.startsWith('#admin') ||
+        window.location.pathname === '/admin'
+      ) {
+        return 'admin';
+      }
     }
     return 'store';
   });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('boutique_current_view', currentView);
+    }
+  }, [currentView]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.PRODUCTS, products);
@@ -1468,6 +1498,166 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
+  // Customer Delivery Dispute Reporting (Customer Front)
+  const reportCustomerDeliveryIssue = async (
+    orderNumber: string,
+    phone: string,
+    issueDescription: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (settings.storefrontDisplay?.allowCustomerDeliveryDisputes === false) {
+      return {
+        success: false,
+        message: 'Delivery dispute reporting is currently disabled on the boutique storefront. Please contact concierge on WhatsApp.',
+      };
+    }
+
+    const cleanOrderNum = orderNumber.trim().toUpperCase();
+    const cleanPhoneDigits = phone.replace(/[^0-9]/g, '');
+
+    const targetOrder = orders.find(
+      (o) =>
+        o.orderNumber.toUpperCase() === cleanOrderNum &&
+        o.customer.phone.replace(/[^0-9]/g, '').includes(cleanPhoneDigits.slice(-10))
+    );
+
+    if (!targetOrder) {
+      return {
+        success: false,
+        message: 'No order found matching this Order Number and Phone Number combination.',
+      };
+    }
+
+    const issuePayload: CustomerDeliveryIssue = {
+      reported: true,
+      reportedAt: new Date().toISOString(),
+      customerPhone: targetOrder.customer.phone,
+      issueDescription: issueDescription.trim() || 'Customer reports non-delivery despite Delivered / Shipped status.',
+      status: 'open',
+    };
+
+    const disputeLog: StaffAssignmentLog = {
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      staffId: targetOrder.assignedStaffId || 'unassigned',
+      staffName: 'Storefront Patron',
+      action: 'Delivery Issue Reported',
+      note: `Customer reported: "${issueDescription.trim()}"`,
+    };
+
+    let updatedOrder: Order | null = null;
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== targetOrder.id) return ord;
+        updatedOrder = {
+          ...ord,
+          deliveryIssue: issuePayload,
+          assignmentHistory: [...(ord.assignmentHistory || []), disputeLog],
+        };
+        return updatedOrder;
+      })
+    );
+
+    if (updatedOrder) {
+      updateDoc(doc(db, 'orders', targetOrder.id), sanitizeForFirestore(updatedOrder)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${targetOrder.id}`)
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Delivery dispute reported successfully! Our boutique management and dispatch team have been alerted to investigate immediately.',
+    };
+  };
+
+  // Reopen and Resolve Disputed Delivery Orders
+  const resolveDeliveryIssue = async (
+    orderId: string,
+    resolutionNotes: string,
+    action: 'reopen' | 'resolve'
+  ): Promise<void> => {
+    let orderToSync: Partial<Order> | null = null;
+    const actorName =
+      currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+    const nowIso = new Date().toISOString();
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+
+        const auditLog: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: nowIso,
+          staffId: currentUser?.staffId || ord.assignedStaffId || 'admin',
+          staffName: actorName,
+          assignedBy: actorName,
+          action:
+            action === 'reopen'
+              ? 'Reopened Disputed Order for Investigation'
+              : 'Resolved Delivery Dispute',
+          note: resolutionNotes.trim() || (action === 'reopen' ? 'Reopened for investigation' : 'Dispute resolved with customer and courier'),
+        };
+
+        const updatedIssue: CustomerDeliveryIssue = {
+          ...(ord.deliveryIssue || {
+            reported: true,
+            reportedAt: nowIso,
+            customerPhone: ord.customer.phone,
+            issueDescription: 'Disputed delivery',
+            status: 'investigating',
+          }),
+          status: action === 'reopen' ? 'investigating' : 'resolved',
+          resolutionNotes: resolutionNotes.trim(),
+          resolvedAt: nowIso,
+          resolvedBy: actorName,
+        };
+
+        const updated: Order = {
+          ...ord,
+          deliveryIssue: updatedIssue,
+          isClosed: action === 'reopen' ? false : ord.isClosed,
+          reopenedAt: action === 'reopen' ? nowIso : ord.reopenedAt,
+          reopenedBy: action === 'reopen' ? actorName : ord.reopenedBy,
+          reopenReason:
+            action === 'reopen'
+              ? `Delivery Dispute Investigation: ${resolutionNotes.trim() || 'Customer non-delivery report'}`
+              : ord.reopenReason,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: [...(ord.assignmentHistory || []), auditLog],
+        };
+        orderToSync = updated;
+        return updated;
+      })
+    );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
+  };
+
+  // Courier Services CRUD
+  const addCourierService = async (courier: Omit<CourierService, 'id'>): Promise<void> => {
+    const newCourier: CourierService = {
+      ...courier,
+      id: `courier-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    };
+    const updated = [...(settings.courierServices || []), newCourier];
+    updateSettings({ courierServices: updated });
+  };
+
+  const updateCourierService = async (id: string, updates: Partial<CourierService>): Promise<void> => {
+    const updated = (settings.courierServices || []).map((c) =>
+      c.id === id ? { ...c, ...updates } : c
+    );
+    updateSettings({ courierServices: updated });
+  };
+
+  const deleteCourierService = async (id: string): Promise<void> => {
+    const updated = (settings.courierServices || []).filter((c) => c.id !== id);
+    updateSettings({ courierServices: updated });
+  };
+
   // Customer Product Reviews
   const addReview = async (reviewData: Omit<ProductReview, 'id' | 'createdAt'>) => {
     const newReview: ProductReview = {
@@ -1884,6 +2074,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         findOrdersByQuery,
         closeOrder,
         reopenOrder,
+        reportCustomerDeliveryIssue,
+        resolveDeliveryIssue,
+        addCourierService,
+        updateCourierService,
+        deleteCourierService,
         staffMembers,
         addStaffMember,
         updateStaffMember,
