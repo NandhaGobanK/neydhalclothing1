@@ -14,9 +14,9 @@ export default defineConfig(() => {
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
           id: '/',
-          name: 'Aara Heritage Saree Boutique',
-          short_name: 'Aara Sarees',
-          description: 'Exquisite handcrafted Kanjivaram, Banarasi, and Chanderi sarees with instant UPI payment and direct boutique concierge.',
+          name: 'Neydhal',
+          short_name: 'Neydhal',
+          description: 'Neydhal - Exquisite handcrafted sarees with instant UPI payment and direct boutique concierge.',
           theme_color: '#831843',
           background_color: '#fafafa',
           display: 'standalone',

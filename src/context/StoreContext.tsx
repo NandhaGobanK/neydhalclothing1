@@ -13,6 +13,7 @@ import {
   AdminOnlineStatus,
   CustomerDeliveryIssue,
   CourierService,
+  LoginPunchRecord,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -24,6 +25,7 @@ import {
 } from '../data/initialData';
 import { googleSignOut, setCachedAccessToken } from '../utils/firebaseAuth';
 import { syncPWAAndDocumentMetadata } from '../utils/dynamicManifest';
+import { formatDeviceDateTime, getDeviceTimezone } from '../utils/deviceTime';
 import {
   collection,
   doc,
@@ -174,6 +176,11 @@ interface StoreContextType {
   adminLogin: (pin: string) => boolean;
   staffLogin: (username: string, password: string) => { success: boolean; error?: string };
   adminLogout: () => void;
+  forceLogoutStaff: (staffId: string) => Promise<void>;
+  punchStaffAttendance: (staffId: string) => Promise<void>;
+  updateStaffIdleStatus: (staffId: string, isIdle: boolean) => Promise<void>;
+  remoteLogoutNotice: string | null;
+  clearRemoteLogoutNotice: () => void;
 
   // UI state
   activeProductModal: Product | null;
@@ -278,6 +285,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isTrackOrderOpen, setIsTrackOrderOpen] = useState(false);
   const [lastPlacedOrder, setLastPlacedOrder] = useState<Order | null>(null);
+  const [remoteLogoutNotice, setRemoteLogoutNotice] = useState<string | null>(null);
+  const clearRemoteLogoutNotice = () => setRemoteLogoutNotice(null);
 
   const [currentView, setCurrentView] = useState<'store' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
@@ -524,7 +533,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, [settings.staffMembers?.length]);
 
-  // If current logged-in user is a staff member who was removed or locked, revoke session immediately
+  // If current logged-in user is a staff member who was removed, locked, or logged out by admin, revoke session immediately
   useEffect(() => {
     if (currentUser?.type === 'staff') {
       const activeStaff = (settings.staffMembers || []).find(
@@ -533,10 +542,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           (currentUser.email && s.email && s.email.toLowerCase() === currentUser.email.toLowerCase()) ||
           s.username.toLowerCase() === currentUser.username.toLowerCase()
       );
-      if (!activeStaff || activeStaff.isLocked) {
+      if (!activeStaff || activeStaff.isLocked || activeStaff.isLoggedIn === false || activeStaff.sessionRevokedAt) {
+        const staffName = activeStaff?.name || currentUser.name || 'Staff Specialist';
         setCurrentUser(null);
         saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
         googleSignOut();
+        if (activeStaff?.sessionRevokedAt || activeStaff?.isLoggedIn === false) {
+          setRemoteLogoutNotice(`Your staff portal session for ${staffName} has been logged out by the store administrator.`);
+        }
       }
     }
   }, [settings.staffMembers, currentUser]);

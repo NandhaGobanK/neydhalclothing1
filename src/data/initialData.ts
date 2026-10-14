@@ -115,8 +115,8 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
 };
 
 export const INITIAL_SETTINGS: StoreSettings = {
-  boutiqueName: 'Aara Heritage Saree Atelier',
-  logoUrl: '',
+  boutiqueName: 'Neydhal',
+  logoUrl: '/pwa-512x512.png',
   tagline: 'Pure Silk & Handcrafted Heirlooms of India',
   contactPhone: '+919876543210',
   contactEmail: 'concierge@aarasarees.com',
@@ -225,6 +225,10 @@ export const INITIAL_SETTINGS: StoreSettings = {
   staffMembers: [],
   chatTemplates: DEFAULT_CHAT_TEMPLATES,
   defaultStaffPermissions: DEFAULT_STAFF_PERMISSIONS,
+  staffIdleAlert: {
+    enabled: true,
+    idleThresholdMinutes: 15,
+  },
 };
 
 // Initial state for fresh boutique login: 0 demo products (ready for owner's real sarees)

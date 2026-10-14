@@ -161,6 +161,19 @@ export interface StaffSectionPermissions {
   settingsDelivery?: { canView: boolean; canEdit: boolean };
 }
 
+export interface LoginPunchRecord {
+  id: string;
+  punchedAt: string; // Device time ISO string
+  authMethod: 'google' | 'password' | 'admin_switch';
+  deviceTimeFormatted?: string;
+  deviceTimezone?: string;
+}
+
+export interface StaffIdleAlertSettings {
+  enabled: boolean; // Enable or disable idle alerts to admin
+  idleThresholdMinutes: number; // Idle threshold in minutes (default 15)
+}
+
 export interface StaffMember {
   id: string;
   name: string;
@@ -175,6 +188,12 @@ export interface StaffMember {
   isLoggedIn?: boolean; // Live login status
   lastLoginAt?: string;
   lastLogoutAt?: string;
+  loginPunchAt?: string; // Latest login punch timestamp synced with staff device
+  loginPunchHistory?: LoginPunchRecord[]; // Punch-in attendance ledger
+  isIdle?: boolean; // True if staff was idle for 15+ minutes
+  idleSince?: string; // Timestamp when idle threshold reached
+  lastActiveAt?: string; // Timestamp of latest staff activity on their device
+  sessionRevokedAt?: string; // Set when admin remotely logs out user
   permissions?: StaffSectionPermissions;
 }
 
@@ -327,4 +346,5 @@ export interface StoreSettings {
   staffMembers: StaffMember[];
   chatTemplates: OrderStatusChatTemplates;
   defaultStaffPermissions?: StaffSectionPermissions;
+  staffIdleAlert?: StaffIdleAlertSettings;
 }
