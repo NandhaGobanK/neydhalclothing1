@@ -164,6 +164,23 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     (o) => o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved'
   ).length;
 
+  // Sound & banner notification when customer reports delivery dispute (User Request)
+  const prevCustomerIssuesCountRef = useRef(customerIssuesCount);
+  const [incomingDisputeAlert, setIncomingDisputeAlert] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (customerIssuesCount > prevCustomerIssuesCountRef.current) {
+      const disputed = orders.find(
+        (o) => o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved'
+      );
+      if (disputed) {
+        setIncomingDisputeAlert(disputed);
+        playOrderNotificationSound();
+      }
+    }
+    prevCustomerIssuesCountRef.current = customerIssuesCount;
+  }, [customerIssuesCount, orders]);
+
   const handleLogout = () => {
     adminLogout();
     onReturnToStore();
@@ -443,9 +460,51 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
         </div>
       )}
 
+      {/* Instant Delivery Dispute Arrival Alert Banner (User Request) */}
+      {incomingDisputeAlert && (
+        <div className="bg-gradient-to-r from-rose-700 via-rose-600 to-amber-600 text-white px-4 py-3 shadow-md animate-in slide-in-from-top duration-300">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-full bg-white text-rose-700 flex items-center justify-center font-bold shadow-xs shrink-0 animate-bounce">
+                <AlertCircle className="w-4 h-4" />
+              </span>
+              <div>
+                <p className="font-bold text-xs sm:text-sm text-white">
+                  ⚠️ New Customer Delivery Dispute Reported: Order #{incomingDisputeAlert.orderNumber}
+                </p>
+                <p className="text-[11px] text-rose-100 font-medium">
+                  {incomingDisputeAlert.customer?.name} ({incomingDisputeAlert.customer?.phone}) reported non-receipt. Routed to 'Customers Issue' section for investigation.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setActiveTab('customers_issue');
+                  setIncomingDisputeAlert(null);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-white text-rose-950 font-bold text-xs transition shadow-sm hover:bg-neutral-100 cursor-pointer"
+              >
+                Open in Customers Issue Section &rarr;
+              </button>
+              <button
+                onClick={() => setIncomingDisputeAlert(null)}
+                className="p-1 rounded-lg text-white/80 hover:text-white cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Admin View Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'orders' && <OrderManager />}
+        {activeTab === 'orders' && (
+          <OrderManager onNavigateToTab={(t) => setActiveTab(t as any)} />
+        )}
         {activeTab === 'admin_bucket' && (
           <StaffBucketManager
             initialStaffId="admin"
@@ -469,7 +528,16 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
           />
         )}
         {activeTab === 'settings' && <SettingsManager />}
-        {activeTab === 'customers_issue' && <CustomerIssuesManager />}
+        {activeTab === 'customers_issue' && (
+          <CustomerIssuesManager
+            onNavigateToTab={(tab, bucketStaffId) => {
+              if (bucketStaffId) {
+                setSelectedStaffBucketId(bucketStaffId);
+              }
+              setActiveTab(tab as any);
+            }}
+          />
+        )}
       </main>
     </div>
   );

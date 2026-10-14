@@ -47,7 +47,11 @@ import {
   Minimize2,
 } from 'lucide-react';
 
-export const OrderManager: React.FC = () => {
+interface OrderManagerProps {
+  onNavigateToTab?: (tab: string) => void;
+}
+
+export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) => {
   const {
     orders,
     updateOrderStatus,
@@ -233,12 +237,33 @@ export const OrderManager: React.FC = () => {
     return orders.filter((o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned');
   }, [orders]);
 
+  // Interactive Metric Counts alongside Pending, Confirmed, Shipped, Delivered, and Customers Issue
+  const orderMetrics = useMemo(() => {
+    const pending = unassignedOrders.filter((o) => o.status === 'Pending').length;
+    const confirmed = unassignedOrders.filter((o) => o.status === 'Confirmed').length;
+    const shipped = unassignedOrders.filter((o) => o.status === 'Shipped').length;
+    const delivered = unassignedOrders.filter((o) => o.status === 'Delivered').length;
+    const customerIssues = orders.filter(
+      (o) => o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved'
+    ).length;
+    return {
+      total: unassignedOrders.length,
+      pending,
+      confirmed,
+      shipped,
+      delivered,
+      customerIssues,
+    };
+  }, [unassignedOrders, orders]);
+
   const filteredOrders = useMemo(() => {
     return unassignedOrders.filter((o) => {
       if (selectedStatus === 'needs_refund') {
         if (!((o.status === 'Cancelled' || o.status === 'Rejected') && o.refundDetails?.refundStatus === 'pending')) {
           return false;
         }
+      } else if (selectedStatus === 'customers_issue') {
+        if (!o.deliveryIssue?.reported) return false;
       } else if (selectedStatus !== 'all' && o.status !== selectedStatus) {
         return false;
       }
@@ -716,6 +741,224 @@ export const OrderManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Interactive Metric Cards Row alongside Pending, Confirmed, Shipped, Delivered, and Customers Issue (User Request) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* 1. All Unassigned */}
+        <button
+          type="button"
+          onClick={() => setSelectedStatus('all')}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatus === 'all'
+              ? 'bg-neutral-900 text-white border-neutral-900 ring-2 ring-neutral-900 shadow-sm'
+              : 'bg-white hover:bg-neutral-50/80 border-neutral-200/90 text-neutral-900 hover:border-neutral-300'
+          }`}
+          title="Click to view all unassigned incoming orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatus === 'all' ? 'text-neutral-400' : 'text-neutral-500'
+            }`}
+          >
+            All Unassigned
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatus === 'all' ? 'text-amber-300' : 'text-neutral-950'
+            }`}
+          >
+            {orderMetrics.total}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatus === 'all' ? 'text-neutral-300' : 'text-neutral-500'
+            }`}
+          >
+            Intake queue
+          </span>
+        </button>
+
+        {/* 2. Pending */}
+        <button
+          type="button"
+          onClick={() => setSelectedStatus('Pending')}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatus === 'Pending'
+              ? 'bg-amber-500 text-neutral-950 border-amber-500 ring-2 ring-amber-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-amber-50/40 border-amber-200 bg-amber-50/20 text-neutral-900 hover:border-amber-300'
+          }`}
+          title="Click to filter Pending orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatus === 'Pending' ? 'text-neutral-950 font-extrabold' : 'text-amber-800'
+            }`}
+          >
+            Pending
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatus === 'Pending' ? 'text-neutral-950' : 'text-amber-700'
+            }`}
+          >
+            {orderMetrics.pending}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatus === 'Pending' ? 'text-neutral-950/80' : 'text-neutral-500'
+            }`}
+          >
+            Payment review
+          </span>
+        </button>
+
+        {/* 3. Confirmed */}
+        <button
+          type="button"
+          onClick={() => setSelectedStatus('Confirmed')}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatus === 'Confirmed'
+              ? 'bg-purple-600 text-white border-purple-600 ring-2 ring-purple-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-purple-50/40 border-purple-200 bg-purple-50/20 text-neutral-900 hover:border-purple-300'
+          }`}
+          title="Click to filter Confirmed orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatus === 'Confirmed' ? 'text-purple-200' : 'text-purple-800'
+            }`}
+          >
+            Confirmed
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatus === 'Confirmed' ? 'text-white' : 'text-purple-700'
+            }`}
+          >
+            {orderMetrics.confirmed}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatus === 'Confirmed' ? 'text-purple-200' : 'text-neutral-500'
+            }`}
+          >
+            Loom reserving
+          </span>
+        </button>
+
+        {/* 4. Shipped */}
+        <button
+          type="button"
+          onClick={() => setSelectedStatus('Shipped')}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatus === 'Shipped'
+              ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-blue-50/40 border-blue-200 bg-blue-50/20 text-neutral-900 hover:border-blue-300'
+          }`}
+          title="Click to filter Shipped orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatus === 'Shipped' ? 'text-blue-200' : 'text-blue-800'
+            }`}
+          >
+            Shipped
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatus === 'Shipped' ? 'text-white' : 'text-blue-700'
+            }`}
+          >
+            {orderMetrics.shipped}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatus === 'Shipped' ? 'text-blue-200' : 'text-neutral-500'
+            }`}
+          >
+            In courier transit
+          </span>
+        </button>
+
+        {/* 5. Delivered */}
+        <button
+          type="button"
+          onClick={() => setSelectedStatus('Delivered')}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatus === 'Delivered'
+              ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-emerald-50/40 border-emerald-200 bg-emerald-50/20 text-neutral-900 hover:border-emerald-300'
+          }`}
+          title="Click to filter Delivered orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block ${
+              selectedStatus === 'Delivered' ? 'text-emerald-200' : 'text-emerald-800'
+            }`}
+          >
+            Delivered
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatus === 'Delivered' ? 'text-white' : 'text-emerald-700'
+            }`}
+          >
+            {orderMetrics.delivered}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatus === 'Delivered' ? 'text-emerald-200' : 'text-neutral-500'
+            }`}
+          >
+            Completed orders
+          </span>
+        </button>
+
+        {/* 6. Customers Issue (Interactive Metric Card alongside Pending, Confirmed, Shipped, Delivered) */}
+        <button
+          type="button"
+          onClick={() => {
+            if (onNavigateToTab) {
+              onNavigateToTab('customers_issue');
+            } else {
+              setSelectedStatus('customers_issue');
+            }
+          }}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatus === 'customers_issue'
+              ? 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-rose-50/40 border-rose-200 bg-rose-50/20 text-neutral-900 hover:border-rose-300'
+          }`}
+          title="Click to route directly to Customers Issue section"
+        >
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider block ${
+                selectedStatus === 'customers_issue' ? 'text-rose-200' : 'text-rose-800'
+              }`}
+            >
+              Customers Issue
+            </span>
+            {orderMetrics.customerIssues > 0 && (
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            )}
+          </div>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatus === 'customers_issue' ? 'text-white' : 'text-rose-700'
+            }`}
+          >
+            {orderMetrics.customerIssues}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatus === 'customers_issue' ? 'text-rose-200' : 'text-neutral-500'
+            }`}
+          >
+            Delivery disputes {orderMetrics.customerIssues > 0 ? '· Action needed' : '· Clear'}
+          </span>
+        </button>
+      </div>
 
       {/* Filter Tabs, Staff Filter & Search Controls */}
       <div className="flex flex-col lg:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-neutral-200 shadow-xs">

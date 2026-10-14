@@ -41,6 +41,7 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
+import { StaffPerformanceBoard } from './StaffPerformanceBoard';
 
 interface StaffBucketManagerProps {
   initialStaffId?: string;
@@ -769,133 +770,16 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         </div>
       )}
 
-      {/* Staff Performance & Appreciation Overview Panel (User Request: analyze who works a lot of orders and appreciate) */}
+      {/* Staff Performance & Appreciation Overview Panel (User Request: Fastest Closer, Fastest Assigner, Fastest Dispute Resolver) */}
       {showPerformanceLeaderboard && (
-        <div className="p-5 rounded-3xl bg-gradient-to-br from-amber-500/10 via-white to-amber-50/40 border-2 border-amber-400/60 shadow-lg space-y-4 animate-in fade-in slide-in-from-top-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-200/80 pb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-amber-500 text-neutral-950 font-bold shrink-0 shadow-xs">
-                <Crown className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-serif text-base font-bold text-neutral-950 flex items-center gap-2">
-                  <span>Staff Workload, Performance & Appreciation Board</span>
-                  <span className="text-[10px] font-sans px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold uppercase tracking-wider">
-                    Storewide Ranking
-                  </span>
-                </h3>
-                <p className="text-xs text-neutral-600 mt-0.5">
-                  Real-time analytics evaluating orders handled, deliveries completed, and closed deals across all staff concierges and admin.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-auto">
-              <button
-                type="button"
-                onClick={handleExportWholeStoreCsv}
-                className="px-3 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                title="Download complete store staff CSV"
-              >
-                <Download className="w-3.5 h-3.5 text-amber-400" />
-                <span>Export Whole Store CSV</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowPerformanceLeaderboard(false)}
-                className="p-1.5 rounded-xl text-neutral-500 hover:text-neutral-900 hover:bg-amber-100/60 transition"
-                title="Close board"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {staffPerformanceList.map((item, idx) => {
-              const isTop = idx === 0 && item.total > 0;
-              const isCurrentActive = activeBucketStaffId === item.id;
-              const isMe = currentUser?.staffId === item.id || (isAdmin && item.id === 'admin');
-
-              return (
-                <div
-                  key={item.id}
-                  className={`p-4 rounded-2xl border transition relative flex flex-col justify-between ${
-                    isTop
-                      ? 'bg-amber-50/90 border-amber-400 shadow-sm ring-1 ring-amber-300'
-                      : 'bg-white border-neutral-200 hover:border-neutral-300 shadow-2xs'
-                  }`}
-                >
-                  {isTop && (
-                    <div className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-amber-500 text-neutral-950 text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 shadow-xs">
-                      <Crown className="w-3 h-3 fill-neutral-950" />
-                      <span>★ Star Performer</span>
-                    </div>
-                  )}
-
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-neutral-950 text-amber-300 font-serif font-bold text-xs flex items-center justify-center shrink-0">
-                          {item.name.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <h4 className="font-bold text-xs text-neutral-900">{item.name}</h4>
-                            {isMe && (
-                              <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-1 rounded">
-                                You
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-neutral-500 font-mono">@{item.username} · {item.role}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-1.5 py-2 border-y border-neutral-100 text-center my-2">
-                      <div className="p-1.5 rounded-lg bg-neutral-50">
-                        <span className="text-[9px] uppercase font-bold text-neutral-500 block">Total</span>
-                        <span className="font-serif font-bold text-sm text-neutral-900">{item.total}</span>
-                      </div>
-                      <div className="p-1.5 rounded-lg bg-emerald-50">
-                        <span className="text-[9px] uppercase font-bold text-emerald-800 block">Delivered</span>
-                        <span className="font-serif font-bold text-sm text-emerald-800">{item.delivered}</span>
-                      </div>
-                      <div className="p-1.5 rounded-lg bg-neutral-100">
-                        <span className="text-[9px] uppercase font-bold text-neutral-600 block">Closed</span>
-                        <span className="font-serif font-bold text-sm text-neutral-800">{item.closed}</span>
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-neutral-600 flex items-center justify-between">
-                      <span>Value handled:</span>
-                      <span className="font-bold text-neutral-900">{formatPrice(item.totalAmount)}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveBucketStaffId(item.id);
-                        setShowPerformanceLeaderboard(false);
-                      }}
-                      className={`w-full py-1.5 px-3 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                        isCurrentActive
-                          ? 'bg-neutral-950 text-white font-bold'
-                          : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
-                      }`}
-                    >
-                      <span>{isCurrentActive ? 'Viewing Bucket' : `View ${item.name.split(' ')[0]}'s Bucket`}</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <StaffPerformanceBoard
+          onClose={() => setShowPerformanceLeaderboard(false)}
+          onSelectStaffBucket={(staffId) => {
+            setActiveBucketStaffId(staffId);
+            setShowPerformanceLeaderboard(false);
+          }}
+          onExportCsv={handleExportWholeStoreCsv}
+        />
       )}
 
       {/* Metrics Row for Selected Bucket: 6 Interactive Clickable Metric Cards (User Request 8) */}

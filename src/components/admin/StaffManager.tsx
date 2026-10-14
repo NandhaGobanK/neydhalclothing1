@@ -42,7 +42,9 @@ import {
   UserCheck,
   Edit,
   MessageSquare,
+  Crown,
 } from 'lucide-react';
+import { StaffPerformanceBoard } from './StaffPerformanceBoard';
 
 interface StaffManagerProps {
   onNavigateToBucket?: (staffId: string) => void;
@@ -81,6 +83,7 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
   const [isSyncingLedger, setIsSyncingLedger] = useState(false);
   const [ledgerSyncSuccess, setLedgerSyncSuccess] = useState<{ url: string; count: number } | null>(null);
   const [ledgerSyncError, setLedgerSyncError] = useState<string | null>(null);
+  const [showPerformanceBoard, setShowPerformanceBoard] = useState(false);
 
   const handleSyncLedger = async () => {
     setIsSyncingLedger(true);
@@ -795,8 +798,31 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
               <Download className="w-3.5 h-3.5 text-neutral-700" />
               <span>Export CSV</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowPerformanceBoard(!showPerformanceBoard)}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer border ${
+                showPerformanceBoard
+                  ? 'bg-amber-400 text-neutral-950 border-amber-300'
+                  : 'bg-neutral-900 text-amber-300 border-neutral-700 hover:bg-neutral-800'
+              }`}
+              title="View multi-factor performance metrics: Fastest Order Closer, Fastest Assigner, and Fastest Dispute Resolver"
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-400" />
+              <span>{showPerformanceBoard ? 'Hide Performance Board' : 'Staff Effort & Performance Board'}</span>
+            </button>
           </div>
         </div>
+
+        {/* Staff Performance & Appreciation Board (User Request) */}
+        {showPerformanceBoard && (
+          <StaffPerformanceBoard
+            onClose={() => setShowPerformanceBoard(false)}
+            onSelectStaffBucket={onNavigateToBucket}
+            onExportCsv={handleExportLedgerCsv}
+          />
+        )}
 
         {/* Sync Success / Error Feedback Banner */}
         {ledgerSyncSuccess && (
