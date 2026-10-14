@@ -43,8 +43,11 @@ import {
   Edit,
   MessageSquare,
   Crown,
+  LogOut,
+  UserX,
 } from 'lucide-react';
 import { StaffPerformanceBoard } from './StaffPerformanceBoard';
+import { formatDeviceDateTime, formatDeviceTime, formatDeviceDate } from '../../utils/deviceTime';
 
 interface StaffManagerProps {
   onNavigateToBucket?: (staffId: string) => void;
@@ -67,6 +70,7 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
     updateOrderStatus,
     assignOrderStaff,
     addOrderWorkLog,
+    forceLogoutStaff,
   } = useStore();
   const isAdmin = currentUser?.type === 'admin';
   const canEditStaff = isAdmin || currentPermissions?.staff?.canEdit !== false;
@@ -78,6 +82,18 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
   const [copiedStaffEmail, setCopiedStaffEmail] = useState<string | null>(null);
   const [isSyncingDB, setIsSyncingDB] = useState(false);
   const [dbSyncSuccess, setDbSyncSuccess] = useState<string | null>(null);
+  const [loggedOutNotice, setLoggedOutNotice] = useState<string | null>(null);
+  const [showPunchModal, setShowPunchModal] = useState(false);
+
+  const handleRemoteLogoutStaff = async (staffId: string, staffName: string) => {
+    try {
+      await forceLogoutStaff(staffId);
+      setLoggedOutNotice(`Successfully logged out ${staffName}. Their active device session was terminated.`);
+      setTimeout(() => setLoggedOutNotice(null), 4000);
+    } catch (err: any) {
+      alert(`Failed to logout user: ${err?.message || 'Unknown error'}`);
+    }
+  };
 
   // Staff & Ledger Google Sheets Sync & CSV Export (User Request)
   const [isSyncingLedger, setIsSyncingLedger] = useState(false);

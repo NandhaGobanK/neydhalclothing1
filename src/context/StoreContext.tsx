@@ -177,8 +177,10 @@ interface StoreContextType {
   staffLogin: (username: string, password: string) => { success: boolean; error?: string };
   adminLogout: () => void;
   forceLogoutStaff: (staffId: string) => Promise<void>;
-  punchStaffAttendance: (staffId: string) => Promise<void>;
+  punchStaffAttendance: (staffId: string, authMethod?: 'google' | 'password' | 'admin_switch') => Promise<void>;
   updateStaffIdleStatus: (staffId: string, isIdle: boolean) => Promise<void>;
+  setStaffIdleStatus: (staffId: string, isIdle: boolean) => Promise<void>;
+  updateStaffActivity: (staffId: string) => Promise<void>;
   remoteLogoutNotice: string | null;
   clearRemoteLogoutNotice: () => void;
 
@@ -242,6 +244,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const loaded = loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
     const updated: StoreSettings = {
       ...loaded,
+      boutiqueName:
+        !loaded.boutiqueName || loaded.boutiqueName.includes('Aara')
+          ? 'Neydhal Clothing'
+          : loaded.boutiqueName,
+      logoUrl:
+        !loaded.logoUrl || loaded.logoUrl.includes('aara') || loaded.logoUrl === '/pwa-512x512.png'
+          ? '/logo.png'
+          : loaded.logoUrl,
       delivery: {
         shippingFee: loaded.delivery?.shippingFee ?? INITIAL_SETTINGS.delivery.shippingFee,
         freeDeliveryEnabled: loaded.delivery?.freeDeliveryEnabled ?? INITIAL_SETTINGS.delivery.freeDeliveryEnabled,
@@ -254,6 +264,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       defaultStaffPermissions: {
         ...DEFAULT_STAFF_PERMISSIONS,
         ...(loaded.defaultStaffPermissions || {}),
+      },
+      staffIdleAlert: {
+        enabled: loaded.staffIdleAlert?.enabled ?? true,
+        idleThresholdMinutes: loaded.staffIdleAlert?.idleThresholdMinutes ?? 15,
       },
       storefrontDisplay: {
         ...loaded.storefrontDisplay,
@@ -1914,11 +1928,30 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setCurrentUser(staffUser);
       saveToStorage(STORAGE_KEYS.CURRENT_USER, staffUser);
 
-      // Persist staff online status
+      const now = new Date();
+      const punchRecord: LoginPunchRecord = {
+        id: `punch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        punchedAt: now.toISOString(),
+        authMethod: 'google',
+        deviceTimeFormatted: formatDeviceDateTime(now, { includeSeconds: true }),
+        deviceTimezone: getDeviceTimezone(),
+      };
+
+      // Persist staff online status and punch-in record
       setSettings((prev) => {
         const updatedStaff = (prev.staffMembers || []).map((s) =>
           s.id === matchedStaff!.id
-            ? { ...s, isLoggedIn: true, lastLoginAt: new Date().toISOString() }
+            ? {
+                ...s,
+                isLoggedIn: true,
+                isIdle: false,
+                idleSince: undefined,
+                lastLoginAt: now.toISOString(),
+                lastActiveAt: now.toISOString(),
+                loginPunchAt: now.toISOString(),
+                sessionRevokedAt: undefined,
+                loginPunchHistory: [punchRecord, ...(s.loginPunchHistory || [])].slice(0, 50),
+              }
             : s
         );
         const next = { ...prev, staffMembers: updatedStaff };
@@ -2040,11 +2073,30 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setCurrentUser(user);
     saveToStorage(STORAGE_KEYS.CURRENT_USER, user);
 
-    // Persist staff online status
+    const now = new Date();
+    const punchRecord: LoginPunchRecord = {
+      id: `punch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      punchedAt: now.toISOString(),
+      authMethod: 'password',
+      deviceTimeFormatted: formatDeviceDateTime(now, { includeSeconds: true }),
+      deviceTimezone: getDeviceTimezone(),
+    };
+
+    // Persist staff online status and punch-in record
     setSettings((prev) => {
       const updatedStaff = (prev.staffMembers || []).map((s) =>
         s.id === staff.id
-          ? { ...s, isLoggedIn: true, lastLoginAt: new Date().toISOString() }
+          ? {
+              ...s,
+              isLoggedIn: true,
+              isIdle: false,
+              idleSince: undefined,
+              lastLoginAt: now.toISOString(),
+              lastActiveAt: now.toISOString(),
+              loginPunchAt: now.toISOString(),
+              sessionRevokedAt: undefined,
+              loginPunchHistory: [punchRecord, ...(s.loginPunchHistory || [])].slice(0, 50),
+            }
           : s
       );
       const next = { ...prev, staffMembers: updatedStaff };
@@ -2074,7 +2126,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setSettings((prev) => {
         const updatedStaff = (prev.staffMembers || []).map((s) =>
           s.id === sId
-            ? { ...s, isLoggedIn: false, lastLogoutAt: new Date().toISOString() }
+            ? { ...s, isLoggedIn: false, isIdle: false, lastLogoutAt: new Date().toISOString() }
             : s
         );
         const next = { ...prev, staffMembers: updatedStaff };
@@ -2087,6 +2139,118 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
     await googleSignOut();
   };
+
+  // Admin remote logout control for staff members
+  const forceLogoutStaff = async (staffId: string) => {
+    const now = new Date().toISOString();
+    setSettings((prev) => {
+      const updatedStaff = (prev.staffMembers || []).map((s) =>
+        s.id === staffId
+          ? {
+              ...s,
+              isLoggedIn: false,
+              isIdle: false,
+              idleSince: undefined,
+              lastLogoutAt: now,
+              sessionRevokedAt: now,
+            }
+          : s
+      );
+      const next = { ...prev, staffMembers: updatedStaff };
+      saveToStorage(STORAGE_KEYS.SETTINGS, next);
+      setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: updatedStaff }), { merge: true }).catch(() => {});
+      return next;
+    });
+
+    // If current local user is the one being logged out
+    if (currentUser?.type === 'staff' && currentUser.staffId === staffId) {
+      setRemoteLogoutNotice('Your session has been terminated remotely by the store administrator.');
+      await adminLogout();
+    }
+  };
+
+  // Staff activity & idle status updates
+  const setStaffIdleStatus = async (staffId: string, isIdle: boolean) => {
+    const now = new Date().toISOString();
+    setSettings((prev) => {
+      const updatedStaff = (prev.staffMembers || []).map((s) => {
+        if (s.id === staffId) {
+          return {
+            ...s,
+            isIdle,
+            idleSince: isIdle ? (s.idleSince || now) : undefined,
+            lastActiveAt: isIdle ? s.lastActiveAt : now,
+          };
+        }
+        return s;
+      });
+      const next = { ...prev, staffMembers: updatedStaff };
+      saveToStorage(STORAGE_KEYS.SETTINGS, next);
+      setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: updatedStaff }), { merge: true }).catch(() => {});
+      return next;
+    });
+  };
+
+  const updateStaffIdleStatus = setStaffIdleStatus;
+
+  const updateStaffActivity = async (staffId: string) => {
+    const now = new Date().toISOString();
+    setSettings((prev) => {
+      const updatedStaff = (prev.staffMembers || []).map((s) =>
+        s.id === staffId
+          ? { ...s, lastActiveAt: now, isIdle: false, idleSince: undefined }
+          : s
+      );
+      const next = { ...prev, staffMembers: updatedStaff };
+      saveToStorage(STORAGE_KEYS.SETTINGS, next);
+      setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: updatedStaff }), { merge: true }).catch(() => {});
+      return next;
+    });
+  };
+
+  const punchStaffAttendance = async (staffId: string, authMethod?: 'google' | 'password' | 'admin_switch') => {
+    const now = new Date();
+    const punchRecord: LoginPunchRecord = {
+      id: `punch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      punchedAt: now.toISOString(),
+      authMethod: authMethod || 'password',
+      deviceTimeFormatted: formatDeviceDateTime(now, { includeSeconds: true }),
+      deviceTimezone: getDeviceTimezone(),
+    };
+
+    setSettings((prev) => {
+      const updatedStaff = (prev.staffMembers || []).map((s) => {
+        if (s.id === staffId) {
+          return {
+            ...s,
+            loginPunchAt: now.toISOString(),
+            loginPunchHistory: [punchRecord, ...(s.loginPunchHistory || [])].slice(0, 50),
+          };
+        }
+        return s;
+      });
+      const next = { ...prev, staffMembers: updatedStaff };
+      saveToStorage(STORAGE_KEYS.SETTINGS, next);
+      setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore({ staffMembers: updatedStaff }), { merge: true }).catch(() => {});
+      return next;
+    });
+  };
+
+  // Real-time remote logout detector for active staff session
+  useEffect(() => {
+    if (currentUser?.type === 'staff' && currentUser.staffId) {
+      const currentStaff = (settings.staffMembers || []).find((s) => s.id === currentUser.staffId);
+      if (currentStaff) {
+        if (currentStaff.isLocked) {
+          setRemoteLogoutNotice(`Your staff account has been locked by the administrator.`);
+          adminLogout();
+        } else if (currentStaff.isLoggedIn === false && currentStaff.sessionRevokedAt) {
+          setRemoteLogoutNotice(`Your session was ended remotely by the store administrator.`);
+          adminLogout();
+        }
+      }
+    }
+  }, [settings.staffMembers, currentUser]);
 
   const isAdminLoggedIn = !!currentUser;
 
@@ -2199,6 +2363,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         adminLogin,
         staffLogin,
         adminLogout,
+        forceLogoutStaff,
+        punchStaffAttendance,
+        updateStaffIdleStatus,
+        setStaffIdleStatus,
+        updateStaffActivity,
+        remoteLogoutNotice,
+        clearRemoteLogoutNotice,
         activeProductModal,
         setActiveProductModal,
         isCartOpen,

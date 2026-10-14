@@ -115,8 +115,8 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
 };
 
 export const INITIAL_SETTINGS: StoreSettings = {
-  boutiqueName: 'Neydhal',
-  logoUrl: '/pwa-512x512.png',
+  boutiqueName: 'Neydhal Clothing',
+  logoUrl: '/logo.png',
   tagline: 'Pure Silk & Handcrafted Heirlooms of India',
   contactPhone: '+919876543210',
   contactEmail: 'concierge@aarasarees.com',
