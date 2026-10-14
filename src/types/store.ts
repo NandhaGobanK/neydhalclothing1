@@ -113,6 +113,14 @@ export interface CancellationRequest {
   adminDecisionNotes?: string;
 }
 
+export interface InvestigationComment {
+  id: string;
+  timestamp: string;
+  author: string;
+  authorId?: string;
+  comment: string;
+}
+
 export interface CustomerDeliveryIssue {
   reported: boolean;
   reportedAt: string;
@@ -122,6 +130,7 @@ export interface CustomerDeliveryIssue {
   resolutionNotes?: string;
   resolvedAt?: string;
   resolvedBy?: string;
+  investigationComments?: InvestigationComment[];
 }
 
 export interface CourierService {
@@ -216,6 +225,12 @@ export interface Order {
   reopenedAt?: string;
   reopenedBy?: string;
   reopenReason?: string; // Mandatory explanation required upon reopening a closed order
+  deliveredAt?: string; // Dedicated timestamp when status changed to Delivered
+  completedAt?: string; // Dedicated timestamp when order fully closed/delivered
+  disputeResolvedAt?: string; // Dedicated timestamp when delivery dispute officially resolved
+  disputeResolvedBy?: string;
+  assignedAt?: string; // Dedicated timestamp when order claimed/assigned to staff
+  claimedAt?: string;
   deliveryIssue?: CustomerDeliveryIssue; // Customer delivery non-receipt report / dispute
 }
 

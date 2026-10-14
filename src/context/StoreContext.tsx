@@ -131,6 +131,12 @@ interface StoreContextType {
     resolutionNotes: string,
     action: 'reopen' | 'resolve'
   ) => Promise<void>;
+  addInvestigationComment: (
+    orderId: string,
+    comment: string,
+    author?: string,
+    newStatus?: 'investigating' | 'open'
+  ) => Promise<void>;
 
   // Courier Services Management
   addCourierService: (courier: Omit<CourierService, 'id'>) => Promise<void>;
@@ -1017,9 +1023,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         const updatedHistory = [...(ord.assignmentHistory || []), stageLog];
 
+        const isNowDelivered = status === 'Delivered';
         const updated: Order = {
           ...ord,
           status,
+          deliveredAt: isNowDelivered ? (ord.deliveredAt || new Date().toISOString()) : ord.deliveredAt,
+          completedAt: isNowDelivered ? (ord.completedAt || new Date().toISOString()) : ord.completedAt,
           shippingDetails: nextShippingDetails,
           cancellationReason: nextReason,
           cancellationRequest: nextCancelRequest,
@@ -1188,6 +1197,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           ...ord,
           assignedStaffId: staffId,
           assignedStaffName: staffName,
+          assignedAt: ord.assignedAt || new Date().toISOString(),
+          claimedAt: ord.claimedAt || new Date().toISOString(),
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           assignmentHistory: updatedHistory,
         };
@@ -1262,6 +1273,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           isClosed: true,
           closedAt: nowIso,
           closedBy: actorName,
+          completedAt: ord.completedAt || nowIso,
+          deliveredAt: ord.deliveredAt || nowIso,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           assignmentHistory: [...(ord.assignmentHistory || []), closeLog],
         };
@@ -1597,6 +1610,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           note: resolutionNotes.trim() || (action === 'reopen' ? 'Reopened for investigation' : 'Dispute resolved with customer and courier'),
         };
 
+        const isResolved = action === 'resolve';
         const updatedIssue: CustomerDeliveryIssue = {
           ...(ord.deliveryIssue || {
             reported: true,
@@ -1605,15 +1619,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             issueDescription: 'Disputed delivery',
             status: 'investigating',
           }),
-          status: action === 'reopen' ? 'investigating' : 'resolved',
+          status: isResolved ? 'resolved' : 'investigating',
           resolutionNotes: resolutionNotes.trim(),
-          resolvedAt: nowIso,
-          resolvedBy: actorName,
+          resolvedAt: isResolved ? nowIso : ord.deliveryIssue?.resolvedAt,
+          resolvedBy: isResolved ? actorName : ord.deliveryIssue?.resolvedBy,
         };
 
         const updated: Order = {
           ...ord,
           deliveryIssue: updatedIssue,
+          disputeResolvedAt: isResolved ? nowIso : ord.disputeResolvedAt,
+          disputeResolvedBy: isResolved ? actorName : ord.disputeResolvedBy,
           isClosed: action === 'reopen' ? false : ord.isClosed,
           reopenedAt: action === 'reopen' ? nowIso : ord.reopenedAt,
           reopenedBy: action === 'reopen' ? actorName : ord.reopenedBy,
@@ -1624,6 +1640,75 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           assignmentHistory: [...(ord.assignmentHistory || []), auditLog],
         };
+        orderToSync = updated;
+        return updated;
+      })
+    );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
+  };
+
+  // Add Investigation Comment / Log Entry (User Request 7: Investigation Comments instead of re-prompting)
+  const addInvestigationComment = async (
+    orderId: string,
+    comment: string,
+    author?: string,
+    newStatus: 'investigating' | 'open' = 'investigating'
+  ): Promise<void> => {
+    let orderToSync: Partial<Order> | null = null;
+    const actorName =
+      author || currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+    const nowIso = new Date().toISOString();
+
+    const newCommentEntry = {
+      id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: nowIso,
+      author: actorName,
+      authorId: currentUser?.staffId || (currentUser?.type === 'admin' ? 'admin' : undefined),
+      comment: comment.trim(),
+    };
+
+    const auditLog: StaffAssignmentLog = {
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: nowIso,
+      staffId: currentUser?.staffId || 'admin',
+      staffName: actorName,
+      assignedBy: actorName,
+      action: 'Dispute Investigation Update Logged',
+      note: comment.trim(),
+    };
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+
+        const baseIssue = ord.deliveryIssue || {
+          reported: true,
+          reportedAt: nowIso,
+          customerPhone: ord.customer.phone,
+          issueDescription: 'Customer delivery query',
+          status: 'investigating',
+        };
+
+        const existingComments = baseIssue.investigationComments || [];
+        const updatedIssue: CustomerDeliveryIssue = {
+          ...baseIssue,
+          status: newStatus,
+          investigationComments: [...existingComments, newCommentEntry],
+          resolutionNotes: comment.trim(),
+        };
+
+        const updated: Order = {
+          ...ord,
+          deliveryIssue: updatedIssue,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: [...(ord.assignmentHistory || []), auditLog],
+        };
+
         orderToSync = updated;
         return updated;
       })
@@ -2076,6 +2161,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         reopenOrder,
         reportCustomerDeliveryIssue,
         resolveDeliveryIssue,
+        addInvestigationComment,
         addCourierService,
         updateCourierService,
         deleteCourierService,
