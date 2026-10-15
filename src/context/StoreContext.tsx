@@ -32,6 +32,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  getDocs,
   onSnapshot,
 } from 'firebase/firestore';
 import {
@@ -239,9 +240,10 @@ function saveToStorage<T>(key: string, data: T) {
 }
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [products, setProducts] = useState<Product[]>(() =>
-    loadFromStorage(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS)
-  );
+  const [products, setProducts] = useState<Product[]>(() => {
+    const stored = loadFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    return stored && stored.length > 0 ? stored : INITIAL_PRODUCTS;
+  });
 
   const [orders, setOrders] = useState<Order[]>(() =>
     loadFromStorage(STORAGE_KEYS.ORDERS, INITIAL_ORDERS)
@@ -250,15 +252,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [settings, setSettings] = useState<StoreSettings>(() => {
     const loaded = loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
     const updated: StoreSettings = {
+      ...INITIAL_SETTINGS,
       ...loaded,
       boutiqueName:
         !loaded.boutiqueName || loaded.boutiqueName.includes('Aara')
-          ? 'Neydhal Clothing'
+          ? 'Neydhal'
           : loaded.boutiqueName,
       logoUrl:
         !loaded.logoUrl || loaded.logoUrl.includes('aara') || loaded.logoUrl === '/pwa-512x512.png'
           ? '/logo.png'
           : loaded.logoUrl,
+      contactEmail:
+        loaded.contactEmail && !loaded.contactEmail.includes('aarasarees')
+          ? loaded.contactEmail
+          : 'nandhagoban21@gmail.com',
+      adminGoogleEmail: loaded.adminGoogleEmail || 'nandhagoban21@gmail.com',
       delivery: {
         shippingFee: loaded.delivery?.shippingFee ?? INITIAL_SETTINGS.delivery.shippingFee,
         freeDeliveryEnabled: loaded.delivery?.freeDeliveryEnabled ?? INITIAL_SETTINGS.delivery.freeDeliveryEnabled,
@@ -277,6 +285,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         idleThresholdMinutes: loaded.staffIdleAlert?.idleThresholdMinutes ?? 15,
       },
       storefrontDisplay: {
+        ...INITIAL_SETTINGS.storefrontDisplay,
         ...loaded.storefrontDisplay,
         allowPublicCancellation: loaded.storefrontDisplay?.allowPublicCancellation ?? true,
         allowPublicRefunds: loaded.storefrontDisplay?.allowPublicRefunds ?? true,
@@ -311,11 +320,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const [currentView, setCurrentView] = useState<'store' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
-      const savedView = localStorage.getItem('boutique_current_view');
+      const hash = window.location.hash;
+      const pathname = window.location.pathname;
+      const search = window.location.search;
       if (
-        savedView === 'admin' ||
-        window.location.hash.startsWith('#admin') ||
-        window.location.pathname === '/admin'
+        hash.startsWith('#admin') ||
+        pathname === '/admin' ||
+        search.includes('view=admin')
       ) {
         return 'admin';
       }
@@ -1897,12 +1908,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
   };
 
-  const resetToInitialData = () => {
+  const resetToInitialData = async () => {
     setProducts(INITIAL_PRODUCTS);
     setOrders(INITIAL_ORDERS);
     setSettings(INITIAL_SETTINGS);
     setCart([]);
-    localStorage.clear();
+    setCurrentUser(null);
+    setCurrentView('store');
+
+    try {
+      localStorage.clear();
+      saveToStorage(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+      saveToStorage(STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
+      saveToStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+      saveToStorage(STORAGE_KEYS.CART, []);
+      saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
+    } catch {
+      // ignore storage clear error
+    }
+
+    try {
+      // 1. Sync initial catalog products to Firestore
+      await Promise.all(
+        INITIAL_PRODUCTS.map((p) =>
+          setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))
+        )
+      );
+
+      // 2. Remove old orders from Firestore
+      const ordersSnap = await getDocs(collection(db, 'orders'));
+      await Promise.all(ordersSnap.docs.map((d) => deleteDoc(d.ref)));
+
+      // 3. Reset settings to store_config in Firestore
+      await setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore(INITIAL_SETTINGS));
+    } catch (err) {
+      console.warn('Firestore reset sync note:', err);
+    }
   };
 
   // Auth: Google Login for Admin & Staff, PIN/Staff credentials compatibility

@@ -115,31 +115,31 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
 };
 
 export const INITIAL_SETTINGS: StoreSettings = {
-  boutiqueName: 'Neydhal Clothing',
+  boutiqueName: 'Neydhal',
   logoUrl: '/logo.png',
-  tagline: 'Pure Silk & Handcrafted Heirlooms of India',
-  contactPhone: '+919876543210',
-  contactEmail: 'concierge@aarasarees.com',
-  instagramHandle: '@aara.heritage',
-  youtubeHandle: '@aara.heritage',
-  storeAddress: '12 Temple Street, Kanchipuram & Assi Ghat, Varanasi',
+  tagline: 'Pure Handloom Silk & Heirloom Sarees',
+  contactPhone: '+91 98765 43210',
+  contactEmail: 'nandhagoban21@gmail.com',
+  instagramHandle: '@neydhal',
+  youtubeHandle: '@neydhal',
+  storeAddress: '12 Temple Street, Kanchipuram & Salem Silk Bazaar, Tamil Nadu',
   gstNumber: '33AAAAA0000A1Z5',
   googleMaps: {
     enabled: true,
-    mapUrl: 'https://maps.google.com/?q=Kanchipuram+Silk+Sarees',
-    placeName: 'Aara Heritage Saree Atelier, Temple Street, Kanchipuram',
+    mapUrl: 'https://maps.google.com/?q=Salem+Silk+Sarees',
+    placeName: 'Neydhal Atelier, Salem, Tamil Nadu',
   },
   currencySymbol: '₹',
   theme: 'royal_crimson',
   themeMode: 'light',
   announcement: {
-    enabled: false,
-    text: '',
-    badgeLabel: 'NOTICE',
+    enabled: true,
+    text: 'Festive Handloom Showcase — Free insured nationwide shipping on pure silk sarees above ₹20,000',
+    badgeLabel: 'ATELIER SPECIAL',
   },
   payment: {
-    upiId: 'aarasarees@okhdfcbank',
-    payeeName: 'Aara Heritage Sarees LLP',
+    upiId: 'nandhagoban21@okhdfcbank',
+    payeeName: 'Neydhal',
     qrCodeUrl: '',
     instructions: 'Scan using any UPI app (Google Pay, PhonePe, Paytm, BHIM) and enter the 12-digit UTR/Transaction ID below to verify your order.',
   },
@@ -150,22 +150,23 @@ export const INITIAL_SETTINGS: StoreSettings = {
   },
   storefrontDisplay: {
     heroHeadline: 'Handcrafted Heritage Sarees',
-    heroSubheadline: '',
+    heroSubheadline: 'Authentic pure silk drapes woven by master artisans across Kanchipuram, Varanasi & Chanderi',
     showHeroBanner: true,
-    heroBannerImageUrl: '',
-    showTrustBadges: false,
-    showCraftsmanshipStory: false,
-    storyTitle: '',
-    storyContent: '',
+    heroBannerImageUrl: '/src/assets/images/hero_saree_atelier_1791651761357.jpg',
+    showTrustBadges: true,
+    showCraftsmanshipStory: true,
+    storyTitle: 'The Neydhal Weaving Legacy',
+    storyContent: 'Every Neydhal saree is woven with certified pure Mulberry silk and tested zari, honoring centuries-old interlocking pit-loom techniques passed down through generations of Indian master weavers.',
     showTrackOrder: true,
     allowPublicCancellation: true,
     allowPublicRefunds: true,
     showCustomerReviews: true,
     allowCustomerDeliveryDisputes: true,
     allowCustomerRefundDisputes: true,
-    freeShippingText: '',
+    freeShippingText: 'Complimentary Insured Delivery on orders above ₹20,000',
   },
   adminPin: '889988', // 6-digit access PIN
+  adminGoogleEmail: 'nandhagoban21@gmail.com',
   customStoreDomain: '', // Custom domain or Vercel URL
   courierServices: [
     {
@@ -236,11 +237,8 @@ export const INITIAL_SETTINGS: StoreSettings = {
   },
 };
 
-// Initial state for fresh boutique login: 0 demo products (ready for owner's real sarees)
-export const INITIAL_PRODUCTS: Product[] = [];
-
-// Sample Handloom Silks library for 1-click test/demo re-seeding if ever desired by admin
-export const SAMPLE_PRODUCTS: Product[] = [
+// Initial state for fresh boutique launch: 6 handcrafted heirloom sarees loaded
+export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'saree-kanjivaram-crimson-01',
     productCode: 'KAN-CRIM-101',
@@ -398,6 +396,8 @@ export const SAMPLE_PRODUCTS: Product[] = [
     createdAt: '2026-03-06T15:00:00Z',
   },
 ];
+
+export const SAMPLE_PRODUCTS: Product[] = INITIAL_PRODUCTS;
 
 export const INITIAL_ORDERS: Order[] = [];
 
