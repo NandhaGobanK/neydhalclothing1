@@ -126,7 +126,14 @@ interface StoreContextType {
   reportCustomerDeliveryIssue: (
     orderNumber: string,
     phone: string,
-    issueDescription: string
+    issueDescription: string,
+    issueType?: 'delivery' | 'refund'
+  ) => Promise<{ success: boolean; message: string }>;
+  reportCustomerIssue: (
+    orderNumber: string,
+    phone: string,
+    issueDescription: string,
+    issueType?: 'delivery' | 'refund'
   ) => Promise<{ success: boolean; message: string }>;
   resolveDeliveryIssue: (
     orderId: string,
@@ -1538,16 +1545,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
-  // Customer Delivery Dispute Reporting (Customer Front)
+  // Customer Issue Reporting (Customer Front: Delivery or Refund)
   const reportCustomerDeliveryIssue = async (
     orderNumber: string,
     phone: string,
-    issueDescription: string
+    issueDescription: string,
+    issueType: 'delivery' | 'refund' = 'delivery'
   ): Promise<{ success: boolean; message: string }> => {
-    if (settings.storefrontDisplay?.allowCustomerDeliveryDisputes === false) {
+    if (issueType === 'delivery' && settings.storefrontDisplay?.allowCustomerDeliveryDisputes === false) {
       return {
         success: false,
-        message: 'Delivery dispute reporting is currently disabled on the boutique storefront. Please contact concierge on WhatsApp.',
+        message: 'Delivery issue reporting is currently disabled on the boutique storefront. Please contact concierge on WhatsApp.',
+      };
+    }
+
+    if (issueType === 'refund' && settings.storefrontDisplay?.allowCustomerRefundDisputes === false) {
+      return {
+        success: false,
+        message: 'Refund issue reporting is currently disabled on the boutique storefront. Please contact concierge on WhatsApp.',
       };
     }
 
@@ -1567,21 +1582,29 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
     }
 
+    const defaultDesc =
+      issueType === 'refund'
+        ? 'Customer submitted a refund inquiry / dispute regarding payment or cancellation.'
+        : 'Customer reports non-delivery despite Delivered / Shipped status.';
+
     const issuePayload: CustomerDeliveryIssue = {
       reported: true,
       reportedAt: new Date().toISOString(),
       customerPhone: targetOrder.customer.phone,
-      issueDescription: issueDescription.trim() || 'Customer reports non-delivery despite Delivered / Shipped status.',
+      issueType,
+      issueDescription: issueDescription.trim() || defaultDesc,
       status: 'open',
     };
+
+    const actionTitle = issueType === 'refund' ? 'Refund Issue Reported' : 'Delivery Issue Reported';
 
     const disputeLog: StaffAssignmentLog = {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       timestamp: new Date().toISOString(),
       staffId: targetOrder.assignedStaffId || 'unassigned',
       staffName: 'Storefront Patron',
-      action: 'Delivery Issue Reported',
-      note: `Customer reported: "${issueDescription.trim()}"`,
+      action: actionTitle,
+      note: `Customer reported (${issueType}): "${issueDescription.trim()}"`,
     };
 
     let updatedOrder: Order | null = null;
@@ -1603,11 +1626,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       );
     }
 
+    const successMsg =
+      issueType === 'refund'
+        ? 'Refund inquiry submitted successfully! Our boutique concierge and finance desk have received your request and will follow up promptly.'
+        : 'Delivery issue reported successfully! Our boutique management and dispatch team have been alerted to investigate immediately.';
+
     return {
       success: true,
-      message: 'Delivery dispute reported successfully! Our boutique management and dispatch team have been alerted to investigate immediately.',
+      message: successMsg,
     };
   };
+
+  const reportCustomerIssue = reportCustomerDeliveryIssue;
 
   // Reopen and Resolve Disputed Delivery Orders
   const resolveDeliveryIssue = async (
@@ -2337,6 +2367,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         closeOrder,
         reopenOrder,
         reportCustomerDeliveryIssue,
+        reportCustomerIssue,
         resolveDeliveryIssue,
         addInvestigationComment,
         addCourierService,

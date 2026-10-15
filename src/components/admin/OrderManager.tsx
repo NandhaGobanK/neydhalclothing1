@@ -246,6 +246,11 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
     const customerIssues = orders.filter(
       (o) => o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved'
     ).length;
+    const refunded = orders.filter(
+      (o) =>
+        o.refundDetails?.refundStatus === 'processed' ||
+        (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund')
+    ).length;
     return {
       total: unassignedOrders.length,
       pending,
@@ -253,6 +258,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
       shipped,
       delivered,
       customerIssues,
+      refunded,
     };
   }, [unassignedOrders, orders]);
 
@@ -264,6 +270,13 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
         }
       } else if (selectedStatus === 'customers_issue') {
         if (!o.deliveryIssue?.reported) return false;
+      } else if (selectedStatus === 'Refunded') {
+        const isRefunded =
+          o.refundDetails?.refundStatus === 'processed' ||
+          (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund');
+        if (!isRefunded) {
+          return false;
+        }
       } else if (selectedStatus !== 'all' && o.status !== selectedStatus) {
         return false;
       }
@@ -742,8 +755,8 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
         </div>
       )}
 
-      {/* Interactive Metric Cards Row alongside Pending, Confirmed, Shipped, Delivered, and Customers Issue (User Request) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Interactive Metric Cards Row alongside Pending, Confirmed, Shipped, Delivered, Customers Issue, and Refunded (User Request 1) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
         {/* 1. All Unassigned */}
         <button
           type="button"
@@ -958,6 +971,45 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
             Delivery disputes {orderMetrics.customerIssues > 0 ? '· Action needed' : '· Clear'}
           </span>
         </button>
+
+        {/* 7. Refunded Orders (Separate Clickable Box - User Request 1) */}
+        <button
+          type="button"
+          onClick={() => setSelectedStatus('Refunded')}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatus === 'Refunded'
+              ? 'bg-amber-600 text-white border-amber-600 ring-2 ring-amber-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-amber-50/40 border-amber-200 bg-amber-50/20 text-neutral-900 hover:border-amber-300'
+          }`}
+          title="Click to view Refunded Orders"
+        >
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider block ${
+                selectedStatus === 'Refunded' ? 'text-amber-200' : 'text-amber-800'
+              }`}
+            >
+              Refunded
+            </span>
+            {orderMetrics.refunded > 0 && (
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+            )}
+          </div>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatus === 'Refunded' ? 'text-white' : 'text-amber-700'
+            }`}
+          >
+            {orderMetrics.refunded}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatus === 'Refunded' ? 'text-amber-200' : 'text-neutral-500'
+            }`}
+          >
+            Refund settlements
+          </span>
+        </button>
       </div>
 
       {/* Filter Tabs, Staff Filter & Search Controls */}
@@ -969,6 +1021,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
             { id: 'Confirmed', label: 'Confirmed' },
             { id: 'Shipped', label: 'Shipped' },
             { id: 'Delivered', label: 'Delivered' },
+            { id: 'Refunded', label: `Refunded (${orderMetrics.refunded})` },
             { id: 'Cancelled', label: 'Cancelled' },
             { id: 'Rejected', label: 'Rejected' },
             { id: 'needs_refund', label: `Needs Refund (${pendingRefundOrders.length})` },

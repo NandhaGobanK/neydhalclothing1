@@ -38,6 +38,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
     settings,
     resolveDeliveryIssue,
     reopenOrder,
+    closeOrder,
     currentUser,
     staffMembers,
     assignOrderStaff,
@@ -50,6 +51,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'investigating' | 'resolved'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'delivery' | 'refund'>('all');
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'unassigned' | 'mine' | 'other'>('all');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
   // 1. Reopen Modal State (ONLY used when order is actually closed)
   const [reopeningOrder, setReopeningOrder] = useState<Order | null>(null);
   const [reopenReason, setReopenReason] = useState(
-    'Customer delivery dispute: Parcel not received. Investigating with local courier hub.'
+    'Customer issue / refund inquiry: Reopening order for further investigation and settlement verification.'
   );
 
   // 2. Investigation Comment Modal State (Used on active/reopened disputes - NO reopen prompt!)
@@ -85,13 +87,32 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // Orders with customer delivery dispute reported
-  const disputedOrders = orders.filter((o) => o.deliveryIssue?.reported === true);
+  // Helper to determine if order is a refund inquiry or was refunded (User Request 1)
+  const isRefundCase = (o: Order) =>
+    o.refundDetails?.refundStatus === 'processed' ||
+    o.refundDetails?.refundStatus === 'pending' ||
+    (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund') ||
+    ((o.status === 'Cancelled' || o.status === 'Rejected') && !!o.refundDetails?.refundStatus);
+
+  const isDeliveryCase = (o: Order) =>
+    o.deliveryIssue?.reported === true && o.deliveryIssue?.issueType !== 'refund';
+
+  // Orders routed to Customers Issue section: Both delivery disputes AND refunded orders (User Request 1)
+  const disputedOrders = orders.filter((o) => o.deliveryIssue?.reported === true || isRefundCase(o));
 
   // Count breakdowns
-  const openCount = disputedOrders.filter((o) => (o.deliveryIssue?.status || 'open') === 'open').length;
-  const investigatingCount = disputedOrders.filter((o) => o.deliveryIssue?.status === 'investigating').length;
-  const resolvedCount = disputedOrders.filter((o) => o.deliveryIssue?.status === 'resolved').length;
+  const deliveryDisputesCount = disputedOrders.filter(isDeliveryCase).length;
+  const refundedCasesCount = disputedOrders.filter(isRefundCase).length;
+
+  const openCount = disputedOrders.filter(
+    (o) => (o.deliveryIssue?.status || (o.isClosed ? 'resolved' : 'open')) === 'open'
+  ).length;
+  const investigatingCount = disputedOrders.filter(
+    (o) => o.deliveryIssue?.status === 'investigating'
+  ).length;
+  const resolvedCount = disputedOrders.filter(
+    (o) => o.deliveryIssue?.status === 'resolved' || o.isClosed
+  ).length;
 
   const unassignedDisputesCount = disputedOrders.filter(
     (o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned'
@@ -101,15 +122,19 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
     (o) => o.assignedStaffId === currentUserId
   ).length;
 
-  // Filtered list based on status, ownership, and search query
+  // Filtered list based on status, category, ownership, and search query
   const filteredDisputes = disputedOrders.filter((order) => {
-    // 1. Status Filter
-    const issueStatus = order.deliveryIssue?.status || 'open';
+    // 1. Category Filter (Delivery vs Refund)
+    if (categoryFilter === 'delivery' && !isDeliveryCase(order)) return false;
+    if (categoryFilter === 'refund' && !isRefundCase(order)) return false;
+
+    // 2. Status Filter
+    const issueStatus = order.deliveryIssue?.status || (order.isClosed ? 'resolved' : 'open');
     if (filterStatus !== 'all' && issueStatus !== filterStatus) {
       return false;
     }
 
-    // 2. Ownership Filter (Dynamic routing)
+    // 3. Ownership Filter (Dynamic routing)
     const orderAssignedId = order.assignedStaffId;
     if (ownershipFilter === 'unassigned') {
       if (orderAssignedId && orderAssignedId !== 'unassigned') return false;
@@ -121,7 +146,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
       }
     }
 
-    // 3. Search query
+    // 4. Search query
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
@@ -131,7 +156,9 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
       (order.assignedStaffName || '').toLowerCase().includes(q) ||
       (order.shippingDetails?.courierName || '').toLowerCase().includes(q) ||
       (order.shippingDetails?.trackingNumber || '').toLowerCase().includes(q) ||
-      (order.deliveryIssue?.issueDescription || '').toLowerCase().includes(q)
+      (order.deliveryIssue?.issueDescription || '').toLowerCase().includes(q) ||
+      (order.refundDetails?.refundUtr || '').toLowerCase().includes(q) ||
+      (order.refundDetails?.refundUpiId || '').toLowerCase().includes(q)
     );
   });
 
@@ -364,6 +391,46 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
           </div>
         </div>
 
+        {/* Issue Category Filter (User Request 1: Separate tracking for Delivery Disputes vs Refunded Orders) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-b border-neutral-100 pb-2">
+          <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider mr-1">
+            Category:
+          </span>
+          {[
+            { id: 'all', label: `All Issues & Refunds (${disputedOrders.length})` },
+            {
+              id: 'delivery',
+              label: `Delivery Disputes (${deliveryDisputesCount})`,
+              icon: Truck,
+            },
+            {
+              id: 'refund',
+              label: `Refunded Orders (${refundedCasesCount})`,
+              icon: RotateCcw,
+              highlight: refundedCasesCount > 0,
+            },
+          ].map((c) => {
+            const Icon = c.icon;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategoryFilter(c.id as any)}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  categoryFilter === c.id
+                    ? 'bg-rose-950 text-white shadow-xs'
+                    : c.highlight
+                    ? 'bg-amber-100 text-amber-900 border border-amber-300 font-bold hover:bg-amber-200'
+                    : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+                }`}
+              >
+                {Icon && <Icon className="w-3.5 h-3.5" />}
+                <span>{c.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Status Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
           <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider mr-1">
@@ -439,6 +506,22 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     <span className="font-mono text-sm font-bold text-rose-950 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
                       #{order.orderNumber}
                     </span>
+
+                    {/* Category Identifier (User Request 1) */}
+                    {isRefundCase(order) ? (
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs">
+                        <RotateCcw className="w-3 h-3 text-amber-700" />
+                        <span>
+                          Refund Case · {order.refundDetails?.refundStatus === 'processed' ? 'Refunded' : 'Refund In Queue'}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                        <Truck className="w-3 h-3 text-rose-600" />
+                        <span>Delivery Dispute</span>
+                      </span>
+                    )}
+
                     <span
                       className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                         issueStatus === 'open'
@@ -448,7 +531,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                           : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                       }`}
                     >
-                      Dispute: {issueStatus}
+                      Status: {issueStatus}
                     </span>
 
                     {/* Assigned Owner Badge */}
@@ -569,16 +652,112 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                   )}
                 </div>
 
-                {/* Customer Dispute Statement Callout */}
+                {/* Dedicated Refund Settlement Details Box (User Request 1) */}
+                {order.refundDetails && (
+                  <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-950 space-y-2 text-xs">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                        <RotateCcw className="w-4 h-4 text-amber-700" />
+                        <span className="uppercase tracking-wider text-[11px]">
+                          Refund Settlement Status & UPI Record
+                        </span>
+                      </div>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          order.refundDetails.refundStatus === 'processed'
+                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                            : 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                        }`}
+                      >
+                        {order.refundDetails.refundStatus === 'processed'
+                          ? 'Refund Completed ✓'
+                          : 'Refund Settlement Pending'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white/80 p-3 rounded-xl border border-amber-200/80 text-[11px]">
+                      <div>
+                        <span className="text-neutral-500 font-medium block">Refund Target UPI:</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <p className="font-mono font-bold text-neutral-900 truncate">
+                            {order.refundDetails.refundUpiId || order.customer.phone}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              copyToClipboard(
+                                order.refundDetails!.refundUpiId || order.customer.phone,
+                                `refund-upi-${order.id}`
+                              )
+                            }
+                            className="p-0.5 text-neutral-500 hover:text-amber-800"
+                            title="Copy UPI ID"
+                          >
+                            {copiedKey === `refund-upi-${order.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-neutral-500 font-medium block">Bank UTR Reference:</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <p className="font-mono font-bold text-emerald-800 truncate">
+                            {order.refundDetails.refundUtr || 'Awaiting UTR generation'}
+                          </p>
+                          {order.refundDetails.refundUtr && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                copyToClipboard(order.refundDetails!.refundUtr!, `refund-utr-${order.id}`)
+                              }
+                              className="p-0.5 text-neutral-500 hover:text-emerald-800"
+                              title="Copy UTR ID"
+                            >
+                              {copiedKey === `refund-utr-${order.id}` ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-neutral-500 font-medium block">Processed At:</span>
+                        <p className="text-neutral-800 font-medium mt-0.5">
+                          {order.refundDetails.processedAt
+                            ? new Date(order.refundDetails.processedAt).toLocaleString('en-IN', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : 'In Finance Queue'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Customer Issue / Dispute Statement Callout */}
                 <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200 text-rose-950 space-y-2">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                     <h4 className="font-bold text-xs uppercase tracking-wider text-rose-900">
-                      Customer Non-Delivery Statement
+                      {isRefundCase(order)
+                        ? 'Customer Inquiry / Reason for Settlement'
+                        : 'Customer Non-Delivery Statement'}
                     </h4>
                   </div>
                   <p className="text-xs font-medium text-rose-950 leading-relaxed bg-white/70 p-3 rounded-xl border border-rose-100">
-                    "{order.deliveryIssue?.issueDescription || 'Customer reports parcel not received at delivery address.'}"
+                    "{order.deliveryIssue?.issueDescription ||
+                      order.cancellationReason ||
+                      'Customer inquiry logged for boutique concierge investigation.'}"
                   </p>
                   {order.deliveryIssue?.resolutionNotes && (
                     <div className="text-[11px] text-emerald-900 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
@@ -838,20 +1017,39 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                         <span>Mark Dispute Resolved</span>
                       </button>
                     )}
+
+                    {/* Final Order Closure Button (User Request 1: Close Order button once refund or dispute is completed) */}
+                    {!order.isClosed && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await closeOrder(order.id, currentUserName);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                        title="Officially close this order now that refund or dispute resolution is complete"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Close Order</span>
+                      </button>
+                    )}
                   </div>
 
-                  {/* Customer WhatsApp Coordination */}
+                  {/* Customer WhatsApp Coordination (User Request 1: Chat directly with users regarding refund updates) */}
                   <button
                     type="button"
                     onClick={() => {
                       const cleanPhone = order.customer.phone.replace(/[^0-9]/g, '');
-                      const text = `Namaste ${order.customer.name}! 🪔✨\n\nRegarding your delivery query for order #${order.orderNumber} (${order.shippingDetails?.courierName || 'Courier'}, Tracking: ${order.shippingDetails?.trackingNumber || 'Pending'}).\n\nOur concierge team is actively investigating with the local courier dispatch office to verify handover and ensure you receive your authentic handloom saree.\n\nWarm regards,\n${settings.boutiqueName}`;
+                      const isRefund = isRefundCase(order);
+                      const text = isRefund
+                        ? `Namaste ${order.customer.name}! 🪔✨\n\nRegarding your refund inquiry for order #${order.orderNumber} (Amount: ${formatPrice(order.totalAmount)}).\n• Refund Status: *${order.refundDetails?.refundStatus === 'processed' ? 'Processed' : 'In Queue'}*${order.refundDetails?.refundUtr ? `\n• Bank Transaction UTR ID: *${order.refundDetails.refundUtr}*` : ''}${order.refundDetails?.refundUpiId ? `\n• Credited to UPI: *${order.refundDetails.refundUpiId}*` : ''}\n\nOur concierge finance team has verified your case. Please let us know if you need any additional assistance.\n\nWarm regards,\n${settings.boutiqueName}`
+                        : `Namaste ${order.customer.name}! 🪔✨\n\nRegarding your delivery query for order #${order.orderNumber} (${order.shippingDetails?.courierName || 'Courier'}, Tracking: ${order.shippingDetails?.trackingNumber || 'Pending'}).\n\nOur concierge team is actively investigating with the local courier dispatch office to verify handover and ensure you receive your authentic handloom saree.\n\nWarm regards,\n${settings.boutiqueName}`;
                       openWhatsApp(cleanPhone, text);
                     }}
                     className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    title="Send instant update to customer via WhatsApp"
                   >
                     <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>WhatsApp Customer</span>
+                    <span>{isRefundCase(order) ? 'Chat Refund with Customer' : 'WhatsApp Customer'}</span>
                   </button>
                 </div>
               </div>

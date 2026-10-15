@@ -125,6 +125,7 @@ export interface CustomerDeliveryIssue {
   reported: boolean;
   reportedAt: string;
   customerPhone: string;
+  issueType?: 'delivery' | 'refund' | 'general'; // Delivery issue vs Refund issue
   issueDescription: string;
   status: 'open' | 'investigating' | 'resolved';
   resolutionNotes?: string;
@@ -144,6 +145,7 @@ export interface CourierService {
   phone: string;
   supportEmail: string;
   mapsUrl: string; // Sharable Google Maps Link
+  trackingUrl?: string; // Official courier tracking website URL (e.g. https://www.dtdc.in/tracking.asp)
   trackingUrlTemplate?: string;
   isActive: boolean;
 }
@@ -303,6 +305,7 @@ export interface StorefrontDisplaySettings {
   allowPublicRefunds?: boolean; // Refund feature enable/disable toggle option
   showCustomerReviews?: boolean; // Enable or disable review section display on customer front
   allowCustomerDeliveryDisputes?: boolean; // Global toggle: Report delivery issue on customer front
+  allowCustomerRefundDisputes?: boolean; // Global toggle: Report refund issue on customer front
   freeShippingText: string;
   footerAboutText?: string;
   footerCertifications?: string[];

@@ -1,13 +1,14 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Lock, Phone, Mail, MapPin, Instagram, Heart, Navigation, ExternalLink, ShieldCheck, FileText, Youtube, AlertCircle } from 'lucide-react';
+import { Lock, Phone, Mail, MapPin, Instagram, Heart, Navigation, ExternalLink, ShieldCheck, FileText, Youtube, AlertCircle, BookOpen, Download, Smartphone, Truck } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 
 interface FooterProps {
   onOpenAdmin: () => void;
+  onOpenInstructions?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
+export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions }) => {
   const { settings, isAdminLoggedIn, setIsTrackOrderOpen } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoErr, setLogoErr] = React.useState(false);
@@ -173,9 +174,9 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
                   </div>
                 </li>
               )}
-              {/* Customer Delivery Dispute Reporting Link (User Request 5) */}
+              {/* Customer Delivery Dispute Reporting Link */}
               {settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false && (
-                <li className="pt-2">
+                <li className="pt-1.5">
                   <button
                     type="button"
                     onClick={() => setIsTrackOrderOpen(true)}
@@ -190,27 +191,55 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
             </ul>
           </div>
 
-          {/* Boutique Policies if configured by admin */}
+          {/* Help & Store Instructions Column (User Request) */}
           <div className="space-y-3">
-            {settings.storefrontDisplay?.footerPolicies && settings.storefrontDisplay.footerPolicies.length > 0 && (
-              <>
-                <h4 className="font-serif text-sm font-semibold text-white uppercase tracking-wider">
-                  Boutique Policy
-                </h4>
-                <ul className="space-y-2 text-xs text-neutral-400">
-                  {settings.storefrontDisplay.footerPolicies.map((pol, idx) => (
-                    <li key={idx}>{pol}</li>
-                  ))}
-                </ul>
-              </>
-            )}
+            <h4 className="font-serif text-sm font-semibold text-white uppercase tracking-wider">
+              Help & Instructions
+            </h4>
+            <ul className="space-y-2 text-xs text-neutral-400">
+              <li>
+                <button
+                  type="button"
+                  onClick={onOpenInstructions}
+                  className="hover:text-amber-300 text-amber-400/95 font-semibold transition inline-flex items-center gap-1.5 cursor-pointer text-left"
+                  title="Open Store Instructions"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Store Instructions & User Guide</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={onOpenInstructions}
+                  className="hover:text-white text-neutral-300 transition inline-flex items-center gap-1.5 cursor-pointer text-left"
+                  title="Cross-platform PWA app installation"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Install App (PC, Android & iOS)</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setIsTrackOrderOpen(true)}
+                  className="hover:text-white text-neutral-300 transition inline-flex items-center gap-1.5 cursor-pointer text-left"
+                >
+                  <Truck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Track Saree Consignment</span>
+                </button>
+              </li>
 
-            {/* Note: Store Owner Portal button is completely removed from the public storefront to prevent accidental customer login.
-                Can be accessed securely via /admin, #admin, Ctrl+Shift+A, or secret triple-click on the logo / copyright icon */}
+              {settings.storefrontDisplay?.footerPolicies && settings.storefrontDisplay.footerPolicies.length > 0 && (
+                settings.storefrontDisplay.footerPolicies.map((pol, idx) => (
+                  <li key={idx} className="text-neutral-400 pt-1 text-[11px]">{pol}</li>
+                ))
+              )}
+            </ul>
           </div>
         </div>
 
-        {/* Bottom Bar with Duplicate Report Delivery Issue Button (User Request 5) */}
+        {/* Bottom Bar with Dedicated Instructions Option (User Request) */}
         <div className="pt-8 border-t border-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-neutral-400">
           <p>
             <span
@@ -223,18 +252,32 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
             {new Date().getFullYear()} {settings.boutiqueName}. All rights reserved.
           </p>
 
-          {/* Duplicate Delivery Issue Action Button on Customer Front UI (User Request 5) */}
-          {settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Dedicated Instructions Page Option at Bottom Footer (User Request) */}
             <button
               type="button"
-              onClick={() => setIsTrackOrderOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-rose-300 hover:text-rose-200 border border-neutral-800 hover:border-rose-800 text-xs font-semibold transition cursor-pointer shadow-2xs"
-              title="Report non-receipt of parcel"
+              onClick={onOpenInstructions}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-amber-300 hover:text-amber-200 border border-neutral-800 hover:border-amber-500/50 text-xs font-semibold transition cursor-pointer shadow-2xs"
+              title="View store instructions and cross-platform PWA installation instructions"
             >
-              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-              <span>Report Delivery Issue</span>
+              <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+              <span>Instructions</span>
             </button>
-          )}
+
+            {/* Issue Action Button on Customer Front UI (User Request 2) */}
+            {(settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false ||
+              settings.storefrontDisplay?.allowCustomerRefundDisputes !== false) && (
+              <button
+                type="button"
+                onClick={() => setIsTrackOrderOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-rose-300 hover:text-rose-200 border border-neutral-800 hover:border-rose-800 text-xs font-semibold transition cursor-pointer shadow-2xs"
+                title="Report delivery or refund issue for an order"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                <span>Report Issue</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </footer>

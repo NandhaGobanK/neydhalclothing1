@@ -176,13 +176,22 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
       if (bucketViewMode === 'closed' && !o.isClosed) return false;
       if (bucketViewMode === 'active' && o.isClosed) return false;
 
-      const matchStatus = selectedStatusFilter === 'all' || o.status === selectedStatusFilter;
+      const matchStatus =
+        selectedStatusFilter === 'all'
+          ? true
+          : selectedStatusFilter === 'Refunded'
+          ? o.refundDetails?.refundStatus === 'processed' ||
+            (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund')
+          : o.status === selectedStatusFilter;
+
       const q = bucketSearchQuery.toLowerCase().trim();
       const matchQuery =
         !q ||
         o.orderNumber.toLowerCase().includes(q) ||
         o.customer.name.toLowerCase().includes(q) ||
         o.customer.phone.includes(q) ||
+        (o.refundDetails?.refundUtr && o.refundDetails.refundUtr.toLowerCase().includes(q)) ||
+        (o.refundDetails?.refundUpiId && o.refundDetails.refundUpiId.toLowerCase().includes(q)) ||
         o.items.some((it) => it.product.title.toLowerCase().includes(q) || it.product.productCode.toLowerCase().includes(q));
       return matchStatus && matchQuery;
     });
@@ -196,9 +205,14 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
     const shipped = bucketOrders.filter((o) => o.status === 'Shipped').length;
     const delivered = bucketOrders.filter((o) => o.status === 'Delivered').length;
     const customerIssues = bucketOrders.filter((o) => o.deliveryIssue?.reported).length;
+    const refunded = bucketOrders.filter(
+      (o) =>
+        o.refundDetails?.refundStatus === 'processed' ||
+        (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund')
+    ).length;
     const closed = bucketOrders.filter((o) => o.isClosed).length;
     const totalValue = bucketOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-    return { total, pending, confirmed, shipped, delivered, customerIssues, closed, totalValue };
+    return { total, pending, confirmed, shipped, delivered, customerIssues, refunded, closed, totalValue };
   }, [bucketOrders]);
 
   // Staff Performance Breakdown for Whole Store Analytics & Appreciation (User Request)
@@ -782,8 +796,8 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         />
       )}
 
-      {/* Metrics Row for Selected Bucket: 6 Interactive Clickable Metric Cards (User Request 8) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Metrics Row for Selected Bucket: 7 Interactive Clickable Metric Cards (User Request 1 & 8) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
         {/* 1. Total in Bucket */}
         <button
           type="button"
@@ -1019,6 +1033,49 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
             {bucketMetrics.customerIssues === 0 ? 'Zero disputes' : `${bucketMetrics.customerIssues} non-delivery`}
           </span>
         </button>
+
+        {/* 7. Refunded Orders (Separate Clickable Box - User Request 1) */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatusFilter('Refunded');
+            setBucketViewMode('all');
+            setShowOnlyDisputes(false);
+          }}
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
+            selectedStatusFilter === 'Refunded' && !showOnlyDisputes
+              ? 'bg-amber-600 text-white border-amber-600 ring-2 ring-amber-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-amber-50/40 border-amber-200 bg-amber-50/20 text-neutral-900 hover:border-amber-300'
+          }`}
+          title="Click to filter Refunded orders in this bucket"
+        >
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider block ${
+                selectedStatusFilter === 'Refunded' && !showOnlyDisputes ? 'text-amber-200' : 'text-amber-800'
+              }`}
+            >
+              Refunded
+            </span>
+            {bucketMetrics.refunded > 0 && (
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+            )}
+          </div>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              selectedStatusFilter === 'Refunded' && !showOnlyDisputes ? 'text-white' : 'text-amber-700'
+            }`}
+          >
+            {bucketMetrics.refunded}
+          </p>
+          <span
+            className={`text-[10px] ${
+              selectedStatusFilter === 'Refunded' && !showOnlyDisputes ? 'text-amber-200' : 'text-neutral-500'
+            }`}
+          >
+            Refund settlements
+          </span>
+        </button>
       </div>
 
       {/* Filter and Search Bar for Bucket */}
@@ -1054,7 +1111,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
 
           {/* Status Pills */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-            {(['all', 'Pending', 'Confirmed', 'Shipped', 'Delivered', 'Cancelled'] as const).map((st) => (
+            {(['all', 'Pending', 'Confirmed', 'Shipped', 'Delivered', 'Refunded', 'Cancelled'] as const).map((st) => (
               <button
                 key={st}
                 type="button"

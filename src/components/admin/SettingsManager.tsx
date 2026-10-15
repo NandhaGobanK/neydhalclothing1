@@ -105,6 +105,9 @@ export const SettingsManager: React.FC = () => {
   const [allowCustomerDeliveryDisputes, setAllowCustomerDeliveryDisputes] = useState(
     settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false
   );
+  const [allowCustomerRefundDisputes, setAllowCustomerRefundDisputes] = useState(
+    settings.storefrontDisplay?.allowCustomerRefundDisputes !== false
+  );
   const [showCraftsmanshipStory, setShowCraftsmanshipStory] = useState(defaultDisplay.showCraftsmanshipStory);
   const [storyTitle, setStoryTitle] = useState(defaultDisplay.storyTitle);
   const [storyContent, setStoryContent] = useState(defaultDisplay.storyContent);
@@ -122,6 +125,7 @@ export const SettingsManager: React.FC = () => {
     phone: '',
     supportEmail: '',
     mapsUrl: '',
+    trackingUrl: '',
     trackingUrlTemplate: '',
     isActive: true,
   });
@@ -196,6 +200,7 @@ export const SettingsManager: React.FC = () => {
         if (disp.allowPublicRefunds !== undefined) setAllowPublicRefunds(disp.allowPublicRefunds !== false);
         if (disp.showCustomerReviews !== undefined) setShowCustomerReviews(disp.showCustomerReviews !== false);
         if (disp.allowCustomerDeliveryDisputes !== undefined) setAllowCustomerDeliveryDisputes(disp.allowCustomerDeliveryDisputes !== false);
+        if (disp.allowCustomerRefundDisputes !== undefined) setAllowCustomerRefundDisputes(disp.allowCustomerRefundDisputes !== false);
         if (disp.showCraftsmanshipStory !== undefined) setShowCraftsmanshipStory(disp.showCraftsmanshipStory);
         if (disp.storyTitle !== undefined) setStoryTitle(disp.storyTitle);
         if (disp.storyContent !== undefined) setStoryContent(disp.storyContent);
@@ -444,6 +449,7 @@ export const SettingsManager: React.FC = () => {
         allowPublicRefunds,
         showCustomerReviews,
         allowCustomerDeliveryDisputes,
+        allowCustomerRefundDisputes,
         freeShippingText: freeShippingText.trim(),
       },
       announcement: {
@@ -471,7 +477,7 @@ export const SettingsManager: React.FC = () => {
     setTimeout(() => setSavedSuccess(false), 2500);
   };
 
-  // Courier Partner Management Handlers (User Request 6)
+  // Courier Partner Management Handlers (User Request 6 & Courier Tracking URL Integration)
   const handleOpenAddCourier = () => {
     setEditingCourierId(null);
     setCourierForm({
@@ -484,6 +490,7 @@ export const SettingsManager: React.FC = () => {
       phone: '',
       supportEmail: '',
       mapsUrl: '',
+      trackingUrl: '',
       trackingUrlTemplate: '',
       isActive: true,
     });
@@ -502,6 +509,7 @@ export const SettingsManager: React.FC = () => {
       phone: c.phone,
       supportEmail: c.supportEmail,
       mapsUrl: c.mapsUrl,
+      trackingUrl: c.trackingUrl || '',
       trackingUrlTemplate: c.trackingUrlTemplate || '',
       isActive: c.isActive,
     });
@@ -523,6 +531,7 @@ export const SettingsManager: React.FC = () => {
         phone: courierForm.phone.trim(),
         supportEmail: courierForm.supportEmail.trim(),
         mapsUrl: courierForm.mapsUrl.trim(),
+        trackingUrl: courierForm.trackingUrl?.trim() || '',
         trackingUrlTemplate: courierForm.trackingUrlTemplate?.trim() || '',
         isActive: courierForm.isActive,
       });
@@ -537,6 +546,7 @@ export const SettingsManager: React.FC = () => {
         phone: courierForm.phone.trim(),
         supportEmail: courierForm.supportEmail.trim(),
         mapsUrl: courierForm.mapsUrl.trim(),
+        trackingUrl: courierForm.trackingUrl?.trim() || '',
         trackingUrlTemplate: courierForm.trackingUrlTemplate?.trim() || '',
         isActive: courierForm.isActive,
       });
@@ -899,6 +909,30 @@ export const SettingsManager: React.FC = () => {
                     </span>
                     <span className="text-[11px] text-neutral-500 font-normal">
                       When enabled, customers can report non-delivery disputes on the tracking modal and storefront footer if their parcel is marked Shipped/Delivered but not received. When disabled, this feature is hidden from customer view.
+                    </span>
+                  </div>
+                </label>
+
+                {/* Customer Refund Issue Reporting Global Toggle (User Request 2) */}
+                <label className="flex items-center gap-2 cursor-pointer sm:col-span-3 pt-2 border-t border-neutral-200">
+                  <input
+                    type="checkbox"
+                    disabled={!canEditStorefront}
+                    checked={allowCustomerRefundDisputes}
+                    onChange={(e) => setAllowCustomerRefundDisputes(e.target.checked)}
+                    className="rounded text-amber-900"
+                  />
+                  <div className="flex-1">
+                    <span className="font-semibold text-neutral-800 flex items-center gap-2">
+                      <span>Enable Customer Refund Issue Reporting</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        allowCustomerRefundDisputes ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-neutral-100 text-neutral-600'
+                      }`}>
+                        {allowCustomerRefundDisputes ? 'Refund Reporting Active' : 'Refund Reporting Disabled'}
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-neutral-500 font-normal">
+                      When enabled, customers can report refund queries, missing settlements, or transaction reconciliation from the tracking modal via the generalized "Report Issue" dropdown menu. When disabled, this option is hidden from customer view.
                     </span>
                   </div>
                 </label>
@@ -2153,10 +2187,28 @@ export const SettingsManager: React.FC = () => {
                 </p>
               </div>
 
-              {/* Tracking URL Template */}
+              {/* Tracking Website URL (User Request 3) */}
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1 flex items-center gap-1">
+                  <ExternalLink className="w-3 h-3 text-blue-600" />
+                  <span>Tracking Website URL (Official Logistics Portal)</span>
+                </label>
+                <input
+                  type="url"
+                  value={courierForm.trackingUrl || ''}
+                  onChange={(e) => setCourierForm({ ...courierForm, trackingUrl: e.target.value })}
+                  placeholder="e.g. https://www.dtdc.in/tracking.asp or https://www.bluedart.com/tracking"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-mono text-[11px]"
+                />
+                <p className="text-[10px] text-neutral-500 mt-0.5">
+                  When staff mark an order as Shipped, this tracking website link is automatically pulled and displayed on the customer's order tracking page.
+                </p>
+              </div>
+
+              {/* Tracking URL Template (Optional direct consignment URL) */}
               <div>
                 <label className="block font-semibold text-neutral-700 mb-1">
-                  Tracking URL Template (Optional)
+                  Direct Tracking URL Template with Consignment Query (Optional)
                 </label>
                 <input
                   type="text"

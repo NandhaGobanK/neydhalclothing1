@@ -21,6 +21,7 @@ import {
   ArrowRight,
   Loader2,
   ExternalLink,
+  ChevronDown,
 } from 'lucide-react';
 
 interface TrackOrderModalProps {
@@ -43,8 +44,10 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
   const [customReasonText, setCustomReasonText] = useState('');
   const [cancelStatusMsg, setCancelStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Delivery Issue Report Modal State (User Request 5)
+  // Issue Report Modal State (User Request 2: Generalized Report Issue with conditional dropdown)
   const [reportingIssueOrder, setReportingIssueOrder] = useState<Order | null>(null);
+  const [reportingIssueType, setReportingIssueType] = useState<'delivery' | 'refund'>('delivery');
+  const [openIssueDropdownOrderId, setOpenIssueDropdownOrderId] = useState<string | null>(null);
   const [issueDescription, setIssueDescription] = useState(
     'Courier tracking and system shows Delivered, but parcel was not received at delivery address/door.'
   );
@@ -52,6 +55,8 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
   const [issueFeedback, setIssueFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const isDeliveryDisputeEnabled = settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false;
+  const isRefundDisputeEnabled = settings.storefrontDisplay?.allowCustomerRefundDisputes !== false;
+  const canReportAnyIssue = isDeliveryDisputeEnabled || isRefundDisputeEnabled;
 
   // Check URL params if present (e.g. ?order=AARA-1082, #track?order=AARA-1082, ?track=AARA-1082)
   useEffect(() => {
@@ -252,22 +257,31 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
     }
   };
 
-  // Delivery Dispute Submit Handler (User Request 5)
+  // Customer Issue Submit Handler (Delivery Dispute or Refund Dispute)
   const handleSubmitDeliveryIssue = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reportingIssueOrder) return;
     setIsSubmittingIssue(true);
     setIssueFeedback(null);
     try {
+      const defaultDesc =
+        reportingIssueType === 'refund'
+          ? 'Customer submitted a refund inquiry / dispute regarding payment or cancellation settlement.'
+          : 'Customer reports non-delivery despite Delivered / Shipped status.';
+
       const res = await reportCustomerDeliveryIssue(
         reportingIssueOrder.orderNumber,
         reportingIssueOrder.customer.phone,
-        issueDescription.trim() || 'Customer reports non-delivery despite Delivered / Shipped status.'
+        issueDescription.trim() || defaultDesc,
+        reportingIssueType
       );
       if (res.success) {
         setIssueFeedback({
           type: 'success',
-          message: 'Delivery dispute successfully submitted! Our boutique concierge and Salem logistics hub will investigate immediately.',
+          message:
+            reportingIssueType === 'refund'
+              ? 'Refund inquiry submitted! Our boutique concierge has logged your ticket and will verify settlement details with our finance team.'
+              : 'Delivery dispute successfully submitted! Our boutique concierge and logistics hub will investigate immediately.',
         });
         setTimeout(() => {
           setReportingIssueOrder(null);
@@ -277,7 +291,10 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
         setIssueFeedback({ type: 'error', message: res.message });
       }
     } catch (err: any) {
-      setIssueFeedback({ type: 'error', message: err?.message || 'Failed to submit delivery dispute.' });
+      setIssueFeedback({
+        type: 'error',
+        message: err?.message || 'Failed to submit issue report.',
+      });
     } finally {
       setIsSubmittingIssue(false);
     }
@@ -602,9 +619,39 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                             </div>
                           </div>
                         </div>
-                        <p className="text-[11px] text-blue-800 leading-relaxed">
-                          Note: You can monitor your order status directly on this page or copy your Consignment ID above to track on {order.shippingDetails.courierName}'s official portal.
-                        </p>
+
+                        {(() => {
+                          const matchedCourier = (settings.courierServices || []).find(
+                            (c) => c.name.toLowerCase().trim() === order.shippingDetails?.courierName?.toLowerCase().trim()
+                          );
+                          const trackingPortalUrl =
+                            matchedCourier?.trackingUrl ||
+                            (matchedCourier?.trackingUrlTemplate && order.shippingDetails.trackingNumber
+                              ? matchedCourier.trackingUrlTemplate + order.shippingDetails.trackingNumber
+                              : undefined);
+
+                          return trackingPortalUrl ? (
+                            <div className="pt-2 border-t border-blue-200/80 flex items-center justify-between flex-wrap gap-2">
+                              <span className="text-[11px] text-blue-900 font-semibold flex items-center gap-1">
+                                <Truck className="w-3.5 h-3.5 text-blue-700" />
+                                <span>Official Tracking Portal:</span>
+                              </span>
+                              <a
+                                href={trackingPortalUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-2xs cursor-pointer"
+                              >
+                                <span>Track on {order.shippingDetails.courierName} Website</span>
+                                <ExternalLink className="w-3 h-3 text-white/90" />
+                              </a>
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-blue-800 leading-relaxed">
+                              Note: You can monitor your order status directly on this page or copy your Consignment ID above to track on {order.shippingDetails.courierName}'s official portal.
+                            </p>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -729,25 +776,100 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           )
                         ) : null}
 
-                        {/* Customer Delivery Dispute Reporting Button (User Request 5) */}
-                        {isDeliveryDisputeEnabled &&
-                          (order.status === 'Delivered' || order.status === 'Shipped') &&
-                          !order.deliveryIssue?.reported && (
+                        {/* Generalized Customer Issue Reporting Button with Dropdown (User Request 2) */}
+                        {canReportAnyIssue && !order.deliveryIssue?.reported && (
+                          <div className="relative inline-block text-left">
                             <button
                               type="button"
                               onClick={() => {
-                                setReportingIssueOrder(order);
-                                setIssueDescription(
-                                  `Courier tracking shows ${order.status}, but I have not received this parcel at my address.`
-                                );
+                                if (isDeliveryDisputeEnabled && isRefundDisputeEnabled) {
+                                  setOpenIssueDropdownOrderId(
+                                    openIssueDropdownOrderId === order.id ? null : order.id
+                                  );
+                                } else if (isDeliveryDisputeEnabled) {
+                                  setReportingIssueOrder(order);
+                                  setReportingIssueType('delivery');
+                                  setIssueDescription(
+                                    `Courier tracking shows ${order.status}, but I have not received this parcel at my address.`
+                                  );
+                                } else if (isRefundDisputeEnabled) {
+                                  setReportingIssueOrder(order);
+                                  setReportingIssueType('refund');
+                                  setIssueDescription(
+                                    `I have an inquiry regarding my refund settlement for order #${order.orderNumber}.`
+                                  );
+                                }
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-semibold text-xs transition cursor-pointer"
-                              title="Report that your order was not received even though status shows Delivered"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-semibold text-xs transition cursor-pointer shadow-2xs"
+                              title="Report a delivery or refund issue for this order"
                             >
                               <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                              <span>Report Delivery Issue</span>
+                              <span>Report Issue</span>
+                              {isDeliveryDisputeEnabled && isRefundDisputeEnabled && (
+                                <ChevronDown className="w-3 h-3 text-rose-700" />
+                              )}
                             </button>
-                          )}
+
+                            {/* Conditional Dropdown Menu based on Admin Settings */}
+                            {openIssueDropdownOrderId === order.id &&
+                              isDeliveryDisputeEnabled &&
+                              isRefundDisputeEnabled && (
+                                <div className="absolute left-0 mt-1.5 w-64 rounded-2xl bg-white border border-neutral-200 shadow-xl z-30 p-1.5 animate-in fade-in zoom-in-95 duration-150">
+                                  <div className="px-2.5 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider border-b border-neutral-100 mb-1">
+                                    Select Issue Category
+                                  </div>
+
+                                  {/* Option 1: Delivery-Related Issues */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenIssueDropdownOrderId(null);
+                                      setReportingIssueOrder(order);
+                                      setReportingIssueType('delivery');
+                                      setIssueDescription(
+                                        `Courier tracking shows ${order.status}, but I have not received this parcel at my address.`
+                                      );
+                                    }}
+                                    className="w-full text-left p-2 rounded-xl hover:bg-rose-50 text-neutral-800 hover:text-rose-900 transition flex items-start gap-2 cursor-pointer group"
+                                  >
+                                    <Truck className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="font-bold text-xs text-neutral-900 group-hover:text-rose-900">
+                                        Delivery-Related Issue
+                                      </p>
+                                      <p className="text-[10px] text-neutral-500 leading-snug">
+                                        Parcel marked delivered but not received, or transit delay.
+                                      </p>
+                                    </div>
+                                  </button>
+
+                                  {/* Option 2: Refund-Related Issues */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenIssueDropdownOrderId(null);
+                                      setReportingIssueOrder(order);
+                                      setReportingIssueType('refund');
+                                      setIssueDescription(
+                                        `I have an inquiry regarding my refund settlement for order #${order.orderNumber}.`
+                                      );
+                                    }}
+                                    className="w-full text-left p-2 rounded-xl hover:bg-amber-50 text-neutral-800 hover:text-amber-900 transition flex items-start gap-2 cursor-pointer group"
+                                  >
+                                    <RotateCcw className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="font-bold text-xs text-neutral-900 group-hover:text-amber-900">
+                                        Refund-Related Issue
+                                      </p>
+                                      <p className="text-[10px] text-neutral-500 leading-snug">
+                                        Cancelled order refund status, UPI account, or bank UTR query.
+                                      </p>
+                                    </div>
+                                  </button>
+                                </div>
+                              )}
+                          </div>
+                        )}
                       </div>
 
                       <button
@@ -869,19 +991,33 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
         </div>
       )}
 
-      {/* Customer Delivery Dispute Modal (User Request 5) */}
+      {/* Customer Issue Report Modal (Delivery Dispute or Refund Inquiry) */}
       {reportingIssueOrder && (
         <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
           <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in zoom-in-95 duration-200">
             <div className="p-5 bg-neutral-950 text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-rose-600/30 text-rose-400">
-                  <AlertCircle className="w-5 h-5" />
+                <div
+                  className={`p-2 rounded-xl ${
+                    reportingIssueType === 'refund'
+                      ? 'bg-amber-600/30 text-amber-400'
+                      : 'bg-rose-600/30 text-rose-400'
+                  }`}
+                >
+                  {reportingIssueType === 'refund' ? (
+                    <RotateCcw className="w-5 h-5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="font-serif text-base font-bold">Report Delivery Issue</h3>
+                  <h3 className="font-serif text-base font-bold">
+                    {reportingIssueType === 'refund'
+                      ? 'Report Refund Issue'
+                      : 'Report Delivery Issue'}
+                  </h3>
                   <p className="text-[11px] text-neutral-400">
-                    Order #{reportingIssueOrder.orderNumber}
+                    Order #{reportingIssueOrder.orderNumber} · {reportingIssueType === 'refund' ? 'Payment Settlement Inquiry' : 'Parcel Non-Receipt Dispute'}
                   </p>
                 </div>
               </div>
@@ -902,8 +1038,14 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                   <strong>Customer:</strong> {reportingIssueOrder.customer.name} ({reportingIssueOrder.customer.phone})
                 </p>
                 <p>
-                  <strong>Delivery Status:</strong> {reportingIssueOrder.status}
+                  <strong>Order Status:</strong> {reportingIssueOrder.status}
                 </p>
+                {reportingIssueType === 'refund' && (
+                  <p className="text-[11px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200 mt-1">
+                    <strong>Refund Status:</strong> {reportingIssueOrder.refundDetails?.refundStatus || 'pending'}{' '}
+                    {reportingIssueOrder.refundDetails?.refundUtr && `· UTR: ${reportingIssueOrder.refundDetails.refundUtr}`}
+                  </p>
+                )}
                 {reportingIssueOrder.shippingDetails && (
                   <p className="text-[11px] text-neutral-600">
                     <strong>Courier:</strong> {reportingIssueOrder.shippingDetails.courierName} · Tracking: {reportingIssueOrder.shippingDetails.trackingNumber}
@@ -916,18 +1058,26 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
 
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">
-                  Issue Description *
+                  {reportingIssueType === 'refund'
+                    ? 'Refund Issue Explanation *'
+                    : 'Delivery Issue Description *'}
                 </label>
                 <textarea
                   rows={3}
                   required
                   value={issueDescription}
                   onChange={(e) => setIssueDescription(e.target.value)}
-                  placeholder="Explain details: e.g. Courier system says delivered, but I have not received the package at my home or security."
+                  placeholder={
+                    reportingIssueType === 'refund'
+                      ? 'Please specify your inquiry (e.g. UPI account details, delay in bank credit, or payment reconciliation query).'
+                      : 'Explain details: e.g. Courier system says delivered, but I have not received the package at my home or security.'
+                  }
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-hidden focus:border-rose-500"
                 />
                 <p className="text-[10px] text-neutral-500 mt-1">
-                  This report immediately notifies our boutique concierge and opens a dispute in our administrative portal with the courier hub.
+                  {reportingIssueType === 'refund'
+                    ? 'This inquiry routes immediately to our administrative "Customers Issue" section for concierge finance investigation.'
+                    : 'This report immediately notifies our boutique concierge and opens a dispute in our administrative portal with the courier hub.'}
                 </p>
               </div>
 
@@ -947,17 +1097,25 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                 <button
                   type="submit"
                   disabled={isSubmittingIssue}
-                  className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                  className={`w-full py-2.5 px-4 rounded-xl text-white font-bold transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer ${
+                    reportingIssueType === 'refund'
+                      ? 'bg-amber-600 hover:bg-amber-500'
+                      : 'bg-rose-600 hover:bg-rose-500'
+                  }`}
                 >
                   {isSubmittingIssue ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting Dispute...</span>
+                      <span>Submitting Ticket...</span>
                     </>
                   ) : (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>Submit Delivery Dispute</span>
+                      <span>
+                        {reportingIssueType === 'refund'
+                          ? 'Submit Refund Inquiry'
+                          : 'Submit Delivery Dispute'}
+                      </span>
                     </>
                   )}
                 </button>

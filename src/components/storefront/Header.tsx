@@ -1,17 +1,19 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { ShoppingBag, Lock, ShieldCheck, Truck } from 'lucide-react';
+import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 import { getThemeColors } from '../../utils/theme';
 
 interface HeaderProps {
   onOpenAdmin: () => void;
+  onOpenInstructions?: () => void;
   onSelectCategory?: (category: string) => void;
   selectedCategory?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenAdmin,
+  onOpenInstructions,
   onSelectCategory,
   selectedCategory = 'all',
 }) => {
@@ -109,12 +111,21 @@ export const Header: React.FC<HeaderProps> = ({
           {showTrackOrder && (
             <button
               onClick={() => setIsTrackOrderOpen(true)}
-              className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 text-neutral-300 flex items-center gap-1.5"
+              className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 text-neutral-300 flex items-center gap-1.5 cursor-pointer"
             >
               <Truck className="w-4 h-4 text-amber-400" />
               <span>Track Order</span>
             </button>
           )}
+
+          <button
+            onClick={onOpenInstructions}
+            className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 text-neutral-300 flex items-center gap-1.5 cursor-pointer"
+            title="View store shopping & app installation instructions"
+          >
+            <BookOpen className="w-4 h-4 text-amber-400" />
+            <span>Instructions</span>
+          </button>
         </nav>
 
         {/* Zone 3: Actions (Track Order on mobile/desktop, PWA install, Cart bag, Discreet Admin) */}
@@ -122,14 +133,14 @@ export const Header: React.FC<HeaderProps> = ({
           {showTrackOrder && (
             <button
               onClick={() => setIsTrackOrderOpen(true)}
-              className="lg:hidden p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-amber-200 text-xs font-medium flex items-center gap-1 transition"
+              className="lg:hidden p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-amber-200 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
               title="Track Order Status"
             >
               <Truck className="w-4 h-4" />
             </button>
           )}
 
-          <PWAInstallButton variant="header" />
+          <PWAInstallButton variant="header" onClickGuide={onOpenInstructions} />
 
           {/* Cart Bag Button */}
           <button

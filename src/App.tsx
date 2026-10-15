@@ -10,6 +10,7 @@ import { CheckoutModal } from './components/storefront/CheckoutModal';
 import { OrderSuccessModal } from './components/storefront/OrderSuccessModal';
 import { TrackOrderModal } from './components/storefront/TrackOrderModal';
 import { OrderCancellationModal } from './components/storefront/OrderCancellationModal';
+import { InstructionsModal } from './components/storefront/InstructionsModal';
 import { Footer } from './components/storefront/Footer';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminAuthModal } from './components/admin/AdminAuthModal';
@@ -35,8 +36,9 @@ function MainAppContent() {
 
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
 
-  // Handle URL deep links & redirects (#track, ?order=, /track, #admin, /admin, ?product=)
+  // Handle URL deep links & redirects (#track, ?order=, /track, #admin, /admin, ?product=, #instructions)
   useEffect(() => {
     const handleUrlRouting = () => {
       if (typeof window === 'undefined') return;
@@ -67,6 +69,15 @@ function MainAppContent() {
         search.includes('phone=')
       ) {
         setIsTrackOrderOpen(true);
+      }
+
+      // 3. Instructions link handling (#instructions, ?instructions, /instructions)
+      if (
+        hash.includes('instructions') ||
+        pathname === '/instructions' ||
+        search.includes('instructions')
+      ) {
+        setIsInstructionsOpen(true);
       }
 
       // 3. Direct product link handling (?product=...)
@@ -164,6 +175,7 @@ function MainAppContent() {
           {/* Public Storefront Header */}
           <Header
             onOpenAdmin={handleOpenAdmin}
+            onOpenInstructions={() => setIsInstructionsOpen(true)}
             selectedCategory={selectedCategory}
             onSelectCategory={(cat) => {
               setSelectedCategory(cat);
@@ -184,7 +196,22 @@ function MainAppContent() {
           </main>
 
           {/* Storefront Footer */}
-          <Footer onOpenAdmin={handleOpenAdmin} />
+          <Footer
+            onOpenAdmin={handleOpenAdmin}
+            onOpenInstructions={() => setIsInstructionsOpen(true)}
+          />
+
+          {/* Dedicated Instructions & Cross-Platform PWA Installation Modal (User Request) */}
+          <InstructionsModal
+            isOpen={isInstructionsOpen}
+            onClose={() => {
+              setIsInstructionsOpen(false);
+              if (typeof window !== 'undefined' && window.location.hash.includes('instructions')) {
+                const cleanHash = window.location.hash.replace(/[#&?]instructions(=[^&]*)?/g, '');
+                window.history.replaceState(null, '', `${window.location.pathname}${cleanHash}`);
+              }
+            }}
+          />
 
           {/* Product Detail Modal */}
           {activeProductModal && (
