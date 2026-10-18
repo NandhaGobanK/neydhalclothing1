@@ -16,12 +16,17 @@ import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminAuthModal } from './components/admin/AdminAuthModal';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { getThemeColors } from './utils/theme';
-import { LogOut } from 'lucide-react';
+import { LogOut, Grid, Sparkles, ArrowRight } from 'lucide-react';
 import { useStaffIdleTracker } from './hooks/useStaffIdleTracker';
+import { CategoryBrowser } from './components/storefront/CategoryBrowser';
+import { WishlistBrowser } from './components/storefront/WishlistBrowser';
+import { BottomNavBar } from './components/storefront/BottomNavBar';
 
 function MainAppContent() {
   const {
     products,
+    publicProducts,
+    categories,
     settings,
     currentView,
     setCurrentView,
@@ -32,10 +37,13 @@ function MainAppContent() {
     setIsCheckoutOpen,
     isTrackOrderOpen,
     setIsTrackOrderOpen,
+    setIsCartOpen,
     lastPlacedOrder,
     setLastPlacedOrder,
     remoteLogoutNotice,
     clearRemoteLogoutNotice,
+    customerActiveTab,
+    setCustomerActiveTab,
   } = useStore();
 
   // Keep device activity & 15-minute idle detection active across the app
@@ -186,26 +194,132 @@ function MainAppContent() {
             selectedCategory={selectedCategory}
             onSelectCategory={(cat) => {
               setSelectedCategory(cat);
-              handleScrollToCatalog();
+              setCustomerActiveTab('categories');
             }}
           />
 
-          {/* Hero Showcase */}
-          <main className="flex-1">
-            <HeroBanner onExploreCatalog={handleScrollToCatalog} />
+          {/* Tabbed Storefront Views */}
+          <div className="flex-1 pb-20 sm:pb-24">
+            {customerActiveTab === 'categories' ? (
+              <CategoryBrowser
+                onOpenDetails={(product) => setActiveProductModal(product)}
+                selectedCategoryName={selectedCategory}
+                onSelectCategory={(cat) => setSelectedCategory(cat)}
+                onBackToHome={() => setCustomerActiveTab('home')}
+              />
+            ) : customerActiveTab === 'wishlist' ? (
+              <WishlistBrowser
+                onOpenDetails={(product) => setActiveProductModal(product)}
+                onExploreCatalog={() => setCustomerActiveTab('home')}
+              />
+            ) : customerActiveTab === 'search' ? (
+              <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+                <ProductGrid
+                  selectedCategory={selectedCategory}
+                  onSelectCategory={setSelectedCategory}
+                  onOpenDetails={(product) => setActiveProductModal(product)}
+                />
+              </main>
+            ) : (
+              /* Home View */
+              <main>
+                <HeroBanner onExploreCatalog={handleScrollToCatalog} />
 
-            {/* Saree Catalog with Fabric & Color Filters */}
-            <ProductGrid
-              selectedCategory={selectedCategory}
-              onSelectCategory={setSelectedCategory}
-              onOpenDetails={(product) => setActiveProductModal(product)}
+                {/* Prominent Saree Categories Showcase (User Request 7 - First Image) */}
+                <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 border-b border-neutral-200/80">
+                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-6">
+                    <div>
+                      <span className="text-[10px] sm:text-xs uppercase tracking-widest text-amber-700 font-bold flex items-center gap-1.5 mb-1">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Curated Handloom Weaves</span>
+                      </span>
+                      <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 tracking-tight">
+                        Explore Saree Categories
+                      </h2>
+                      <p className="text-xs text-neutral-500 mt-0.5">
+                        Discover heirloom weaves grouped by regional artisan craft and occasion
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory('all');
+                        setCustomerActiveTab('categories');
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-rose-900 hover:text-rose-700 transition self-start sm:self-auto cursor-pointer"
+                    >
+                      <span>All Categories ({categories.length})</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Category Cards Carousel / Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+                    {categories.map((cat) => {
+                      const count = publicProducts.filter(
+                        (p) =>
+                          p.category === cat.name ||
+                          p.category?.toLowerCase() === cat.name.toLowerCase() ||
+                          p.fabric?.toLowerCase() === cat.name.toLowerCase()
+                      ).length;
+
+                      return (
+                        <div
+                          key={cat.id}
+                          onClick={() => {
+                            setSelectedCategory(cat.name);
+                            setCustomerActiveTab('categories');
+                          }}
+                          className="group relative rounded-2xl overflow-hidden bg-neutral-900 aspect-3/4 border border-neutral-200/80 shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-end p-3 active:scale-98"
+                          title={`View ${cat.name} Collection`}
+                        >
+                          <img
+                            src={cat.imageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                            alt={cat.name}
+                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-108 transition-transform duration-500 opacity-80 group-hover:opacity-90"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+
+                          <div className="relative z-10 space-y-1">
+                            <span className="inline-block text-[9px] font-bold bg-white/90 text-neutral-900 px-1.5 py-0.5 rounded-full backdrop-blur-xs">
+                              {count} {count === 1 ? 'Design' : 'Designs'}
+                            </span>
+                            <h3 className="font-serif font-bold text-xs sm:text-sm text-white leading-tight group-hover:text-amber-200 transition">
+                              {cat.name}
+                            </h3>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* Saree Catalog with Fabric & Color Filters */}
+                <div id="catalog">
+                  <ProductGrid
+                    selectedCategory={selectedCategory}
+                    onSelectCategory={setSelectedCategory}
+                    onOpenDetails={(product) => setActiveProductModal(product)}
+                  />
+                </div>
+              </main>
+            )}
+
+            {/* Storefront Footer */}
+            <Footer
+              onOpenAdmin={handleOpenAdmin}
+              onOpenInstructions={() => setIsInstructionsOpen(true)}
             />
-          </main>
+          </div>
 
-          {/* Storefront Footer */}
-          <Footer
-            onOpenAdmin={handleOpenAdmin}
-            onOpenInstructions={() => setIsInstructionsOpen(true)}
+          {/* Sticky Bottom Navigation Bar (Home, Categories, Search, Wishlist, Account, Cart) */}
+          <BottomNavBar
+            activeTab={customerActiveTab}
+            onTabChange={(tab) => setCustomerActiveTab(tab)}
+            onOpenCart={() => setIsCartOpen(true)}
+            onOpenAccount={() => setIsTrackOrderOpen(true)}
           />
 
           {/* Dedicated Instructions & Cross-Platform PWA Installation Modal (User Request) */}

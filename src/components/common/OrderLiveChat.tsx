@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Headphones,
   Check,
+  Lock,
 } from 'lucide-react';
 
 interface OrderLiveChatProps {
@@ -92,6 +93,37 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
     }
   };
 
+  // Conditional Live Chat Availability rules based on Order & Dispute status
+  const isDelivered = order.status === 'Delivered';
+  const hasActiveDispute = Boolean(
+    order.deliveryIssue &&
+      (order.deliveryIssue.status === 'open' || order.deliveryIssue.status === 'investigating')
+  );
+  const isDisputeResolved = Boolean(
+    order.deliveryIssue && order.deliveryIssue.status === 'resolved'
+  );
+  const isOrderClosed = Boolean(order.isClosed);
+
+  // In customer mode, live chat is disabled if:
+  // 1. Order is marked as Delivered and there is no active dispute
+  // 2. Order is closed or dispute has been officially resolved
+  // 3. Order is Cancelled or Rejected without an active dispute
+  const isCustomerChatDisabled =
+    mode === 'customer' &&
+    (isOrderClosed ||
+      isDisputeResolved ||
+      (isDelivered && !hasActiveDispute) ||
+      (order.status === 'Cancelled' && !hasActiveDispute) ||
+      (order.status === 'Rejected' && !hasActiveDispute));
+
+  const chatDisabledReason = isOrderClosed
+    ? 'This order has been officially closed. Live chat is now unavailable.'
+    : isDisputeResolved
+    ? 'Your dispute/issue has been officially resolved and closed. Live chat is now unavailable.'
+    : isDelivered && !hasActiveDispute
+    ? 'Order successfully delivered. Live chat is disabled. (If you have any questions or issues, click "Report Issue" to open a dispute and activate concierge support).'
+    : `Order is ${order.status.toLowerCase()}. Live chat is unavailable.`;
+
   return (
     <div
       className={`rounded-2xl border ${
@@ -127,10 +159,21 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
               <h4 className="font-serif font-bold text-sm truncate">
                 {title || (mode === 'customer' ? 'Atelier Concierge Live Chat' : `Chat with ${order.customer.name}`)}
               </h4>
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Live</span>
-              </span>
+              {isCustomerChatDisabled ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-neutral-800 text-neutral-300 border border-neutral-700">
+                  <span>Chat Closed</span>
+                </span>
+              ) : hasActiveDispute ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+                  <span>Dispute Active · Priority</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Live</span>
+                </span>
+              )}
             </div>
             <p
               className={`text-[10px] truncate ${
@@ -219,67 +262,77 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggested Quick Prompt Chips */}
-      <div className="px-3 py-1.5 bg-neutral-100/70 border-t border-neutral-200 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-        <span className="text-[10px] text-neutral-400 shrink-0 font-medium flex items-center gap-1">
-          <HelpCircle className="w-3 h-3" />
-          <span>Quick:</span>
-        </span>
-        {(mode === 'customer' ? customerQuickChips : staffQuickChips).map((chip, idx) => (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => handleSendMessage(chip)}
-            disabled={isSending}
-            className="px-2.5 py-1 rounded-full bg-white hover:bg-neutral-200/80 text-neutral-700 text-[10px] font-medium border border-neutral-200/90 shrink-0 transition whitespace-nowrap cursor-pointer shadow-2xs"
-          >
-            {chip}
-          </button>
-        ))}
-      </div>
+      {/* If customer chat is disabled (e.g. Delivered without active dispute, or resolved/closed), show notice */}
+      {isCustomerChatDisabled ? (
+        <div className="p-3.5 bg-neutral-100 border-t border-neutral-200 text-center text-xs text-neutral-600 flex items-center justify-center gap-2">
+          <Lock className="w-4 h-4 text-neutral-500 shrink-0" />
+          <span className="text-[11px] font-medium leading-relaxed">{chatDisabledReason}</span>
+        </div>
+      ) : (
+        <>
+          {/* Suggested Quick Prompt Chips */}
+          <div className="px-3 py-1.5 bg-neutral-100/70 border-t border-neutral-200 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="text-[10px] text-neutral-400 shrink-0 font-medium flex items-center gap-1">
+              <HelpCircle className="w-3 h-3" />
+              <span>Quick:</span>
+            </span>
+            {(mode === 'customer' ? customerQuickChips : staffQuickChips).map((chip, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSendMessage(chip)}
+                disabled={isSending}
+                className="px-2.5 py-1 rounded-full bg-white hover:bg-neutral-200/80 text-neutral-700 text-[10px] font-medium border border-neutral-200/90 shrink-0 transition whitespace-nowrap cursor-pointer shadow-2xs"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
 
-      {/* Message Input Box */}
-      <div className="p-3 bg-white border-t border-neutral-200">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendMessage();
-          }}
-          className="flex items-center gap-2"
-        >
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              mode === 'customer'
-                ? 'Type your query or instruction for our concierge...'
-                : `Type reply to ${order.customer.name}...`
-            }
-            className="flex-1 px-3.5 py-2.5 rounded-xl border border-neutral-300 bg-white text-xs text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
-            disabled={isSending}
-          />
-          <button
-            type="submit"
-            disabled={!inputText.trim() || isSending}
-            className={`px-4 py-2.5 rounded-xl text-white font-bold text-xs transition flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-              mode === 'customer'
-                ? 'bg-rose-900 hover:bg-rose-800'
-                : 'bg-neutral-900 hover:bg-neutral-800'
-            }`}
-          >
-            {isSending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : sendFeedback ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <Send className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden sm:inline">Send</span>
-          </button>
-        </form>
-      </div>
+          {/* Message Input Box */}
+          <div className="p-3 bg-white border-t border-neutral-200">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendMessage();
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  mode === 'customer'
+                    ? 'Type your query or instruction for our concierge...'
+                    : `Type reply to ${order.customer.name}...`
+                }
+                className="flex-1 px-3.5 py-2.5 rounded-xl border border-neutral-300 bg-white text-xs text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                disabled={isSending}
+              />
+              <button
+                type="submit"
+                disabled={!inputText.trim() || isSending}
+                className={`px-4 py-2.5 rounded-xl text-white font-bold text-xs transition flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  mode === 'customer'
+                    ? 'bg-rose-900 hover:bg-rose-800'
+                    : 'bg-neutral-900 hover:bg-neutral-800'
+                }`}
+              >
+                {isSending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : sendFeedback ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span className="hidden sm:inline">Send</span>
+              </button>
+            </form>
+          </div>
+        </>
+      )}
     </div>
   );
 };

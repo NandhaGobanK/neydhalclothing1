@@ -17,6 +17,10 @@ import {
   Send,
   Download,
   Info,
+  HelpCircle,
+  Smartphone,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface CheckoutModalProps {
@@ -57,6 +61,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDownloadingQr, setIsDownloadingQr] = useState(false);
   const [showWhatsAppFallback, setShowWhatsAppFallback] = useState(false);
+  const [activeUtrGuideTab, setActiveUtrGuideTab] = useState<'gpay' | 'phonepe' | 'paytm' | 'other'>('gpay');
+  const [showUtrGuide, setShowUtrGuide] = useState(true);
 
   const handleCopyUpiId = () => {
     navigator.clipboard.writeText(settings.payment.upiId);
@@ -420,8 +426,150 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                 </div>
               </div>
 
-              {/* Transaction ID input (Mandatory) */}
+              {/* Step-by-Step UPI UTR Instructions Guide (User Request 6) */}
               <div className="mt-4 pt-4 border-t border-amber-200/80">
+                <div className="rounded-2xl border border-amber-300/80 bg-gradient-to-b from-amber-50/90 to-amber-100/40 p-3.5 sm:p-4 mb-3.5 shadow-2xs">
+                  <div className="flex items-center justify-between gap-2 mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-900 flex items-center justify-center font-bold text-xs shrink-0">
+                        <Smartphone className="w-3.5 h-3.5 text-amber-800" />
+                      </div>
+                      <div>
+                        <h4 className="font-serif font-bold text-xs sm:text-sm text-neutral-900">
+                          How to Locate Your 12-Digit UTR Number
+                        </h4>
+                        <p className="text-[10px] sm:text-[11px] text-neutral-600">
+                          Select your payment app below for step-by-step instructions:
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowUtrGuide(!showUtrGuide)}
+                      className="text-[11px] font-semibold text-amber-900 hover:text-amber-950 flex items-center gap-0.5 px-2 py-1 rounded-lg hover:bg-amber-200/50 transition cursor-pointer"
+                    >
+                      <span>{showUtrGuide ? 'Collapse' : 'Expand Guide'}</span>
+                      {showUtrGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+
+                  {showUtrGuide && (
+                    <div className="space-y-3 pt-1">
+                      {/* App Selector Tabs */}
+                      <div className="flex items-center gap-1.5 p-1 bg-amber-200/50 rounded-xl overflow-x-auto no-scrollbar">
+                        <button
+                          type="button"
+                          onClick={() => setActiveUtrGuideTab('gpay')}
+                          className={`flex-1 min-w-[85px] py-1.5 px-2 rounded-lg text-xs font-bold transition text-center cursor-pointer ${
+                            activeUtrGuideTab === 'gpay'
+                              ? 'bg-white text-neutral-900 shadow-2xs'
+                              : 'text-neutral-600 hover:text-neutral-900'
+                          }`}
+                        >
+                          Google Pay
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveUtrGuideTab('phonepe')}
+                          className={`flex-1 min-w-[85px] py-1.5 px-2 rounded-lg text-xs font-bold transition text-center cursor-pointer ${
+                            activeUtrGuideTab === 'phonepe'
+                              ? 'bg-white text-purple-950 shadow-2xs'
+                              : 'text-neutral-600 hover:text-neutral-900'
+                          }`}
+                        >
+                          PhonePe
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveUtrGuideTab('paytm')}
+                          className={`flex-1 min-w-[85px] py-1.5 px-2 rounded-lg text-xs font-bold transition text-center cursor-pointer ${
+                            activeUtrGuideTab === 'paytm'
+                              ? 'bg-white text-sky-950 shadow-2xs'
+                              : 'text-neutral-600 hover:text-neutral-900'
+                          }`}
+                        >
+                          Paytm
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveUtrGuideTab('other')}
+                          className={`flex-1 min-w-[85px] py-1.5 px-2 rounded-lg text-xs font-bold transition text-center cursor-pointer ${
+                            activeUtrGuideTab === 'other'
+                              ? 'bg-white text-neutral-900 shadow-2xs'
+                              : 'text-neutral-600 hover:text-neutral-900'
+                          }`}
+                        >
+                          Other UPI Apps
+                        </button>
+                      </div>
+
+                      {/* Tab 1: Google Pay Instructions */}
+                      {activeUtrGuideTab === 'gpay' && (
+                        <div className="p-3 bg-white/90 rounded-xl border border-amber-200/90 text-xs text-neutral-700 space-y-2 animate-in fade-in">
+                          <div className="flex items-center gap-1.5 text-blue-700 font-bold">
+                            <span className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center text-[10px]">G</span>
+                            <span>Google Pay (GPay) UTR Guide:</span>
+                          </div>
+                          <ol className="list-decimal pl-4 space-y-1 text-[11px] leading-relaxed text-neutral-700">
+                            <li>After completing your payment, open Google Pay and tap <strong>Show transaction history</strong> at the bottom.</li>
+                            <li>Tap on the payment transaction made to <strong>{settings.payment.payeeName}</strong>.</li>
+                            <li>Scroll to the details section and look for <strong>"UPI transaction ID"</strong> (a 12-digit numeric code, e.g. <code className="bg-amber-50 px-1 py-0.5 rounded font-mono font-bold text-amber-900">402918471928</code>).</li>
+                            <li>Tap the small <strong>copy icon</strong> next to the 12-digit number and paste it in the field below.</li>
+                          </ol>
+                        </div>
+                      )}
+
+                      {/* Tab 2: PhonePe Instructions */}
+                      {activeUtrGuideTab === 'phonepe' && (
+                        <div className="p-3 bg-white/90 rounded-xl border border-amber-200/90 text-xs text-neutral-700 space-y-2 animate-in fade-in">
+                          <div className="flex items-center gap-1.5 text-purple-700 font-bold">
+                            <span className="w-4 h-4 rounded-full bg-purple-100 flex items-center justify-center text-[10px]">P</span>
+                            <span>PhonePe UTR Guide:</span>
+                          </div>
+                          <ol className="list-decimal pl-4 space-y-1 text-[11px] leading-relaxed text-neutral-700">
+                            <li>Open PhonePe and tap the <strong>History</strong> tab at the bottom right.</li>
+                            <li>Select the payment to <strong>{settings.payment.payeeName}</strong> ({settings.payment.upiId}).</li>
+                            <li>Tap <strong>Transfer Details</strong> or <strong>Transaction Details</strong> to expand the receipt.</li>
+                            <li>Locate the <strong>"UTR"</strong> number (12-digit code). Tap the <strong>Copy icon</strong> right next to UTR and paste it below.</li>
+                          </ol>
+                        </div>
+                      )}
+
+                      {/* Tab 3: Paytm Instructions */}
+                      {activeUtrGuideTab === 'paytm' && (
+                        <div className="p-3 bg-white/90 rounded-xl border border-amber-200/90 text-xs text-neutral-700 space-y-2 animate-in fade-in">
+                          <div className="flex items-center gap-1.5 text-sky-700 font-bold">
+                            <span className="w-4 h-4 rounded-full bg-sky-100 flex items-center justify-center text-[10px]">₹</span>
+                            <span>Paytm UPI Ref ID Guide:</span>
+                          </div>
+                          <ol className="list-decimal pl-4 space-y-1 text-[11px] leading-relaxed text-neutral-700">
+                            <li>Open Paytm and tap <strong>Balance & History</strong> (or view the payment success tick screen).</li>
+                            <li>Tap on the transaction paid to <strong>{settings.payment.payeeName}</strong>.</li>
+                            <li>Under Payment Details, locate the <strong>"UPI Ref No."</strong> or <strong>"UPI Reference Number"</strong> (12 digits).</li>
+                            <li>Copy and paste the 12-digit reference number into the box below.</li>
+                          </ol>
+                        </div>
+                      )}
+
+                      {/* Tab 4: Other UPI Apps (BHIM, Cred, Amazon Pay, Bank UPI) */}
+                      {activeUtrGuideTab === 'other' && (
+                        <div className="p-3 bg-white/90 rounded-xl border border-amber-200/90 text-xs text-neutral-700 space-y-2 animate-in fade-in">
+                          <div className="flex items-center gap-1.5 text-neutral-800 font-bold">
+                            <HelpCircle className="w-4 h-4 text-amber-600" />
+                            <span>BHIM, CRED, Amazon Pay & Bank Apps:</span>
+                          </div>
+                          <ol className="list-decimal pl-4 space-y-1 text-[11px] leading-relaxed text-neutral-700">
+                            <li>View your UPI payment receipt in your banking app (BHIM, CRED, iMobile, YONO, etc.).</li>
+                            <li>Look for the 12-digit reference number typically labeled <strong>"UTR"</strong>, <strong>"UPI Ref ID"</strong>, or <strong>"Bank Reference No."</strong>.</li>
+                            <li>Copy and paste the 12-digit number in the field below.</li>
+                          </ol>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <label className="block text-xs font-bold text-neutral-900 mb-1">
                   Enter Payment Transaction ID (UTR / Reference Number) *
                 </label>
@@ -433,7 +581,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                   className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white font-mono text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/50 uppercase"
                 />
                 <p className="text-[11px] text-neutral-500 mt-1">
-                  Found in your banking/UPI receipt history immediately after paying.
+                  12-digit UTR / UPI Ref ID from your banking or UPI app receipt above.
                 </p>
               </div>
             </div>

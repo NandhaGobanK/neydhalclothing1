@@ -505,21 +505,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           });
           setProducts(list);
           saveToStorage(STORAGE_KEYS.PRODUCTS, list);
-        } else if (!isSeeding) {
-          const alreadyInitialized = localStorage.getItem('neydhal_products_initialized');
-          if (!alreadyInitialized) {
-            isSeeding = true;
-            localStorage.setItem('neydhal_products_initialized', 'true');
-            // Initial bootstrap: seed initial boutique products to Firestore
-            Promise.all(
-              INITIAL_PRODUCTS.map((p) =>
-                setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))
-              )
-            ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'products'));
-          } else {
-            setProducts([]);
-            saveToStorage(STORAGE_KEYS.PRODUCTS, []);
-          }
+        } else {
+          setProducts([]);
+          saveToStorage(STORAGE_KEYS.PRODUCTS, []);
         }
       },
       (error) => {
@@ -531,7 +519,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Real-time Firestore sync for Orders
   useEffect(() => {
-    let isSeeding = false;
     const unsub = onSnapshot(
       collection(db, 'orders'),
       (snapshot) => {
@@ -542,14 +529,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           });
           list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           setOrders(list);
-        } else if (!isSeeding) {
-          isSeeding = true;
-          // Initial bootstrap: seed initial orders to Firestore
-          Promise.all(
-            INITIAL_ORDERS.map((o) =>
-              setDoc(doc(db, 'orders', o.id), sanitizeForFirestore(o))
-            )
-          ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'orders'));
+          saveToStorage(STORAGE_KEYS.ORDERS, list);
+        } else {
+          setOrders([]);
+          saveToStorage(STORAGE_KEYS.ORDERS, []);
         }
       },
       (error) => {
@@ -631,14 +614,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           });
           list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           setReviews(list);
-        } else if (!isSeeding) {
-          isSeeding = true;
-          // Initial bootstrap: seed initial boutique product reviews
-          Promise.all(
-            INITIAL_REVIEWS.map((r) =>
-              setDoc(doc(db, 'reviews', r.id), sanitizeForFirestore(r))
-            )
-          ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'reviews'));
+          saveToStorage(STORAGE_KEYS.REVIEWS, list);
+        } else {
+          setReviews([]);
+          saveToStorage(STORAGE_KEYS.REVIEWS, []);
         }
       },
       (error) => {
@@ -2165,10 +2144,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const resetToInitialData = async () => {
+    const freshSettings: StoreSettings = {
+      ...INITIAL_SETTINGS,
+      isFreshBrandNew: true,
+      lastResetAt: new Date().toISOString(),
+      staffMembers: [],
+    };
     clearDeletedProductIds();
     setProducts([]);
     setOrders([]);
-    setSettings(INITIAL_SETTINGS);
+    setReviews([]);
+    setSettings(freshSettings);
     setCart([]);
     setWishlist([]);
     setCurrentUser(null);
@@ -2178,11 +2164,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       localStorage.clear();
       saveToStorage(STORAGE_KEYS.PRODUCTS, []);
       saveToStorage(STORAGE_KEYS.ORDERS, []);
-      saveToStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+      saveToStorage(STORAGE_KEYS.SETTINGS, freshSettings);
       saveToStorage(STORAGE_KEYS.CART, []);
       saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
+      saveToStorage(STORAGE_KEYS.REVIEWS, []);
       saveToStorage('aara_boutique_wishlist_v3', []);
       localStorage.setItem('neydhal_products_initialized', 'true');
+      localStorage.setItem('neydhal_fresh_brand_new', 'true');
     } catch {
       // ignore storage clear error
     }
@@ -2209,7 +2197,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
 
       // 5. Reset store settings to clean store_config in Firestore
-      await setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore(INITIAL_SETTINGS));
+      await setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore(freshSettings));
     } catch (err) {
       console.warn('Firestore reset sync note:', err);
     }

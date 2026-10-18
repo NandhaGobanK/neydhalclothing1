@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Order, OrderStatus } from '../../types/store';
-import { formatPrice, openWhatsApp, formatWhatsAppCustomerCancellationRequest } from '../../utils/upi';
+import { formatPrice } from '../../utils/upi';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../utils/firebase';
 import {
@@ -28,6 +28,7 @@ import {
   Loader2,
   ExternalLink,
   ChevronDown,
+  Lock,
 } from 'lucide-react';
 
 interface TrackOrderModalProps {
@@ -242,7 +243,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
     }
   };
 
-  const handleSubmitCancellation = (e: React.FormEvent, method: 'web' | 'whatsapp') => {
+  const handleSubmitCancellation = (e: React.FormEvent) => {
     e.preventDefault();
     if (!cancellingOrder) return;
 
@@ -252,12 +253,6 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
 
     if (res.success) {
       setCancelStatusMsg({ type: 'success', text: res.message });
-
-      if (method === 'whatsapp') {
-        const waMsg = formatWhatsAppCustomerCancellationRequest(cancellingOrder, finalReason, settings);
-        openWhatsApp(settings.contactPhone, waMsg);
-      }
-
       setCancellingOrder(null);
     } else {
       setCancelStatusMsg({ type: 'error', text: res.message });
@@ -756,7 +751,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                       </div>
                     )}
 
-                    {/* Bottom Actions: Cancel Request, Delivery Dispute, or WhatsApp Support */}
+                    {/* Bottom Actions: Cancel Request, Delivery Dispute, or Live Concierge Chat */}
                     <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100">
                       <div className="flex items-center gap-2 flex-wrap">
                         {isPublicCancellationEnabled ? (
@@ -866,43 +861,97 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 ml-auto">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedChatOrderId(
-                              expandedChatOrderId === order.id ? null : order.id
-                            )
-                          }
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs ${
-                            expandedChatOrderId === order.id
-                              ? 'bg-amber-700 text-white'
-                              : 'bg-amber-600 hover:bg-amber-500 text-white'
-                          }`}
-                          title="Open live chat to message concierge staff regarding this order"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5 fill-white" />
-                          <span>
-                            {expandedChatOrderId === order.id ? 'Close Live Chat' : 'Live Concierge Chat'}
-                            {order.chatMessages && order.chatMessages.length > 0
-                              ? ` (${order.chatMessages.length})`
-                              : ''}
-                          </span>
-                        </button>
+                      {/* Live Chat Action Button (Conditional Availability based on Order & Dispute Status) */}
+                      {(() => {
+                        const isDelivered = order.status === 'Delivered';
+                        const hasActiveDispute = Boolean(
+                          order.deliveryIssue &&
+                            (order.deliveryIssue.status === 'open' || order.deliveryIssue.status === 'investigating')
+                        );
+                        const isDisputeResolved = Boolean(
+                          order.deliveryIssue && order.deliveryIssue.status === 'resolved'
+                        );
+                        const isOrderClosed = Boolean(order.isClosed);
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const text = `Namaste! Regarding my saree order #${order.orderNumber} for ${formatPrice(order.totalAmount)}. Status: ${order.status}.`;
-                            openWhatsApp(settings.contactPhone, text);
-                          }}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-medium text-xs transition cursor-pointer"
-                          title="Chat on WhatsApp"
-                        >
-                          <span>WhatsApp</span>
-                          <ExternalLink className="w-3 h-3 text-neutral-400" />
-                        </button>
-                      </div>
+                        // Chat enabled if:
+                        // - Active order (Pending, Confirmed, Shipped)
+                        // - Active dispute on any order (even if Delivered)
+                        // Chat disabled if:
+                        // - Delivered without active dispute
+                        // - Order is closed or dispute is officially resolved
+                        // - Cancelled / Rejected without active dispute
+                        const isChatAvailable =
+                          !isOrderClosed &&
+                          !isDisputeResolved &&
+                          (!isDelivered || hasActiveDispute) &&
+                          order.status !== 'Cancelled' &&
+                          order.status !== 'Rejected';
+
+                        return (
+                          <div className="flex items-center gap-2 ml-auto">
+                            {isChatAvailable ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedChatOrderId(
+                                    expandedChatOrderId === order.id ? null : order.id
+                                  )
+                                }
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs ${
+                                  expandedChatOrderId === order.id
+                                    ? 'bg-amber-700 text-white'
+                                    : hasActiveDispute
+                                    ? 'bg-rose-700 hover:bg-rose-600 text-white'
+                                    : 'bg-amber-600 hover:bg-amber-500 text-white'
+                                }`}
+                                title="Open live chat with atelier concierge staff"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5 fill-white" />
+                                <span>
+                                  {expandedChatOrderId === order.id
+                                    ? 'Close Live Chat'
+                                    : hasActiveDispute
+                                    ? 'Dispute Live Chat'
+                                    : 'Live Concierge Chat'}
+                                  {order.chatMessages && order.chatMessages.length > 0
+                                    ? ` (${order.chatMessages.length})`
+                                    : ''}
+                                </span>
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                {order.chatMessages && order.chatMessages.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedChatOrderId(
+                                        expandedChatOrderId === order.id ? null : order.id
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-600 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 transition cursor-pointer"
+                                    title="View previous messages (read-only)"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5 text-neutral-500" />
+                                    <span>
+                                      {expandedChatOrderId === order.id ? 'Hide Chat' : `Chat History (${order.chatMessages.length})`}
+                                    </span>
+                                  </button>
+                                )}
+                                <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg border border-neutral-200 flex items-center gap-1">
+                                  <Lock className="w-3 h-3 text-neutral-400" />
+                                  <span>
+                                    {isDisputeResolved
+                                      ? 'Chat Closed (Resolved)'
+                                      : isDelivered
+                                      ? 'Chat Closed (Delivered)'
+                                      : 'Chat Closed'}
+                                  </span>
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Live Customer Chat Stream Box (User Request 3) */}
@@ -994,20 +1043,11 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               <div className="pt-2 flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={(e) => handleSubmitCancellation(e, 'web')}
+                  onClick={(e) => handleSubmitCancellation(e)}
                   className="w-full py-2.5 px-4 rounded-xl bg-rose-900 hover:bg-rose-800 text-white font-bold transition flex items-center justify-center gap-1.5"
                 >
                   <Check className="w-4 h-4" />
                   <span>Submit Cancellation Request</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={(e) => handleSubmitCancellation(e, 'whatsapp')}
-                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition flex items-center justify-center gap-1.5"
-                >
-                  <MessageSquare className="w-4 h-4 fill-white" />
-                  <span>Send Cancellation Request via WhatsApp</span>
                 </button>
 
                 <button

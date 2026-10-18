@@ -49,8 +49,11 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
     return publicProducts
       .filter((p) => {
         // Category / Fabric
-        if (selectedCategory !== 'all' && p.fabric !== selectedCategory) {
-          return false;
+        if (selectedCategory !== 'all') {
+          const matchCategory =
+            (p.category && p.category.toLowerCase() === selectedCategory.toLowerCase()) ||
+            (p.fabric && p.fabric.toLowerCase() === selectedCategory.toLowerCase());
+          if (!matchCategory) return false;
         }
         // Color
         if (selectedColor !== 'all' && p.color !== selectedColor) {

@@ -2108,10 +2108,10 @@ export const SettingsManager: React.FC = () => {
                     type="button"
                     onClick={() => setConfirmReset(true)}
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-rose-400 bg-white hover:bg-rose-50 text-rose-800 text-xs font-bold transition cursor-pointer shadow-xs"
-                    title="Completely clear and wipe all demo data for fresh live usage"
+                    title="Reset to Brand New: completely clear and wipe all demo data for fresh live usage"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                    <span>Reset to Brand-New Setup (Fresh State)</span>
+                    <span>Reset to Brand New</span>
                   </button>
                 )}
               </div>

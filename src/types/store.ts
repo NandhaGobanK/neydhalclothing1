@@ -375,4 +375,6 @@ export interface StoreSettings {
   defaultStaffPermissions?: StaffSectionPermissions;
   staffIdleAlert?: StaffIdleAlertSettings;
   sareeCategories?: SareeCategory[]; // Configured saree and apparel categories
+  isFreshBrandNew?: boolean; // True when reset to clean fresh state
+  lastResetAt?: string; // Timestamp of latest fresh reset
 }
