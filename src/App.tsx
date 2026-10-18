@@ -155,10 +155,8 @@ function MainAppContent() {
   };
 
   const handleScrollToCatalog = () => {
-    const el = document.getElementById('catalog');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
+    setSelectedCategory('all');
+    setCustomerActiveTab('categories');
   };
 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
@@ -231,7 +229,7 @@ function MainAppContent() {
                     <div>
                       <span className="text-[10px] sm:text-xs uppercase tracking-widest text-amber-700 font-bold flex items-center gap-1.5 mb-1">
                         <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Curated Handloom Weaves</span>
+                        <span>Handloom Weaves</span>
                       </span>
                       <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 tracking-tight">
                         Explore Saree Categories
@@ -305,12 +303,13 @@ function MainAppContent() {
             />
           </div>
 
-          {/* Sticky Bottom Navigation Bar (Home, Categories, Search, Wishlist, Account, Cart) */}
+          {/* Sticky Bottom Navigation Bar (Categories, Search, Wishlist, My Orders, Cart) */}
           <BottomNavBar
             activeTab={customerActiveTab}
             onTabChange={(tab) => setCustomerActiveTab(tab)}
             onOpenCart={() => setIsCartOpen(true)}
             onOpenAccount={() => setIsTrackOrderOpen(true)}
+            onOpenOrders={() => setIsTrackOrderOpen(true)}
           />
 
           {/* Dedicated Instructions & Cross-Platform PWA Installation Modal (User Request) */}

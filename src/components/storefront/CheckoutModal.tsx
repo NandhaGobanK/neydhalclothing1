@@ -104,14 +104,49 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
       setErrorMsg('Please provide complete shipping address with city, state & pincode.');
       return false;
     }
-    if (!upiTransactionId.trim() || upiTransactionId.trim().length < 6) {
-      setErrorMsg('Please enter your Prepaid Payment Transaction ID / UTR from your UPI payment app.');
+    const cleanUtr = upiTransactionId.replace(/\D/g, '');
+    if (!cleanUtr) {
+      setErrorMsg('Please enter your 12-digit numeric Payment Transaction ID (UTR).');
+      return false;
+    }
+    if (cleanUtr.length !== 12) {
+      setErrorMsg(`Payment Transaction ID (UTR) must be strictly 12 digits (currently ${cleanUtr.length}/12 digits). Orders cannot be submitted without a complete 12-digit UTR.`);
       return false;
     }
 
     // Refund details are optional now as per request!
     setErrorMsg('');
     return true;
+  };
+
+  const handleUtrChange = (val: string) => {
+    // Strictly numeric only, automatically strip any letters, symbols or spaces and max 12 digits
+    const numericOnly = val.replace(/\D/g, '').slice(0, 12);
+    setUpiTransactionId(numericOnly);
+    if (errorMsg && errorMsg.includes('UTR')) {
+      setErrorMsg('');
+    }
+  };
+
+  const handleUtrKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Allow navigation/editing keys: backspace, delete, tab, escape, enter, arrows
+    if (
+      ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) ||
+      (e.ctrlKey || e.metaKey)
+    ) {
+      return;
+    }
+    // Block any non-numeric keystroke immediately
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+    }
+  };
+
+  const handleUtrPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData('text');
+    const numericOnly = pastedText.replace(/\D/g, '').slice(0, 12);
+    handleUtrChange(numericOnly);
   };
 
   const handleCheckout = (method: 'submit_order' | 'whatsapp') => {
@@ -570,18 +605,50 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                   )}
                 </div>
 
-                <label className="block text-xs font-bold text-neutral-900 mb-1">
-                  Enter Payment Transaction ID (UTR / Reference Number) *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-neutral-900">
+                    Enter Payment Transaction ID (12-Digit Numeric UTR) *
+                  </label>
+                  <span
+                    className={`font-mono font-bold text-[10px] px-2 py-0.5 rounded-md transition ${
+                      upiTransactionId.length === 12
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : upiTransactionId.length > 0
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-neutral-100 text-neutral-500'
+                    }`}
+                  >
+                    {upiTransactionId.length === 12
+                      ? '✓ 12 Digits Verified'
+                      : `${upiTransactionId.length}/12 Digits`}
+                  </span>
+                </div>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  maxLength={12}
+                  pattern="[0-9]*"
                   value={upiTransactionId}
-                  onChange={(e) => setUpiTransactionId(e.target.value)}
-                  placeholder="e.g. 12-digit UTR: 402918471928"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white font-mono text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/50 uppercase"
+                  onChange={(e) => handleUtrChange(e.target.value)}
+                  onKeyDown={handleUtrKeyDown}
+                  onPaste={handleUtrPaste}
+                  placeholder="Strictly 12 digits (e.g. 402918471928)"
+                  className={`w-full p-2.5 rounded-xl border font-mono text-sm tracking-widest focus:outline-hidden transition ${
+                    upiTransactionId.length === 12
+                      ? 'border-emerald-500 bg-emerald-50/20 text-emerald-950 focus:ring-2 focus:ring-emerald-500/40'
+                      : upiTransactionId.length > 0
+                      ? 'border-amber-400 bg-amber-50/20 text-neutral-900 focus:ring-2 focus:ring-amber-500/40'
+                      : 'border-neutral-300 bg-white text-neutral-900 focus:ring-2 focus:ring-amber-500/50'
+                  }`}
                 />
                 <p className="text-[11px] text-neutral-500 mt-1">
-                  12-digit UTR / UPI Ref ID from your banking or UPI app receipt above.
+                  {upiTransactionId.length === 12 ? (
+                    <span className="text-emerald-700 font-medium">✓ 12-digit numeric UTR verified. Ready for order placement.</span>
+                  ) : upiTransactionId.length > 0 ? (
+                    <span className="text-amber-800 font-medium">Please enter remaining {12 - upiTransactionId.length} digits. Strictly 12 numeric digits required.</span>
+                  ) : (
+                    <span>Numbers only. UTR must be strictly 12 digits long from your UPI payment app receipt above.</span>
+                  )}
                 </p>
               </div>
             </div>

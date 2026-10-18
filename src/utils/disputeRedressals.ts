@@ -45,7 +45,13 @@ export const DISPUTE_REDRESSALS: DisputeRedressalDefinition[] = [
     iconType: 'refund',
     defaultNote: (orderNumber: string) =>
       `I have an inquiry regarding my refund settlement for order #${orderNumber}.`,
-    isEnabled: (settings) => settings?.storefrontDisplay?.allowCustomerRefundDisputes !== false,
+    isEnabled: (settings) => {
+      // If the refund option is disabled in settings, Customer Refund Issue Reporting is automatically disabled/toggled off
+      if (settings?.storefrontDisplay?.allowPublicRefunds === false) {
+        return false;
+      }
+      return settings?.storefrontDisplay?.allowCustomerRefundDisputes !== false;
+    },
   },
 ];
 

@@ -1322,6 +1322,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setOrders((prev) => [newOrder, ...prev]);
     clearCart();
     setLastPlacedOrder(newOrder);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('aara_last_order', newOrder.orderNumber);
+        const stored = JSON.parse(localStorage.getItem('aara_customer_orders') || '[]');
+        const nextList = [newOrder.orderNumber, ...stored.filter((n: string) => n !== newOrder.orderNumber)];
+        localStorage.setItem('aara_customer_orders', JSON.stringify(nextList));
+      }
+    } catch (e) {}
 
     // Deduct stock for ordered items and update stockStatus to out_of_stock if stock reaches 0
     items.forEach((item) => {
@@ -1719,7 +1727,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (settings.storefrontDisplay?.allowPublicCancellation === false) {
       return {
         success: false,
-        message: 'Order cancellation requests are currently disabled on the public storefront. Please contact our boutique concierge on WhatsApp for assistance.',
+        message: 'Order cancellation requests are currently disabled on the public storefront. Please contact our boutique concierge for assistance.',
       };
     }
 
@@ -1913,7 +1921,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!isDisputeRedressalEnabled(issueType, settings)) {
       return {
         success: false,
-        message: `${issueType === 'refund' ? 'Refund' : issueType === 'delivery' ? 'Delivery' : issueType} issue reporting is currently disabled on the boutique storefront. Please contact concierge on WhatsApp.`,
+        message: `${issueType === 'refund' ? 'Refund' : issueType === 'delivery' ? 'Delivery' : issueType} issue reporting is currently disabled on the boutique storefront. Please contact concierge for assistance.`,
       };
     }
 

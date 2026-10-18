@@ -467,7 +467,7 @@ export const SettingsManager: React.FC = () => {
         allowPublicRefunds,
         showCustomerReviews,
         allowCustomerDeliveryDisputes,
-        allowCustomerRefundDisputes,
+        allowCustomerRefundDisputes: allowPublicRefunds ? allowCustomerRefundDisputes : false,
         allowLiveChat,
         freeShippingText: freeShippingText.trim(),
       },
@@ -870,7 +870,14 @@ export const SettingsManager: React.FC = () => {
                     type="checkbox"
                     disabled={!canEditStorefront}
                     checked={allowPublicRefunds}
-                    onChange={(e) => setAllowPublicRefunds(e.target.checked)}
+                    onChange={(e) => {
+                      const isChecked = e.target.checked;
+                      setAllowPublicRefunds(isChecked);
+                      if (!isChecked) {
+                        // If the refund option is disabled in the settings, the Customer Refund Issue Reporting option under the "Report Issue" menu must also be automatically disabled/toggled off
+                        setAllowCustomerRefundDisputes(false);
+                      }
+                    }}
                     className="rounded text-rose-900"
                   />
                   <div className="flex-1">
@@ -883,7 +890,7 @@ export const SettingsManager: React.FC = () => {
                       </span>
                     </span>
                     <span className="text-[11px] text-neutral-500 font-normal">
-                      When enabled, customer refund UPI information is collected and processed upon cancellation. When disabled, the boutique operates with a strict no-cancellation / manual concierge negotiation policy.
+                      When enabled, customer refund UPI information is collected and processed upon cancellation. When disabled, the boutique operates with a strict no-cancellation / manual concierge negotiation policy, and customer refund issue reporting is automatically disabled.
                     </span>
                   </div>
                 </label>
@@ -937,11 +944,13 @@ export const SettingsManager: React.FC = () => {
                 </label>
 
                 {/* Customer Refund Issue Reporting Global Toggle (User Request 2) */}
-                <label className="flex items-center gap-2 cursor-pointer sm:col-span-3 pt-2 border-t border-neutral-200">
+                <label className={`flex items-center gap-2 sm:col-span-3 pt-2 border-t border-neutral-200 ${
+                  !allowPublicRefunds ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                }`}>
                   <input
                     type="checkbox"
-                    disabled={!canEditStorefront}
-                    checked={allowCustomerRefundDisputes}
+                    disabled={!canEditStorefront || !allowPublicRefunds}
+                    checked={allowPublicRefunds && allowCustomerRefundDisputes}
                     onChange={(e) => setAllowCustomerRefundDisputes(e.target.checked)}
                     className="rounded text-amber-900"
                   />
@@ -949,13 +958,29 @@ export const SettingsManager: React.FC = () => {
                     <span className="font-semibold text-neutral-800 flex items-center gap-2">
                       <span>Enable Customer Refund Issue Reporting</span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        allowCustomerRefundDisputes ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-neutral-100 text-neutral-600'
+                        !allowPublicRefunds
+                          ? 'bg-neutral-100 text-neutral-500 border border-neutral-300'
+                          : allowCustomerRefundDisputes
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'bg-neutral-100 text-neutral-600'
                       }`}>
-                        {allowCustomerRefundDisputes ? 'Refund Reporting Active' : 'Refund Reporting Disabled'}
+                        {!allowPublicRefunds
+                          ? 'Auto-Disabled (Refunds Off)'
+                          : allowCustomerRefundDisputes
+                          ? 'Refund Reporting Active'
+                          : 'Refund Reporting Disabled'}
                       </span>
                     </span>
                     <span className="text-[11px] text-neutral-500 font-normal">
-                      When enabled, customers can report refund queries, missing settlements, or transaction reconciliation from the tracking modal via the generalized "Report Issue" dropdown menu. When disabled, this option is hidden from customer view.
+                      {!allowPublicRefunds ? (
+                        <span className="text-amber-700 font-medium">
+                          Automatically disabled because the Customer Refund Feature is turned off above. Turn on the refund feature above to activate customer refund inquiries.
+                        </span>
+                      ) : (
+                        <span>
+                          When enabled, customers can report refund queries, missing settlements, or transaction reconciliation from the tracking modal via the generalized "Report Issue" dropdown menu. When disabled, this option is hidden from customer view.
+                        </span>
+                      )}
                     </span>
                   </div>
                 </label>

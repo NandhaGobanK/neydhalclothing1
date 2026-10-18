@@ -36,7 +36,7 @@ interface TrackOrderModalProps {
 }
 
 export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => {
-  const { orders, requestOrderCancellation, reportCustomerDeliveryIssue, settings } = useStore();
+  const { orders, requestOrderCancellation, reportCustomerDeliveryIssue, settings, lastPlacedOrder } = useStore();
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -44,6 +44,20 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
   // Direct Firestore fallback state in case real-time snapshot is still in-flight
   const [firestoreOrders, setFirestoreOrders] = useState<Order[]>([]);
   const [isSearchingFirestore, setIsSearchingFirestore] = useState(false);
+
+  // Customer placed orders list (stored on device) for instant 1-tap "My Orders" access
+  const customerSavedOrders = useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored: string[] = JSON.parse(localStorage.getItem('aara_customer_orders') || '[]');
+      if (lastPlacedOrder?.orderNumber && !stored.includes(lastPlacedOrder.orderNumber)) {
+        return [lastPlacedOrder.orderNumber, ...stored];
+      }
+      return stored;
+    } catch (e) {
+      return lastPlacedOrder ? [lastPlacedOrder.orderNumber] : [];
+    }
+  }, [lastPlacedOrder]);
 
   // Cancellation Request Form State
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
@@ -100,6 +114,13 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
         const cleaned = paramVal.trim();
         setQuery(cleaned);
         setSearchedQuery(cleaned);
+      } else {
+        // If opened without URL parameter (e.g. from My Orders bottom nav), automatically load customer's order
+        const fallback = lastPlacedOrder?.orderNumber || localStorage.getItem('aara_last_order') || '';
+        if (fallback) {
+          setQuery(fallback);
+          setSearchedQuery(fallback);
+        }
       }
     };
 
@@ -110,7 +131,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
       window.removeEventListener('hashchange', syncFromUrl);
       window.removeEventListener('popstate', syncFromUrl);
     };
-  }, []);
+  }, [lastPlacedOrder]);
 
   // Compute matched orders from local state
   const localMatchedOrders = useMemo(() => {
@@ -367,6 +388,29 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
           <p className="text-[11px] text-neutral-500 mt-2">
             Enter the exact order number or contact phone used during checkout.
           </p>
+
+          {customerSavedOrders.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap mt-2 pt-2 border-t border-neutral-100">
+              <span className="text-[11px] font-semibold text-neutral-600">Your Placed Orders:</span>
+              {customerSavedOrders.map((ordNum) => (
+                <button
+                  key={ordNum}
+                  type="button"
+                  onClick={() => {
+                    setQuery(ordNum);
+                    setSearchedQuery(ordNum);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
+                    searchedQuery.trim().toLowerCase() === ordNum.toLowerCase()
+                      ? 'bg-rose-900 text-white shadow-2xs'
+                      : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300'
+                  }`}
+                >
+                  #{ordNum}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Results Area */}
@@ -456,6 +500,64 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           {formatPrice(order.totalAmount)}
                         </p>
                       </div>
+                    </div>
+
+                    {/* Payment & Customer Refund UPI Section */}
+                    <div className={`grid gap-2.5 pt-1 text-xs ${
+                      settings.storefrontDisplay?.allowPublicRefunds !== false &&
+                      Boolean(order.refundDetails?.refundUpiId || order.refundDetails?.refundUpiPhone)
+                        ? 'grid-cols-1 sm:grid-cols-2'
+                        : 'grid-cols-1'
+                    }`}>
+                      <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200">
+                        <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                          Payment Transaction ID (UTR)
+                        </span>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <code className="font-mono font-bold text-neutral-900 text-xs">
+                            {order.upiTransactionId}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => copyText(order.upiTransactionId, `utr-${order.id}`)}
+                            className="p-1 text-neutral-500 hover:text-neutral-900 rounded cursor-pointer"
+                            title="Copy Payment UTR"
+                          >
+                            {copiedKey === `utr-${order.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Customer Refund UPI: COMPLETELY HIDDEN if admin disabled refund option in settings */}
+                      {settings.storefrontDisplay?.allowPublicRefunds !== false && (
+                        <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80">
+                          <span className="text-[10px] font-semibold text-emerald-800 uppercase tracking-wider block">
+                            Customer Refund UPI
+                          </span>
+                          {order.refundDetails?.refundUpiId ? (
+                            <div className="flex items-center justify-between mt-0.5">
+                              <code className="font-mono font-bold text-emerald-950 text-xs truncate">
+                                {order.refundDetails.refundUpiId}
+                              </code>
+                              {order.refundDetails.refundUpiPhone && (
+                                <span className="text-[10px] text-emerald-700 ml-1.5 shrink-0">
+                                  ({order.refundDetails.refundUpiPhone})
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-neutral-500 italic mt-0.5">
+                              {order.refundDetails?.refundUpiPhone
+                                ? `UPI Phone: ${order.refundDetails.refundUpiPhone}`
+                                : 'Not provided at checkout'}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Customer Cancellation Request Pending Notice (Only if not already Shipped/Delivered/Cancelled) */}
@@ -694,9 +796,13 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                               </button>
                             </div>
                           </div>
-                        ) : (
+                        ) : settings.storefrontDisplay?.allowPublicRefunds !== false ? (
                           <p className="text-[11px] text-neutral-600">
                             Our team is transferring the amount to your UPI ID ({order.refundDetails?.refundUpiId || 'your provided account'}). The Bank UTR will appear here once processed.
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-neutral-600">
+                            Our boutique concierge is handling your request. The settlement update will appear here once reviewed.
                           </p>
                         )}
                       </div>
@@ -1007,9 +1113,11 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-neutral-700 space-y-1">
                 <p>Order Reference: <strong>#{cancellingOrder.orderNumber}</strong></p>
                 <p>Total Paid Amount: <strong className="text-neutral-900 font-serif">{formatPrice(cancellingOrder.totalAmount)}</strong></p>
-                <p className="text-[11px] text-emerald-800 pt-1">
-                  100% refund will be deposited to your UPI ID: {cancellingOrder.refundDetails?.refundUpiId || 'account on file'}.
-                </p>
+                {settings.storefrontDisplay?.allowPublicRefunds !== false && (
+                  <p className="text-[11px] text-emerald-800 pt-1">
+                    100% refund will be deposited to your UPI ID: {cancellingOrder.refundDetails?.refundUpiId || 'account on file'}.
+                  </p>
+                )}
               </div>
 
               <div>

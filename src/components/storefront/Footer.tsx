@@ -188,32 +188,11 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions 
                 <button
                   type="button"
                   onClick={onOpenInstructions}
-                  className="hover:text-amber-300 text-amber-400/95 font-semibold transition inline-flex items-center gap-1.5 cursor-pointer text-left"
-                  title="Open Store Instructions"
-                >
-                  <BookOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Store Instructions & User Guide</span>
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={onOpenInstructions}
                   className="hover:text-white text-neutral-300 transition inline-flex items-center gap-1.5 cursor-pointer text-left"
                   title="Cross-platform PWA app installation"
                 >
                   <Download className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span>Install App (PC, Android & iOS)</span>
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => setIsTrackOrderOpen(true)}
-                  className="hover:text-white text-neutral-300 transition inline-flex items-center gap-1.5 cursor-pointer text-left"
-                >
-                  <Truck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Track Saree Consignment</span>
                 </button>
               </li>
 

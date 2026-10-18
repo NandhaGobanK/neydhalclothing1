@@ -103,7 +103,7 @@ export const OrderCancellationModal: React.FC<OrderCancellationModalProps> = ({
               <div>
                 <p className="font-bold">Public Cancellation Requests Disabled</p>
                 <p className="text-[11px] leading-relaxed">
-                  Direct online cancellations are currently disabled by boutique policy. Please contact our concierge team directly on WhatsApp for assistance with pending or confirmed orders.
+                  Direct online cancellations are currently disabled by boutique policy. Please contact our concierge team directly for assistance with pending or confirmed orders.
                 </p>
               </div>
             </div>
@@ -197,33 +197,26 @@ export const OrderCancellationModal: React.FC<OrderCancellationModalProps> = ({
               </div>
 
               {/* Policy note */}
-              <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-neutral-600 text-[11px] space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-neutral-800">
-                  <ShieldCheck className="w-4 h-4 text-amber-600" />
-                  <span>Boutique Refund Guarantee</span>
+              {settings.storefrontDisplay?.allowPublicRefunds !== false ? (
+                <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-neutral-600 text-[11px] space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-neutral-800">
+                    <ShieldCheck className="w-4 h-4 text-amber-600" />
+                    <span>Boutique Refund Guarantee</span>
+                  </div>
+                  <p>
+                    Orders that have not been dispatched can be cancelled immediately. Our team transfers 100% of the prepaid amount directly back to your registered UPI account and sends a bank UTR confirmation.
+                  </p>
                 </div>
-                <p>
-                  Orders that have not been dispatched can be cancelled immediately. Our team transfers 100% of the prepaid amount directly back to your registered UPI account and sends a bank UTR confirmation.
-                </p>
-              </div>
+              ) : null}
 
-              {/* Dual Action Buttons */}
-              <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Action Buttons */}
+              <div className="pt-2">
                 <button
                   type="submit"
                   className="w-full py-2.5 px-4 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs flex items-center justify-center gap-2 transition"
                 >
-                  <span>Submit to Boutique</span>
+                  <span>Submit Cancellation Request</span>
                   <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={(e) => handleSubmit(e, true)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-xs"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 fill-white" />
-                  <span>Request via WhatsApp</span>
                 </button>
               </div>
             </form>
@@ -239,29 +232,18 @@ export const OrderCancellationModal: React.FC<OrderCancellationModalProps> = ({
                   <span className="text-neutral-500">Order Value:</span>
                   <span className="font-bold text-neutral-900">{formatPrice(submittedOrder.totalAmount)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-neutral-500">Refund Target:</span>
-                  <span className="font-mono text-neutral-900">{submittedOrder.refundDetails?.refundUpiId || submittedOrder.customer.phone}</span>
-                </div>
+                {settings.storefrontDisplay?.allowPublicRefunds !== false && (
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Refund Target:</span>
+                    <span className="font-mono text-neutral-900">{submittedOrder.refundDetails?.refundUpiId || submittedOrder.customer.phone}</span>
+                  </div>
+                )}
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  onClick={() => {
-                    const finalReason = reasonCategory === 'Other Reason'
-                      ? customReason.trim() || 'Customer requested cancellation'
-                      : reasonCategory;
-                    const waMsg = formatWhatsAppCustomerCancellationRequest(submittedOrder, finalReason, settings);
-                    openWhatsApp(settings.contactPhone, waMsg);
-                  }}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition"
-                >
-                  <MessageSquare className="w-4 h-4 fill-white" />
-                  <span>Notify Concierge on WhatsApp</span>
-                </button>
+              <div className="flex gap-2">
                 <button
                   onClick={onClose}
-                  className="py-2.5 px-4 rounded-xl border border-neutral-300 text-neutral-700 font-semibold text-xs hover:bg-neutral-100 transition"
+                  className="w-full py-2.5 px-4 rounded-xl bg-neutral-900 text-white font-semibold text-xs hover:bg-neutral-800 transition"
                 >
                   Close
                 </button>

@@ -1,20 +1,31 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Home, Grid, Search, Heart, ShoppingBag, User } from 'lucide-react';
+import { Grid, Search, Heart, ShoppingBag, Package } from 'lucide-react';
 
 interface BottomNavBarProps {
   activeTab: 'categories' | 'search' | 'wishlist' | 'home';
   onTabChange: (tab: 'categories' | 'search' | 'wishlist') => void;
   onOpenCart: () => void;
   onOpenAccount?: () => void;
+  onOpenOrders?: () => void;
 }
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeTab,
   onTabChange,
   onOpenCart,
+  onOpenAccount,
+  onOpenOrders,
 }) => {
   const { cartCount, wishlist } = useStore();
+
+  const handleOrdersClick = () => {
+    if (onOpenOrders) {
+      onOpenOrders();
+    } else if (onOpenAccount) {
+      onOpenAccount();
+    }
+  };
 
   const navItems = [
     {
@@ -35,6 +46,12 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
       icon: Heart,
       badge: wishlist.length > 0 ? wishlist.length : undefined,
       action: () => onTabChange('wishlist'),
+    },
+    {
+      id: 'orders' as const,
+      label: 'My Orders',
+      icon: Package,
+      action: handleOrdersClick,
     },
   ];
 

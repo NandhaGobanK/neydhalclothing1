@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { formatPrice, openWhatsApp } from '../../utils/upi';
-import { CheckCircle2, MessageSquare, Printer, Copy, Check, ArrowRight, Truck } from 'lucide-react';
+import { formatPrice } from '../../utils/upi';
+import { CheckCircle2, Copy, Check, ArrowRight, Truck } from 'lucide-react';
 
 interface OrderSuccessModalProps {
   onClose: () => void;
@@ -19,10 +19,11 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
     setTimeout(() => setCopiedId(false), 2000);
   };
 
-  const handleWhatsAppChat = () => {
-    const text = `Namaste! Regarding my saree order #${lastPlacedOrder.orderNumber} placed for ${formatPrice(lastPlacedOrder.totalAmount)}. Transaction ID: ${lastPlacedOrder.upiTransactionId}.`;
-    openWhatsApp(settings.contactPhone, text);
-  };
+  const isRefundEnabled = settings.storefrontDisplay?.allowPublicRefunds !== false;
+  const hasRefundDetails = Boolean(
+    lastPlacedOrder.refundDetails?.refundUpiId || lastPlacedOrder.refundDetails?.refundUpiPhone
+  );
+  const showRefundUpi = isRefundEnabled && hasRefundDetails;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
@@ -43,7 +44,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
             <span>Reference: #{lastPlacedOrder.orderNumber}</span>
             <button
               onClick={handleCopyOrderId}
-              className="text-amber-300 hover:text-white transition"
+              className="text-amber-300 hover:text-white transition cursor-pointer"
               title="Copy Order ID"
             >
               {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -92,7 +93,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
           </div>
 
           {/* Payment & Refund Safeguard info */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className={`grid gap-3 ${showRefundUpi ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
               <span className="text-[11px] font-semibold text-neutral-500 uppercase">Payment Transaction UTR</span>
               <p className="font-mono text-xs font-bold text-neutral-900 mt-0.5 truncate">
@@ -101,13 +102,19 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
               <p className="text-[10px] text-emerald-700 mt-1">Status: Recorded for Verification</p>
             </div>
 
-            <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200/70">
-              <span className="text-[11px] font-semibold text-emerald-800 uppercase">Customer Refund UPI</span>
-              <p className="font-mono text-xs font-bold text-emerald-950 mt-0.5 truncate">
-                {lastPlacedOrder.refundDetails.refundUpiId}
-              </p>
-              <p className="text-[10px] text-emerald-700 mt-1">Phone: {lastPlacedOrder.refundDetails.refundUpiPhone}</p>
-            </div>
+            {showRefundUpi && (
+              <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200/70">
+                <span className="text-[11px] font-semibold text-emerald-800 uppercase">Customer Refund UPI</span>
+                {lastPlacedOrder.refundDetails.refundUpiId && (
+                  <p className="font-mono text-xs font-bold text-emerald-950 mt-0.5 truncate">
+                    {lastPlacedOrder.refundDetails.refundUpiId}
+                  </p>
+                )}
+                {lastPlacedOrder.refundDetails.refundUpiPhone && (
+                  <p className="text-[10px] text-emerald-700 mt-1">Phone: {lastPlacedOrder.refundDetails.refundUpiPhone}</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Shipping destination */}
@@ -124,28 +131,20 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
         {/* Actions */}
         <div className="p-4 sm:p-6 bg-neutral-50 border-t border-neutral-100 flex flex-col sm:flex-row gap-2.5">
           <button
-            onClick={handleWhatsAppChat}
-            className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-sm transition"
-          >
-            <MessageSquare className="w-4 h-4 fill-white" />
-            <span>Chat on WhatsApp</span>
-          </button>
-
-          <button
             onClick={() => {
               onClose();
               setIsTrackOrderOpen(true);
               window.location.hash = `track?order=${encodeURIComponent(lastPlacedOrder.orderNumber)}`;
             }}
-            className="py-3 px-4 rounded-xl border border-neutral-300 hover:border-neutral-900 bg-white text-neutral-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition"
+            className="flex-1 py-3 px-4 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
           >
-            <Truck className="w-3.5 h-3.5 text-amber-600" />
+            <Truck className="w-4 h-4 text-amber-300" />
             <span>Track Order Now</span>
           </button>
 
           <button
             onClick={onClose}
-            className="py-3 px-5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs flex items-center justify-center gap-2 transition"
+            className="py-3 px-5 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
           >
             <span>Back to Store</span>
             <ArrowRight className="w-3.5 h-3.5" />
