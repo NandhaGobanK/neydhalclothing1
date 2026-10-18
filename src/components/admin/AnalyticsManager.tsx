@@ -80,14 +80,16 @@ export const AnalyticsManager: React.FC = () => {
       }
     > = {};
 
-    products.forEach((p) => {
-      salesMap[p.id] = {
-        product: p,
-        unitsSold: 0,
-        revenue: 0,
-        orderCount: 0,
-      };
-    });
+    products
+      .filter((p) => p.isVisible !== false)
+      .forEach((p) => {
+        salesMap[p.id] = {
+          product: p,
+          unitsSold: 0,
+          revenue: 0,
+          orderCount: 0,
+        };
+      });
 
     orders.forEach((o) => {
       if (o.status !== 'Cancelled' && o.status !== 'Rejected') {

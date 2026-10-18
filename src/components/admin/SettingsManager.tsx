@@ -1960,24 +1960,30 @@ export const SettingsManager: React.FC = () => {
 
               <div className="pt-4 sm:pt-0">
                 {confirmReset ? (
-                  <div className="space-y-1.5 animate-in fade-in">
-                    <p className="text-[11px] font-bold text-rose-700">Restore factory catalog, stock & settings?</p>
-                    <div className="flex items-center gap-2">
+                  <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-950 space-y-2 animate-in fade-in">
+                    <p className="text-xs font-bold text-rose-900">
+                      ⚠️ Complete Application & Database Reset:
+                    </p>
+                    <p className="text-[11px] text-rose-800 leading-relaxed">
+                      This will permanently wipe all pre-filled demo data (all sarees/products, orders, customer disputes, buckets, logs, and reviews) from the database and bring the store down to a completely clean, pristine state ready for fresh live usage from scratch.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => {
-                          resetToInitialData();
+                        onClick={async () => {
+                          await resetToInitialData();
                           setConfirmReset(false);
                           setSavedSuccess(true);
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-rose-700 text-white hover:bg-rose-800 text-xs font-bold transition shadow-xs"
+                        className="px-3.5 py-1.5 rounded-xl bg-rose-700 text-white hover:bg-rose-800 text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5"
                       >
-                        Yes, Restore Defaults
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Yes, Wipe All & Reset to Brand New</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmReset(false)}
-                        className="px-2.5 py-1.5 rounded-xl border border-neutral-300 text-neutral-600 hover:bg-neutral-100 text-xs font-semibold"
+                        className="px-2.5 py-1.5 rounded-xl border border-neutral-300 text-neutral-600 hover:bg-neutral-100 text-xs font-semibold cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -1987,10 +1993,11 @@ export const SettingsManager: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setConfirmReset(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-300 text-rose-800 hover:bg-rose-50 text-xs font-semibold transition"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-rose-400 bg-white hover:bg-rose-50 text-rose-800 text-xs font-bold transition cursor-pointer shadow-xs"
+                    title="Completely clear and wipe all demo data for fresh live usage"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Restore Factory Catalog & State</span>
+                    <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Reset to Brand-New Setup (Fresh State)</span>
                   </button>
                 )}
               </div>

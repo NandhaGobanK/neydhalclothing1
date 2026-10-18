@@ -380,7 +380,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     price: 31000,
     originalPrice: 38000,
     stockStatus: 'in_stock',
-    stockCount: 2,
+    stockCount: 8,
     isVisible: true,
     images: [
       '/src/assets/images/saree_kanjivaram_crimson_1791651781402.jpg',

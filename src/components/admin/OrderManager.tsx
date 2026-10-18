@@ -46,6 +46,7 @@ import {
   Maximize2,
   Minimize2,
 } from 'lucide-react';
+import { OrderLiveChat } from '../common/OrderLiveChat';
 
 interface OrderManagerProps {
   onNavigateToTab?: (tab: string) => void;
@@ -151,6 +152,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
 
   // Editable Automated Message Dispatcher Modal (User Request)
   const [messageModalOrder, setMessageModalOrder] = useState<Order | null>(null);
+  const [liveChatOrder, setLiveChatOrder] = useState<Order | null>(null);
   const [messageModalStage, setMessageModalStage] = useState<OrderStatus>('Pending');
   const [messageModalText, setMessageModalText] = useState<string>('');
   const [messageModalCopied, setMessageModalCopied] = useState(false);
@@ -1594,8 +1596,25 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                       </div>
                     )}
 
-                    {/* Stage WhatsApp Update & Refund Buttons */}
+                    {/* Live Customer Chat & Stage WhatsApp Update Buttons */}
                     <div className="pt-2 border-t border-neutral-200 space-y-1.5">
+                      {/* Live Customer Chat Stream (User Request 3) */}
+                      <button
+                        type="button"
+                        onClick={() => setLiveChatOrder(order)}
+                        className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-2xs cursor-pointer"
+                        title="Chat in real time with customer regarding this order"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-white" />
+                        <span>
+                          Live Chat with Customer
+                          {order.chatMessages && order.chatMessages.length > 0 ? ` (${order.chatMessages.length})` : ''}
+                        </span>
+                        {order.chatMessages?.some((m) => !m.readByStaff && m.sender === 'customer') && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1" />
+                        )}
+                      </button>
+
                       {/* 1-Click WhatsApp Stage Update (Prompt request: Order should be updated to users on each stage via WhatsApp) */}
                       <button
                         onClick={() => handleSendStageWhatsApp(order)}
@@ -2534,6 +2553,43 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live Order Chat Modal for Staff/Admin (User Request 3) */}
+      {liveChatOrder && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto">
+            <div className="p-4 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  <MessageSquare className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Customer Live Chat · #{liveChatOrder.orderNumber}
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Customer: {liveChatOrder.customer.name} ({liveChatOrder.customer.phone})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setLiveChatOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <OrderLiveChat
+                order={orders.find((o) => o.id === liveChatOrder.id) || liveChatOrder}
+                mode="admin"
+                title={`Order #${liveChatOrder.orderNumber} Live Chat`}
+              />
             </div>
           </div>
         </div>

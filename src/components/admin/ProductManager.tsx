@@ -403,6 +403,14 @@ export const ProductManager: React.FC = () => {
       return;
     }
 
+    const finalCount = Number(stockCount);
+    const finalStatus: 'in_stock' | 'limited' | 'out_of_stock' =
+      finalCount <= 0
+        ? 'out_of_stock'
+        : finalCount <= 5
+        ? 'limited'
+        : 'in_stock';
+
     const payload = {
       productCode: finalSku,
       title: title.trim(),
@@ -412,8 +420,8 @@ export const ProductManager: React.FC = () => {
       color: finalColor as SareeColor,
       price: Number(price),
       originalPrice: Number(originalPrice) || undefined,
-      stockStatus,
-      stockCount: Number(stockCount),
+      stockStatus: finalStatus,
+      stockCount: finalCount,
       isVisible,
       images: images.length > 0 ? images : ['/src/assets/images/hero_saree_atelier_1791651761357.jpg'],
       videoUrl: videoUrl.trim() || undefined,
@@ -443,17 +451,28 @@ export const ProductManager: React.FC = () => {
 
   const canEditProducts = currentPermissions?.products?.canEdit !== false;
 
+  const LOW_STOCK_THRESHOLD = 5;
+
   // Identify low stock and out-of-stock items to notify admins and staff
+  // When stock is added above threshold (> 5 pieces), alerts correctly clear and disappear for ALL products (including the 6th product and beyond)
   const lowStockProducts = useMemo(() => {
-    return products.filter(
-      (p) => p.stockStatus === 'limited' || (p.stockCount !== undefined && p.stockCount > 0 && p.stockCount <= 3)
-    );
+    return products.filter((p) => {
+      if (p.isVisible === false) return false;
+      const rawCount = p.stockCount !== undefined && p.stockCount !== null ? Number(p.stockCount) : 0;
+      const count = isNaN(rawCount) ? 0 : Math.max(0, Math.floor(rawCount));
+      // If stock is above threshold (e.g. above 5 pieces), it is NEVER low stock
+      if (count > LOW_STOCK_THRESHOLD) return false;
+      return count > 0 && count <= LOW_STOCK_THRESHOLD;
+    });
   }, [products]);
 
   const outOfStockProducts = useMemo(() => {
-    return products.filter(
-      (p) => p.stockStatus === 'out_of_stock' || (p.stockCount !== undefined && p.stockCount <= 0)
-    );
+    return products.filter((p) => {
+      if (p.isVisible === false) return false;
+      const rawCount = p.stockCount !== undefined && p.stockCount !== null ? Number(p.stockCount) : 0;
+      const count = isNaN(rawCount) ? 0 : Math.max(0, Math.floor(rawCount));
+      return count <= 0;
+    });
   }, [products]);
 
   const filteredProducts = useMemo(() => {
@@ -505,13 +524,28 @@ export const ProductManager: React.FC = () => {
                   </div>
                 </div>
                 {canEditProducts && (
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(p)}
-                    className="ml-2 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] shrink-0 transition"
-                  >
-                    Restock Now
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateProduct(p.id, {
+                          stockCount: 10,
+                          stockStatus: 'in_stock',
+                        });
+                      }}
+                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition shadow-2xs"
+                      title="Instantly set stock to 10 units (above threshold) and clear alert"
+                    >
+                      +10 In Stock
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(p)}
+                      className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] transition"
+                    >
+                      Restock Now
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -531,13 +565,28 @@ export const ProductManager: React.FC = () => {
                   </div>
                 </div>
                 {canEditProducts && (
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(p)}
-                    className="ml-2 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] shrink-0 transition"
-                  >
-                    Restock
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateProduct(p.id, {
+                          stockCount: (p.stockCount || 0) + 10,
+                          stockStatus: 'in_stock',
+                        });
+                      }}
+                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition shadow-2xs"
+                      title="Instantly add +10 units (bumping above threshold) to clear alert"
+                    >
+                      +10 Units
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(p)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] transition"
+                    >
+                      Restock
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

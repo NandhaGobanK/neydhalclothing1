@@ -5,6 +5,12 @@ import { formatPrice, openWhatsApp, formatWhatsAppCustomerCancellationRequest } 
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../utils/firebase';
 import {
+  getActiveDisputeRedressals,
+  isCustomerReportIssueVisible,
+  DISPUTE_REDRESSALS,
+} from '../../utils/disputeRedressals';
+import { OrderLiveChat } from '../common/OrderLiveChat';
+import {
   Search,
   X,
   Package,
@@ -53,10 +59,11 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
   );
   const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
   const [issueFeedback, setIssueFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [expandedChatOrderId, setExpandedChatOrderId] = useState<string | null>(null);
 
-  const isDeliveryDisputeEnabled = settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false;
-  const isRefundDisputeEnabled = settings.storefrontDisplay?.allowCustomerRefundDisputes !== false;
-  const canReportAnyIssue = isDeliveryDisputeEnabled || isRefundDisputeEnabled;
+  // Dynamic dispute redressal options based on admin configuration (Conditional Visibility & Extensibility)
+  const activeRedressals = useMemo(() => getActiveDisputeRedressals(settings), [settings]);
+  const canReportAnyIssue = activeRedressals.length > 0;
 
   // Check URL params if present (e.g. ?order=AARA-1082, #track?order=AARA-1082, ?track=AARA-1082)
   useEffect(() => {
@@ -776,27 +783,22 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           )
                         ) : null}
 
-                        {/* Generalized Customer Issue Reporting Button with Dropdown (User Request 2) */}
+                        {/* Dynamic Customer Issue Reporting Option with Extensible Redressal Categories */}
                         {canReportAnyIssue && !order.deliveryIssue?.reported && (
                           <div className="relative inline-block text-left">
                             <button
                               type="button"
                               onClick={() => {
-                                if (isDeliveryDisputeEnabled && isRefundDisputeEnabled) {
+                                if (activeRedressals.length > 1) {
                                   setOpenIssueDropdownOrderId(
                                     openIssueDropdownOrderId === order.id ? null : order.id
                                   );
-                                } else if (isDeliveryDisputeEnabled) {
+                                } else if (activeRedressals.length === 1) {
+                                  const singleOption = activeRedressals[0];
                                   setReportingIssueOrder(order);
-                                  setReportingIssueType('delivery');
+                                  setReportingIssueType(singleOption.type as any);
                                   setIssueDescription(
-                                    `Courier tracking shows ${order.status}, but I have not received this parcel at my address.`
-                                  );
-                                } else if (isRefundDisputeEnabled) {
-                                  setReportingIssueOrder(order);
-                                  setReportingIssueType('refund');
-                                  setIssueDescription(
-                                    `I have an inquiry regarding my refund settlement for order #${order.orderNumber}.`
+                                    singleOption.defaultNote(order.orderNumber, order.status)
                                   );
                                 }
                               }}
@@ -805,84 +807,114 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                             >
                               <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
                               <span>Report Issue</span>
-                              {isDeliveryDisputeEnabled && isRefundDisputeEnabled && (
-                                <ChevronDown className="w-3 h-3 text-rose-700" />
+                              {activeRedressals.length > 1 && (
+                                <ChevronDown className={`w-3 h-3 text-rose-700 transition-transform ${openIssueDropdownOrderId === order.id ? 'rotate-180' : ''}`} />
                               )}
                             </button>
 
-                            {/* Conditional Dropdown Menu based on Admin Settings */}
-                            {openIssueDropdownOrderId === order.id &&
-                              isDeliveryDisputeEnabled &&
-                              isRefundDisputeEnabled && (
-                                <div className="absolute left-0 mt-1.5 w-64 rounded-2xl bg-white border border-neutral-200 shadow-xl z-30 p-1.5 animate-in fade-in zoom-in-95 duration-150">
-                                  <div className="px-2.5 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider border-b border-neutral-100 mb-1">
-                                    Select Issue Category
-                                  </div>
+                            {/* Click-away backdrop */}
+                            {openIssueDropdownOrderId === order.id && (
+                              <div
+                                className="fixed inset-0 z-20"
+                                onClick={() => setOpenIssueDropdownOrderId(null)}
+                              />
+                            )}
 
-                                  {/* Option 1: Delivery-Related Issues */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setOpenIssueDropdownOrderId(null);
-                                      setReportingIssueOrder(order);
-                                      setReportingIssueType('delivery');
-                                      setIssueDescription(
-                                        `Courier tracking shows ${order.status}, but I have not received this parcel at my address.`
-                                      );
-                                    }}
-                                    className="w-full text-left p-2 rounded-xl hover:bg-rose-50 text-neutral-800 hover:text-rose-900 transition flex items-start gap-2 cursor-pointer group"
-                                  >
-                                    <Truck className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                                    <div>
-                                      <p className="font-bold text-xs text-neutral-900 group-hover:text-rose-900">
-                                        Delivery-Related Issue
-                                      </p>
-                                      <p className="text-[10px] text-neutral-500 leading-snug">
-                                        Parcel marked delivered but not received, or transit delay.
-                                      </p>
-                                    </div>
-                                  </button>
-
-                                  {/* Option 2: Refund-Related Issues */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setOpenIssueDropdownOrderId(null);
-                                      setReportingIssueOrder(order);
-                                      setReportingIssueType('refund');
-                                      setIssueDescription(
-                                        `I have an inquiry regarding my refund settlement for order #${order.orderNumber}.`
-                                      );
-                                    }}
-                                    className="w-full text-left p-2 rounded-xl hover:bg-amber-50 text-neutral-800 hover:text-amber-900 transition flex items-start gap-2 cursor-pointer group"
-                                  >
-                                    <RotateCcw className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                                    <div>
-                                      <p className="font-bold text-xs text-neutral-900 group-hover:text-amber-900">
-                                        Refund-Related Issue
-                                      </p>
-                                      <p className="text-[10px] text-neutral-500 leading-snug">
-                                        Cancelled order refund status, UPI account, or bank UTR query.
-                                      </p>
-                                    </div>
-                                  </button>
+                            {/* Conditional Dropdown Menu dynamically rendered for all enabled redressals */}
+                            {openIssueDropdownOrderId === order.id && activeRedressals.length > 1 && (
+                              <div className="absolute left-0 bottom-full mb-1.5 sm:bottom-auto sm:top-full sm:mt-1.5 w-72 rounded-2xl bg-white border border-neutral-200 shadow-xl z-30 p-1.5 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="px-2.5 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider border-b border-neutral-100 mb-1">
+                                  Select Issue Category
                                 </div>
-                              )}
+
+                                {activeRedressals.map((redressal) => (
+                                  <button
+                                    key={redressal.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenIssueDropdownOrderId(null);
+                                      setReportingIssueOrder(order);
+                                      setReportingIssueType(redressal.type as any);
+                                      setIssueDescription(
+                                        redressal.defaultNote(order.orderNumber, order.status)
+                                      );
+                                    }}
+                                    className="w-full text-left p-2.5 rounded-xl hover:bg-rose-50 text-neutral-800 hover:text-rose-900 transition flex items-start gap-2.5 cursor-pointer group"
+                                  >
+                                    <div className="p-1.5 rounded-lg bg-neutral-100 group-hover:bg-rose-100 shrink-0 mt-0.5">
+                                      {redressal.iconType === 'truck' ? (
+                                        <Truck className="w-4 h-4 text-rose-600" />
+                                      ) : redressal.iconType === 'refund' ? (
+                                        <RotateCcw className="w-4 h-4 text-amber-600" />
+                                      ) : (
+                                        <AlertCircle className="w-4 h-4 text-rose-600" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-xs text-neutral-900 group-hover:text-rose-900 leading-tight">
+                                        {redressal.title}
+                                      </p>
+                                      <p className="text-[10px] text-neutral-500 group-hover:text-neutral-700 leading-snug mt-0.5">
+                                        {redressal.description}
+                                      </p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
 
-                      <button
-                        onClick={() => {
-                          const text = `Namaste! Regarding my saree order #${order.orderNumber} for ${formatPrice(order.totalAmount)}. Status: ${order.status}.`;
-                          openWhatsApp(settings.contactPhone, text);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition ml-auto cursor-pointer"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 fill-white" />
-                        <span>Chat with Boutique Concierge</span>
-                      </button>
+                      <div className="flex items-center gap-2 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedChatOrderId(
+                              expandedChatOrderId === order.id ? null : order.id
+                            )
+                          }
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs ${
+                            expandedChatOrderId === order.id
+                              ? 'bg-amber-700 text-white'
+                              : 'bg-amber-600 hover:bg-amber-500 text-white'
+                          }`}
+                          title="Open live chat to message concierge staff regarding this order"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 fill-white" />
+                          <span>
+                            {expandedChatOrderId === order.id ? 'Close Live Chat' : 'Live Concierge Chat'}
+                            {order.chatMessages && order.chatMessages.length > 0
+                              ? ` (${order.chatMessages.length})`
+                              : ''}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const text = `Namaste! Regarding my saree order #${order.orderNumber} for ${formatPrice(order.totalAmount)}. Status: ${order.status}.`;
+                            openWhatsApp(settings.contactPhone, text);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-medium text-xs transition cursor-pointer"
+                          title="Chat on WhatsApp"
+                        >
+                          <span>WhatsApp</span>
+                          <ExternalLink className="w-3 h-3 text-neutral-400" />
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Live Customer Chat Stream Box (User Request 3) */}
+                    {expandedChatOrderId === order.id && (
+                      <div className="mt-3 pt-3 border-t border-neutral-200 animate-in fade-in duration-200">
+                        <OrderLiveChat
+                          order={order}
+                          mode="customer"
+                          title={`Concierge Chat · Order #${order.orderNumber}`}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1055,6 +1087,35 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                   Destination: {reportingIssueOrder.customer.address}, {reportingIssueOrder.customer.city} - {reportingIssueOrder.customer.pincode}
                 </p>
               </div>
+
+              {/* Dynamic Dispute Category Dropdown in Form */}
+              {activeRedressals.length > 1 && (
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Dispute Redressal Category *
+                  </label>
+                  <select
+                    value={reportingIssueType}
+                    onChange={(e) => {
+                      const newType = e.target.value as 'delivery' | 'refund';
+                      setReportingIssueType(newType);
+                      const matched = activeRedressals.find((r) => r.type === newType);
+                      if (matched) {
+                        setIssueDescription(
+                          matched.defaultNote(reportingIssueOrder.orderNumber, reportingIssueOrder.status)
+                        );
+                      }
+                    }}
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-semibold focus:outline-hidden focus:border-rose-500 cursor-pointer text-xs"
+                  >
+                    {activeRedressals.map((r) => (
+                      <option key={r.id} value={r.type}>
+                        {r.title} ({r.badgeLabel})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">

@@ -50,6 +50,9 @@ export interface Product {
   occasion: string;
   isFeatured?: boolean;
   createdAt: string;
+  skuEditCount?: number; // Count of SKU modifications (maximum 1 allowed)
+  isSkuLocked?: boolean; // True once edited one time; locks SKU permanently
+  initialSku?: string; // Original SKU stored upon creation for comparison
 }
 
 export interface ProductReview {
@@ -219,6 +222,17 @@ export interface OrderStatusChatTemplates {
   refunded: string;
 }
 
+export interface OrderChatMessage {
+  id: string;
+  sender: 'customer' | 'staff' | 'admin';
+  senderName: string;
+  senderId?: string;
+  message: string;
+  timestamp: string;
+  readByCustomer?: boolean;
+  readByStaff?: boolean;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -253,6 +267,7 @@ export interface Order {
   assignedAt?: string; // Dedicated timestamp when order claimed/assigned to staff
   claimedAt?: string;
   deliveryIssue?: CustomerDeliveryIssue; // Customer delivery non-receipt report / dispute
+  chatMessages?: OrderChatMessage[]; // Direct real-time chat between customer and staff
 }
 
 export type ThemeMode = 'light' | 'dark';

@@ -14,6 +14,7 @@ import {
   CustomerDeliveryIssue,
   CourierService,
   LoginPunchRecord,
+  OrderChatMessage,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -42,6 +43,10 @@ import {
   sanitizeForFirestore,
   testFirestoreConnection,
 } from '../utils/firebase';
+import {
+  isCustomerReportIssueVisible,
+  isDisputeRedressalEnabled,
+} from '../utils/disputeRedressals';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'aara_boutique_products_v3',
@@ -147,6 +152,12 @@ interface StoreContextType {
     author?: string,
     newStatus?: 'investigating' | 'open'
   ) => Promise<void>;
+  sendOrderChatMessage: (
+    orderId: string,
+    message: string,
+    sender: 'customer' | 'staff' | 'admin',
+    senderName: string
+  ) => Promise<{ success: boolean; message: string }>;
 
   // Courier Services Management
   addCourierService: (courier: Omit<CourierService, 'id'>) => Promise<void>;
@@ -239,10 +250,77 @@ function saveToStorage<T>(key: string, data: T) {
   }
 }
 
+const STORE_DATA_VERSION = 'neydhal_brand_new_v3_2026';
+
+// Automatic fresh state initialization: cleans out old test artifacts so app runs as a brand-new setup
+if (typeof window !== 'undefined') {
+  try {
+    const currentVersion = localStorage.getItem('neydhal_data_version');
+    if (currentVersion !== STORE_DATA_VERSION) {
+      localStorage.clear();
+      localStorage.setItem('neydhal_data_version', STORE_DATA_VERSION);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const DELETED_PRODUCT_IDS_KEY = 'neydhal_deleted_product_ids';
+const getDeletedProductIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(DELETED_PRODUCT_IDS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+const markProductAsDeleted = (id: string) => {
+  try {
+    const current = getDeletedProductIds();
+    current.add(id);
+    localStorage.setItem(DELETED_PRODUCT_IDS_KEY, JSON.stringify(Array.from(current)));
+  } catch {}
+};
+const unmarkProductAsDeleted = (id: string) => {
+  try {
+    const current = getDeletedProductIds();
+    current.delete(id);
+    localStorage.setItem(DELETED_PRODUCT_IDS_KEY, JSON.stringify(Array.from(current)));
+  } catch {}
+};
+const clearDeletedProductIds = () => {
+  try {
+    localStorage.removeItem(DELETED_PRODUCT_IDS_KEY);
+  } catch {}
+};
+
+export const LOW_STOCK_THRESHOLD = 5;
+
+export const normalizeProductStock = (product: Product): Product => {
+  const rawCount = product.stockCount !== undefined && product.stockCount !== null ? Number(product.stockCount) : 0;
+  const count = isNaN(rawCount) ? 0 : Math.max(0, Math.floor(rawCount));
+  let status: 'in_stock' | 'limited' | 'out_of_stock';
+  if (count <= 0) {
+    status = 'out_of_stock';
+  } else if (count <= LOW_STOCK_THRESHOLD) {
+    status = 'limited';
+  } else {
+    // If stock count is above threshold (> 5 pieces), stockStatus is strictly 'in_stock'
+    status = 'in_stock';
+  }
+  return {
+    ...product,
+    stockCount: count,
+    stockStatus: status,
+  };
+};
+
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>(() => {
+    const deletedIds = getDeletedProductIds();
     const stored = loadFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
-    return stored && stored.length > 0 ? stored : INITIAL_PRODUCTS;
+    const source = stored && Array.isArray(stored) ? stored : INITIAL_PRODUCTS;
+    return source.filter((p) => !deletedIds.has(p.id)).map(normalizeProductStock);
   });
 
   const [orders, setOrders] = useState<Order[]>(() =>
@@ -289,6 +367,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         ...loaded.storefrontDisplay,
         allowPublicCancellation: loaded.storefrontDisplay?.allowPublicCancellation ?? true,
         allowPublicRefunds: loaded.storefrontDisplay?.allowPublicRefunds ?? true,
+        allowCustomerDeliveryDisputes: loaded.storefrontDisplay?.allowCustomerDeliveryDisputes ?? true,
+        allowCustomerRefundDisputes: loaded.storefrontDisplay?.allowCustomerRefundDisputes ?? true,
       },
     };
     if (updated && (updated.adminPin === '889900' || !updated.adminPin)) {
@@ -376,20 +456,34 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const unsub = onSnapshot(
       collection(db, 'products'),
       (snapshot) => {
+        const deletedIds = getDeletedProductIds();
         if (!snapshot.empty) {
           const list: Product[] = [];
           snapshot.forEach((d) => {
-            list.push({ id: d.id, ...d.data() } as Product);
+            if (deletedIds.has(d.id)) {
+              // Ensure deleted in Firestore if it existed
+              deleteDoc(doc(db, 'products', d.id)).catch(() => {});
+              return;
+            }
+            list.push(normalizeProductStock({ id: d.id, ...d.data() } as Product));
           });
           setProducts(list);
+          saveToStorage(STORAGE_KEYS.PRODUCTS, list);
         } else if (!isSeeding) {
-          isSeeding = true;
-          // Initial bootstrap: seed initial boutique products to Firestore
-          Promise.all(
-            INITIAL_PRODUCTS.map((p) =>
-              setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))
-            )
-          ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'products'));
+          const alreadyInitialized = localStorage.getItem('neydhal_products_initialized');
+          if (!alreadyInitialized) {
+            isSeeding = true;
+            localStorage.setItem('neydhal_products_initialized', 'true');
+            // Initial bootstrap: seed initial boutique products to Firestore
+            Promise.all(
+              INITIAL_PRODUCTS.map((p) =>
+                setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))
+              )
+            ).catch((err) => handleFirestoreError(err, OperationType.WRITE, 'products'));
+          } else {
+            setProducts([]);
+            saveToStorage(STORAGE_KEYS.PRODUCTS, []);
+          }
         }
       },
       (error) => {
@@ -702,15 +796,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Product management (Manual product code entered by admin)
   const addProduct = (productData: Omit<Product, 'id' | 'createdAt'>): Product => {
-    const manualSku = productData.productCode?.trim() || '';
+    const manualSku = productData.productCode?.trim().toUpperCase() || '';
 
-    const newProduct: Product = {
+    const newProduct: Product = normalizeProductStock({
       ...productData,
       productCode: manualSku,
+      initialSku: manualSku,
+      skuEditCount: 0,
+      isSkuLocked: false,
       id: `saree-${Date.now()}`,
       createdAt: new Date().toISOString(),
-    };
-    setProducts((prev) => [newProduct, ...prev]);
+    });
+    unmarkProductAsDeleted(newProduct.id);
+    setProducts((prev) => {
+      const next = [newProduct, ...prev];
+      saveToStorage(STORAGE_KEYS.PRODUCTS, next);
+      return next;
+    });
 
     // Persist to Firestore
     setDoc(doc(db, 'products', newProduct.id), sanitizeForFirestore(newProduct)).catch((err) =>
@@ -722,14 +824,35 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const updateProduct = (id: string, updates: Partial<Product>) => {
     const existingProd = products.find((p) => p.id === id);
+    const sanitizedUpdates = { ...updates };
+
+    // SKU One-Time Edit Lock Validation & Permanent Locking
+    if (sanitizedUpdates.productCode !== undefined && existingProd) {
+      const cleanNewSku = sanitizedUpdates.productCode.trim().toUpperCase();
+      const currentSku = existingProd.productCode.trim().toUpperCase();
+      if (cleanNewSku !== currentSku) {
+        if (existingProd.isSkuLocked || (existingProd.skuEditCount || 0) >= 1) {
+          // Reject SKU change if already edited once and locked
+          console.warn(`Product SKU for ${id} is permanently locked. Reverting to original ${currentSku}.`);
+          sanitizedUpdates.productCode = existingProd.productCode;
+        } else {
+          // First and only edit allowed: permanently lock after this edit
+          sanitizedUpdates.productCode = cleanNewSku;
+          sanitizedUpdates.skuEditCount = (existingProd.skuEditCount || 0) + 1;
+          sanitizedUpdates.isSkuLocked = true;
+          sanitizedUpdates.initialSku = existingProd.initialSku || currentSku;
+        }
+      }
+    }
+
     const wasOutOfStock = existingProd && (existingProd.stockStatus === 'out_of_stock' || existingProd.stockCount <= 0);
     const willBeRestocked =
-      (updates.stockStatus === 'in_stock' || updates.stockStatus === 'limited') &&
-      ((updates.stockCount !== undefined && updates.stockCount > 0) || (existingProd && existingProd.stockCount > 0));
+      (sanitizedUpdates.stockStatus === 'in_stock' || sanitizedUpdates.stockStatus === 'limited') &&
+      ((sanitizedUpdates.stockCount !== undefined && sanitizedUpdates.stockCount > 0) || (existingProd && existingProd.stockCount > 0));
 
     // If restocked, automatically announce on the public store front like a notification to customers
     if (wasOutOfStock && willBeRestocked && existingProd) {
-      const restockedTitle = updates.title || existingProd.title;
+      const restockedTitle = sanitizedUpdates.title || existingProd.title;
       const announcementMsg = `✨ Back in Stock: "${restockedTitle}" has been restocked and is now available for ordering!`;
       updateSettings({
         announcement: {
@@ -740,20 +863,36 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
     }
 
-    setProducts((prev) =>
-      prev.map((prod) => (prod.id === id ? { ...prod, ...updates } : prod))
-    );
+    setProducts((prev) => {
+      const next = prev.map((prod) => (prod.id === id ? normalizeProductStock({ ...prod, ...sanitizedUpdates }) : prod));
+      saveToStorage(STORAGE_KEYS.PRODUCTS, next);
+      return next;
+    });
     if (activeProductModal && activeProductModal.id === id) {
-      setActiveProductModal((prev) => (prev ? { ...prev, ...updates } : null));
+      setActiveProductModal((prev) => (prev ? normalizeProductStock({ ...prev, ...sanitizedUpdates }) : null));
     }
 
-    // Persist to Firestore
-    updateDoc(doc(db, 'products', id), sanitizeForFirestore(updates)).catch((err) =>
+    // Derive correct stockStatus for Firestore persistence
+    if (sanitizedUpdates.stockCount !== undefined && sanitizedUpdates.stockCount !== null) {
+      const parsed = Number(sanitizedUpdates.stockCount);
+      const safeCount = isNaN(parsed) ? 0 : Math.max(0, Math.floor(parsed));
+      sanitizedUpdates.stockCount = safeCount;
+      sanitizedUpdates.stockStatus =
+        safeCount <= 0
+          ? 'out_of_stock'
+          : safeCount <= LOW_STOCK_THRESHOLD
+          ? 'limited'
+          : 'in_stock';
+    }
+
+    // Persist to Firestore with merge to guarantee document is saved
+    setDoc(doc(db, 'products', id), sanitizeForFirestore(sanitizedUpdates), { merge: true }).catch((err) =>
       handleFirestoreError(err, OperationType.UPDATE, `products/${id}`)
     );
   };
 
   const deleteProduct = (id: string) => {
+    markProductAsDeleted(id);
     setProducts((prev) => {
       const next = prev.filter((p) => p.id !== id);
       saveToStorage(STORAGE_KEYS.PRODUCTS, next);
@@ -768,7 +907,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setActiveProductModal(null);
     }
 
-    // Delete from Firestore
+    // Permanently delete from Firestore
     deleteDoc(doc(db, 'products', id)).catch((err) =>
       handleFirestoreError(err, OperationType.DELETE, `products/${id}`)
     );
@@ -778,12 +917,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const target = products.find((p) => p.id === id);
     if (!target) return;
     const nextVis = !target.isVisible;
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, isVisible: nextVis } : p))
-    );
+    setProducts((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, isVisible: nextVis } : p));
+      saveToStorage(STORAGE_KEYS.PRODUCTS, next);
+      return next;
+    });
 
-    // Update in Firestore
-    updateDoc(doc(db, 'products', id), { isVisible: nextVis }).catch((err) =>
+    // Update in Firestore with setDoc merge: true to guarantee permanence across refreshes
+    setDoc(doc(db, 'products', id), { isVisible: nextVis }, { merge: true }).catch((err) =>
       handleFirestoreError(err, OperationType.UPDATE, `products/${id}`)
     );
   };
@@ -1563,17 +1704,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     issueDescription: string,
     issueType: 'delivery' | 'refund' = 'delivery'
   ): Promise<{ success: boolean; message: string }> => {
-    if (issueType === 'delivery' && settings.storefrontDisplay?.allowCustomerDeliveryDisputes === false) {
+    if (!isCustomerReportIssueVisible(settings)) {
       return {
         success: false,
-        message: 'Delivery issue reporting is currently disabled on the boutique storefront. Please contact concierge on WhatsApp.',
+        message: 'Customer issue reporting is currently disabled by store administration.',
       };
     }
 
-    if (issueType === 'refund' && settings.storefrontDisplay?.allowCustomerRefundDisputes === false) {
+    if (!isDisputeRedressalEnabled(issueType, settings)) {
       return {
         success: false,
-        message: 'Refund issue reporting is currently disabled on the boutique storefront. Please contact concierge on WhatsApp.',
+        message: `${issueType === 'refund' ? 'Refund' : issueType === 'delivery' ? 'Delivery' : issueType} issue reporting is currently disabled on the boutique storefront. Please contact concierge on WhatsApp.`,
       };
     }
 
@@ -1789,6 +1930,56 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  // Live Chat: Real-time messaging between Customer Tracking and Admin/Staff Backend
+  const sendOrderChatMessage = async (
+    orderId: string,
+    messageText: string,
+    sender: 'customer' | 'staff' | 'admin',
+    senderName: string
+  ): Promise<{ success: boolean; message: string }> => {
+    const cleanMsg = messageText.trim();
+    if (!cleanMsg) return { success: false, message: 'Message text cannot be empty' };
+
+    const targetOrder = orders.find(
+      (o) => o.id === orderId || o.orderNumber.toUpperCase() === orderId.trim().toUpperCase()
+    );
+    if (!targetOrder) return { success: false, message: 'Order reference not found' };
+
+    const newMessage: OrderChatMessage = {
+      id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      sender,
+      senderName,
+      senderId: currentUser?.staffId || (sender === 'admin' ? 'admin' : undefined),
+      message: cleanMsg,
+      timestamp: new Date().toISOString(),
+      readByCustomer: sender === 'customer',
+      readByStaff: sender !== 'customer',
+    };
+
+    const updatedMessages = [...(targetOrder.chatMessages || []), newMessage];
+
+    setOrders((prev) => {
+      const next = prev.map((ord) =>
+        ord.id === targetOrder.id ? { ...ord, chatMessages: updatedMessages } : ord
+      );
+      saveToStorage(STORAGE_KEYS.ORDERS, next);
+      return next;
+    });
+
+    // Real-time Firestore sync
+    try {
+      await setDoc(
+        doc(db, 'orders', targetOrder.id),
+        sanitizeForFirestore({ chatMessages: updatedMessages }),
+        { merge: true }
+      );
+      return { success: true, message: 'Message sent successfully' };
+    } catch (err: any) {
+      console.warn('Firestore live chat sync notice:', err);
+      return { success: true, message: 'Message sent locally' };
+    }
+  };
+
   // Courier Services CRUD
   const addCourierService = async (courier: Omit<CourierService, 'id'>): Promise<void> => {
     const newCourier: CourierService = {
@@ -1909,8 +2100,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const resetToInitialData = async () => {
-    setProducts(INITIAL_PRODUCTS);
-    setOrders(INITIAL_ORDERS);
+    clearDeletedProductIds();
+    setProducts([]);
+    setOrders([]);
     setSettings(INITIAL_SETTINGS);
     setCart([]);
     setCurrentUser(null);
@@ -1918,28 +2110,30 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     try {
       localStorage.clear();
-      saveToStorage(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
-      saveToStorage(STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
+      saveToStorage(STORAGE_KEYS.PRODUCTS, []);
+      saveToStorage(STORAGE_KEYS.ORDERS, []);
       saveToStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
       saveToStorage(STORAGE_KEYS.CART, []);
       saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
+      localStorage.setItem('neydhal_products_initialized', 'true');
     } catch {
       // ignore storage clear error
     }
 
     try {
-      // 1. Sync initial catalog products to Firestore
-      await Promise.all(
-        INITIAL_PRODUCTS.map((p) =>
-          setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))
-        )
-      );
+      // 1. Wipe all existing products from Firestore
+      const existingProductsSnap = await getDocs(collection(db, 'products'));
+      await Promise.all(existingProductsSnap.docs.map((d) => deleteDoc(d.ref)));
 
-      // 2. Remove old orders from Firestore
+      // 2. Wipe all old orders from Firestore
       const ordersSnap = await getDocs(collection(db, 'orders'));
       await Promise.all(ordersSnap.docs.map((d) => deleteDoc(d.ref)));
 
-      // 3. Reset settings to store_config in Firestore
+      // 3. Wipe all customer reviews from Firestore
+      const reviewsSnap = await getDocs(collection(db, 'reviews'));
+      await Promise.all(reviewsSnap.docs.map((d) => deleteDoc(d.ref)));
+
+      // 4. Reset store settings to clean store_config in Firestore
       await setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore(INITIAL_SETTINGS));
     } catch (err) {
       console.warn('Firestore reset sync note:', err);
@@ -2411,6 +2605,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         reportCustomerIssue,
         resolveDeliveryIssue,
         addInvestigationComment,
+        sendOrderChatMessage,
         addCourierService,
         updateCourierService,
         deleteCourierService,

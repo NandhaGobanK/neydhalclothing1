@@ -24,7 +24,9 @@ import {
   Send,
   Layers,
   Sparkles,
+  X,
 } from 'lucide-react';
+import { OrderLiveChat } from '../common/OrderLiveChat';
 
 interface CustomerIssuesManagerProps {
   onNavigateToTab?: (tab: string, bucketStaffId?: string) => void;
@@ -54,6 +56,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'delivery' | 'refund'>('all');
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'unassigned' | 'mine' | 'other'>('all');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [chatModalOrder, setChatModalOrder] = useState<Order | null>(null);
 
   // Dynamic Routing alert banner state
   const [routingToast, setRoutingToast] = useState<{
@@ -1034,23 +1037,42 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     )}
                   </div>
 
-                  {/* Customer WhatsApp Coordination (User Request 1: Chat directly with users regarding refund updates) */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const cleanPhone = order.customer.phone.replace(/[^0-9]/g, '');
-                      const isRefund = isRefundCase(order);
-                      const text = isRefund
-                        ? `Namaste ${order.customer.name}! 🪔✨\n\nRegarding your refund inquiry for order #${order.orderNumber} (Amount: ${formatPrice(order.totalAmount)}).\n• Refund Status: *${order.refundDetails?.refundStatus === 'processed' ? 'Processed' : 'In Queue'}*${order.refundDetails?.refundUtr ? `\n• Bank Transaction UTR ID: *${order.refundDetails.refundUtr}*` : ''}${order.refundDetails?.refundUpiId ? `\n• Credited to UPI: *${order.refundDetails.refundUpiId}*` : ''}\n\nOur concierge finance team has verified your case. Please let us know if you need any additional assistance.\n\nWarm regards,\n${settings.boutiqueName}`
-                        : `Namaste ${order.customer.name}! 🪔✨\n\nRegarding your delivery query for order #${order.orderNumber} (${order.shippingDetails?.courierName || 'Courier'}, Tracking: ${order.shippingDetails?.trackingNumber || 'Pending'}).\n\nOur concierge team is actively investigating with the local courier dispatch office to verify handover and ensure you receive your authentic handloom saree.\n\nWarm regards,\n${settings.boutiqueName}`;
-                      openWhatsApp(cleanPhone, text);
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                    title="Send instant update to customer via WhatsApp"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{isRefundCase(order) ? 'Chat Refund with Customer' : 'WhatsApp Customer'}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* Live Customer Chat Stream (User Request 3) */}
+                    <button
+                      type="button"
+                      onClick={() => setChatModalOrder(order)}
+                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      title="Chat in real-time with customer regarding this dispute"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-white" />
+                      <span>
+                        Live Chat
+                        {order.chatMessages && order.chatMessages.length > 0 ? ` (${order.chatMessages.length})` : ''}
+                      </span>
+                      {order.chatMessages?.some((m) => !m.readByStaff && m.sender === 'customer') && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1" />
+                      )}
+                    </button>
+
+                    {/* Customer WhatsApp Coordination (User Request 1: Chat directly with users regarding refund updates) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cleanPhone = order.customer.phone.replace(/[^0-9]/g, '');
+                        const isRefund = isRefundCase(order);
+                        const text = isRefund
+                          ? `Namaste ${order.customer.name}! 🪔✨\n\nRegarding your refund inquiry for order #${order.orderNumber} (Amount: ${formatPrice(order.totalAmount)}).\n• Refund Status: *${order.refundDetails?.refundStatus === 'processed' ? 'Processed' : 'In Queue'}*${order.refundDetails?.refundUtr ? `\n• Bank Transaction UTR ID: *${order.refundDetails.refundUtr}*` : ''}${order.refundDetails?.refundUpiId ? `\n• Credited to UPI: *${order.refundDetails.refundUpiId}*` : ''}\n\nOur concierge finance team has verified your case. Please let us know if you need any additional assistance.\n\nWarm regards,\n${settings.boutiqueName}`
+                          : `Namaste ${order.customer.name}! 🪔✨\n\nRegarding your delivery query for order #${order.orderNumber} (${order.shippingDetails?.courierName || 'Courier'}, Tracking: ${order.shippingDetails?.trackingNumber || 'Pending'}).\n\nOur concierge team is actively investigating with the local courier dispatch office to verify handover and ensure you receive your authentic handloom saree.\n\nWarm regards,\n${settings.boutiqueName}`;
+                        openWhatsApp(cleanPhone, text);
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      title="Send instant update to customer via WhatsApp"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{isRefundCase(order) ? 'Chat Refund with Customer' : 'WhatsApp Customer'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -1323,6 +1345,43 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Live Customer Chat Stream (User Request 3) */}
+      {chatModalOrder && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto">
+            <div className="p-4 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  <MessageSquare className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Live Customer Dispute Chat · #{chatModalOrder.orderNumber}
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Customer: {chatModalOrder.customer.name} ({chatModalOrder.customer.phone})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setChatModalOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <OrderLiveChat
+                order={orders.find((o) => o.id === chatModalOrder.id) || chatModalOrder}
+                mode="admin"
+                title={`Dispute Case #${chatModalOrder.orderNumber} Live Support`}
+              />
+            </div>
           </div>
         </div>
       )}

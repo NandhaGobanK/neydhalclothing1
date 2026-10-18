@@ -2,6 +2,7 @@ import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Lock, Phone, Mail, MapPin, Instagram, Heart, Navigation, ExternalLink, ShieldCheck, FileText, Youtube, AlertCircle, BookOpen, Download, Smartphone, Truck } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
+import { isCustomerReportIssueVisible } from '../../utils/disputeRedressals';
 
 interface FooterProps {
   onOpenAdmin: () => void;
@@ -174,24 +175,10 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions 
                   </div>
                 </li>
               )}
-              {/* Customer Delivery Dispute Reporting Link */}
-              {settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false && (
-                <li className="pt-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setIsTrackOrderOpen(true)}
-                    className="inline-flex items-center gap-1.5 text-rose-400 hover:text-rose-300 transition text-[11px] font-medium cursor-pointer"
-                    title="Track order & report delivery dispute"
-                  >
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                    <span>Report Delivery Issue (Parcel Not Received)</span>
-                  </button>
-                </li>
-              )}
             </ul>
           </div>
 
-          {/* Help & Store Instructions Column (User Request) */}
+          {/* Help & Store Instructions Column */}
           <div className="space-y-3">
             <h4 className="font-serif text-sm font-semibold text-white uppercase tracking-wider">
               Help & Instructions
@@ -239,7 +226,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions 
           </div>
         </div>
 
-        {/* Bottom Bar with Dedicated Instructions Option (User Request) */}
+        {/* Bottom Bar: Copyright & Boutique Branding */}
         <div className="pt-8 border-t border-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-neutral-400">
           <p>
             <span
@@ -251,33 +238,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions 
             </span>{' '}
             {new Date().getFullYear()} {settings.boutiqueName}. All rights reserved.
           </p>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Dedicated Instructions Page Option at Bottom Footer (User Request) */}
-            <button
-              type="button"
-              onClick={onOpenInstructions}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-amber-300 hover:text-amber-200 border border-neutral-800 hover:border-amber-500/50 text-xs font-semibold transition cursor-pointer shadow-2xs"
-              title="View store instructions and cross-platform PWA installation instructions"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-              <span>Instructions</span>
-            </button>
-
-            {/* Issue Action Button on Customer Front UI (User Request 2) */}
-            {(settings.storefrontDisplay?.allowCustomerDeliveryDisputes !== false ||
-              settings.storefrontDisplay?.allowCustomerRefundDisputes !== false) && (
-              <button
-                type="button"
-                onClick={() => setIsTrackOrderOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-rose-300 hover:text-rose-200 border border-neutral-800 hover:border-rose-800 text-xs font-semibold transition cursor-pointer shadow-2xs"
-                title="Report delivery or refund issue for an order"
-              >
-                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Report Issue</span>
-              </button>
-            )}
-          </div>
         </div>
       </div>
     </footer>
