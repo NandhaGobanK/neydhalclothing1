@@ -699,11 +699,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, [settings.staffMembers?.length]);
 
-  // Real-time Firestore sync for Centralized SKU Collection (/skus)
+  // Real-time Firestore sync for Centralized SKU Collection (/sku_codes and /skus)
   useEffect(() => {
     let isInitial = true;
     const unsub = onSnapshot(
-      collection(db, 'skus'),
+      collection(db, 'sku_codes'),
       (snapshot) => {
         if (!snapshot.empty) {
           const list: SkuRecord[] = [];
@@ -713,31 +713,48 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           setSkus(list);
           saveToStorage('aara_boutique_skus_v3', list);
         } else {
-          setSkus([]);
-          saveToStorage('aara_boutique_skus_v3', []);
-          // If Firestore /skus collection is empty but local products exist and not reset, populate /skus
-          if (isInitial && products.length > 0 && localStorage.getItem('neydhal_fresh_brand_new') !== 'true') {
-            products.forEach((p) => {
-              const cleanCode = p.productCode?.trim().toUpperCase();
-              if (cleanCode) {
-                const skuDoc: SkuRecord = {
-                  code: cleanCode,
-                  productId: p.id,
-                  productTitle: p.title,
-                  category: p.category,
-                  isLocked: Boolean(p.isSkuLocked),
-                  editCount: p.skuEditCount || 0,
-                  createdAt: p.createdAt || new Date().toISOString(),
-                };
-                setDoc(doc(db, 'skus', cleanCode), sanitizeForFirestore(skuDoc)).catch(() => {});
+          // Check fallback /skus if sku_codes is initially empty
+          getDocs(collection(db, 'skus'))
+            .then((skusSnap) => {
+              if (!skusSnap.empty) {
+                const list: SkuRecord[] = [];
+                skusSnap.forEach((d) => {
+                  const data = { code: d.id, ...d.data() } as SkuRecord;
+                  list.push(data);
+                  setDoc(doc(db, 'sku_codes', d.id), sanitizeForFirestore(data)).catch(() => {});
+                });
+                setSkus(list);
+                saveToStorage('aara_boutique_skus_v3', list);
+              } else {
+                setSkus([]);
+                saveToStorage('aara_boutique_skus_v3', []);
+                // If both empty but local products exist and not reset, populate both sku_codes & skus
+                if (isInitial && products.length > 0 && localStorage.getItem('neydhal_fresh_brand_new') !== 'true') {
+                  products.forEach((p) => {
+                    const cleanCode = p.productCode?.trim().toUpperCase();
+                    if (cleanCode) {
+                      const skuDoc: SkuRecord = {
+                        code: cleanCode,
+                        productId: p.id,
+                        productTitle: p.title,
+                        category: p.category,
+                        isLocked: Boolean(p.isSkuLocked),
+                        editCount: p.skuEditCount || 0,
+                        createdAt: p.createdAt || new Date().toISOString(),
+                      };
+                      setDoc(doc(db, 'sku_codes', cleanCode), sanitizeForFirestore(skuDoc)).catch(() => {});
+                      setDoc(doc(db, 'skus', cleanCode), sanitizeForFirestore(skuDoc)).catch(() => {});
+                    }
+                  });
+                }
               }
-            });
-          }
+            })
+            .catch(() => {});
         }
         isInitial = false;
       },
       (error) => {
-        handleFirestoreError(error, OperationType.GET, 'skus');
+        handleFirestoreError(error, OperationType.GET, 'sku_codes');
       }
     );
     return () => unsub();
@@ -936,7 +953,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       handleFirestoreError(err, OperationType.CREATE, `products/${newProduct.id}`)
     );
 
-    // Persist to Centralized SKU Database
+    // Persist to Centralized SKU Database (both sku_codes and skus collections)
     if (manualSku) {
       const skuRecord: SkuRecord = {
         code: manualSku,
@@ -947,9 +964,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         editCount: 0,
         createdAt: newProduct.createdAt,
       };
-      setDoc(doc(db, 'skus', manualSku), sanitizeForFirestore(skuRecord)).catch((err) =>
-        handleFirestoreError(err, OperationType.CREATE, `skus/${manualSku}`)
+      setDoc(doc(db, 'sku_codes', manualSku), sanitizeForFirestore(skuRecord)).catch((err) =>
+        handleFirestoreError(err, OperationType.CREATE, `sku_codes/${manualSku}`)
       );
+      setDoc(doc(db, 'skus', manualSku), sanitizeForFirestore(skuRecord)).catch(() => {});
+      setSkus((prev) => [...prev.filter((s) => s.code?.toUpperCase() !== manualSku), skuRecord]);
     }
 
     return newProduct;
@@ -975,8 +994,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           sanitizedUpdates.isSkuLocked = true;
           sanitizedUpdates.initialSku = existingProd.initialSku || currentSku;
 
-          // Centralized SKU database registry update
+          // Centralized SKU database registry update: release old SKU in sku_codes & skus
           if (currentSku) {
+            deleteDoc(doc(db, 'sku_codes', currentSku)).catch(() => {});
             deleteDoc(doc(db, 'skus', currentSku)).catch(() => {});
           }
           const skuRecord: SkuRecord = {
@@ -989,24 +1009,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             createdAt: existingProd.createdAt,
             updatedAt: new Date().toISOString(),
           };
-          setDoc(doc(db, 'skus', cleanNewSku), sanitizeForFirestore(skuRecord)).catch((err) =>
-            handleFirestoreError(err, OperationType.CREATE, `skus/${cleanNewSku}`)
+          setDoc(doc(db, 'sku_codes', cleanNewSku), sanitizeForFirestore(skuRecord)).catch((err) =>
+            handleFirestoreError(err, OperationType.CREATE, `sku_codes/${cleanNewSku}`)
           );
+          setDoc(doc(db, 'skus', cleanNewSku), sanitizeForFirestore(skuRecord)).catch(() => {});
+          setSkus((prev) => [
+            ...prev.filter((s) => s.code?.toUpperCase() !== currentSku && s.code?.toUpperCase() !== cleanNewSku),
+            skuRecord,
+          ]);
         }
       }
     } else if (existingProd && (sanitizedUpdates.title || sanitizedUpdates.category)) {
       // Keep title and category synced in centralized SKU database
       const existingSku = existingProd.productCode?.trim().toUpperCase();
       if (existingSku) {
-        setDoc(
-          doc(db, 'skus', existingSku),
-          sanitizeForFirestore({
-            productTitle: sanitizedUpdates.title || existingProd.title,
-            category: sanitizedUpdates.category || existingProd.category,
-            updatedAt: new Date().toISOString(),
-          }),
-          { merge: true }
-        ).catch(() => {});
+        const syncData = {
+          productTitle: sanitizedUpdates.title || existingProd.title,
+          category: sanitizedUpdates.category || existingProd.category,
+          updatedAt: new Date().toISOString(),
+        };
+        setDoc(doc(db, 'sku_codes', existingSku), sanitizeForFirestore(syncData), { merge: true }).catch(() => {});
+        setDoc(doc(db, 'skus', existingSku), sanitizeForFirestore(syncData), { merge: true }).catch(() => {});
       }
     }
 
@@ -1015,10 +1038,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       (sanitizedUpdates.stockStatus === 'in_stock' || sanitizedUpdates.stockStatus === 'limited') &&
       ((sanitizedUpdates.stockCount !== undefined && sanitizedUpdates.stockCount > 0) || (existingProd && existingProd.stockCount > 0));
 
-    // If restocked, automatically announce on the public store front like a notification to customers
+    // If restocked, explicitly mention the associated Category Name alongside product details in announcement
     if (wasOutOfStock && willBeRestocked && existingProd) {
       const restockedTitle = sanitizedUpdates.title || existingProd.title;
-      const announcementMsg = `✨ Back in Stock: "${restockedTitle}" has been restocked and is now available for ordering!`;
+      const categoryName = sanitizedUpdates.category || existingProd.category || 'Handlooms';
+      const announcementMsg = `✨ Back in Stock: "${restockedTitle}" (${categoryName}) has been restocked and is now available for ordering!`;
       updateSettings({
         announcement: {
           enabled: true,
@@ -1061,7 +1085,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const targetProd = products.find((p) => p.id === id);
     if (targetProd?.productCode) {
       const cleanSku = targetProd.productCode.trim().toUpperCase();
+      // Fix Deletion & Re-use Bug: Release SKU code in sku_codes & skus collections so it can immediately be reused
+      deleteDoc(doc(db, 'sku_codes', cleanSku)).catch(() => {});
       deleteDoc(doc(db, 'skus', cleanSku)).catch(() => {});
+      // Immediately remove from local SKU registry state so duplicate checks pass instantly
+      setSkus((prev) => prev.filter((s) => s.code?.trim().toUpperCase() !== cleanSku));
     }
 
     setProducts((prev) => {
@@ -2396,7 +2424,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         await Promise.all(staffSnap.docs.map((d) => deleteDoc(d.ref)));
       } catch {}
 
-      // 5. Wipe skus collection from Firestore
+      // 5. Wipe sku_codes and skus collections from Firestore
+      try {
+        const skuCodesSnap = await getDocs(collection(db, 'sku_codes'));
+        await Promise.all(skuCodesSnap.docs.map((d) => deleteDoc(d.ref)));
+      } catch {}
       try {
         const skusSnap = await getDocs(collection(db, 'skus'));
         await Promise.all(skusSnap.docs.map((d) => deleteDoc(d.ref)));

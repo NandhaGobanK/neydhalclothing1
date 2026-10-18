@@ -295,15 +295,6 @@ function MainAppContent() {
                     })}
                   </div>
                 </section>
-
-                {/* Saree Catalog with Fabric & Color Filters */}
-                <div id="catalog">
-                  <ProductGrid
-                    selectedCategory={selectedCategory}
-                    onSelectCategory={setSelectedCategory}
-                    onOpenDetails={(product) => setActiveProductModal(product)}
-                  />
-                </div>
               </main>
             )}
 

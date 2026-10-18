@@ -85,10 +85,29 @@ export const ProductManager: React.FC = () => {
   const [customColor, setCustomColor] = useState('');
   // Category state & category management modal
   const [category, setCategory] = useState<string>('Poontamil sarees');
-  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
   const [newCatImg, setNewCatImg] = useState('');
+  const [isCatImgUploading, setIsCatImgUploading] = useState(false);
+
+  const handleCatImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsCatImgUploading(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setNewCatImg(result);
+      }
+      setIsCatImgUploading(false);
+    };
+    reader.onerror = () => {
+      setIsCatImgUploading(false);
+      setCatActionError('Failed to read image file. Please try another image.');
+    };
+    reader.readAsDataURL(file);
+  };
 
   const [price, setPrice] = useState<number>(25000);
   const [originalPrice, setOriginalPrice] = useState<number>(30000);
@@ -533,6 +552,15 @@ export const ProductManager: React.FC = () => {
     );
   }, [products, activeCategoryView]);
 
+  const categoryCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    products.forEach((p) => {
+      const cat = p.category || 'Uncategorized';
+      map[cat] = (map[cat] || 0) + 1;
+    });
+    return map;
+  }, [products]);
+
   const displayedProducts = showAllSareesFlat ? products : currentCategoryProducts;
 
   const filteredProducts = useMemo(() => {
@@ -579,9 +607,14 @@ export const ProductManager: React.FC = () => {
                   <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0"></span>
                   <div className="truncate">
                     <p className="font-bold text-neutral-900 truncate">{p.title}</p>
-                    <p className="text-[10px] text-rose-700 font-mono">
-                      {p.productCode} · <span className="font-bold">OUT OF STOCK (0 units)</span>
-                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-rose-700">
+                      <span className="font-semibold px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-900 border border-rose-300">
+                        Category: {p.category || 'General'}
+                      </span>
+                      <span className="font-mono">{p.productCode}</span>
+                      <span>·</span>
+                      <span className="font-bold">OUT OF STOCK (0 units)</span>
+                    </div>
                   </div>
                 </div>
                 {canEditProducts && (
@@ -620,9 +653,14 @@ export const ProductManager: React.FC = () => {
                   <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
                   <div className="truncate">
                     <p className="font-bold text-neutral-900 truncate">{p.title}</p>
-                    <p className="text-[10px] text-amber-800 font-mono">
-                      {p.productCode} · <span className="font-semibold">Low Stock: {p.stockCount} left</span>
-                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-amber-800">
+                      <span className="font-semibold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                        Category: {p.category || 'General'}
+                      </span>
+                      <span className="font-mono">{p.productCode}</span>
+                      <span>·</span>
+                      <span className="font-semibold">Low Stock: {p.stockCount} left</span>
+                    </div>
                   </div>
                 </div>
                 {canEditProducts && (
@@ -654,68 +692,326 @@ export const ProductManager: React.FC = () => {
           </div>
         </div>
       )}
-      {/* Top Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900">
-            Saree Catalog & Inventory
-          </h2>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Total {products.length} sarees · {products.filter((p) => p.isVisible).length} visible on storefront
-          </p>
-        </div>
+      {/* Hierarchical Workflow Top Bar: Step 1 (Categories) vs Step 2 (Inside Category) vs Flat View */}
+      {!showAllSareesFlat && !activeCategoryView ? (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-xs">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] sm:text-xs uppercase tracking-widest text-amber-700 font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Hierarchical Category-First Workflow</span>
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                  Step 1: Choose or Create Category
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900">
+                Saree Categories & Collections
+              </h2>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                First select or create a category, then click to enter inside that specific category and add products directly.
+              </p>
+            </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setIsCategoryModalOpen(true)}
-            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-800 text-xs font-semibold shadow-2xs transition cursor-pointer"
-          >
-            <Layers className="w-4 h-4 text-amber-600" />
-            <span>Manage Categories ({categories.length})</span>
-          </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowAllSareesFlat(true)}
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-800 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                title="Browse all sarees across all categories in a flat list"
+              >
+                <Package className="w-4 h-4 text-neutral-600" />
+                <span>Flat Inventory ({products.length})</span>
+              </button>
 
-          {canEditProducts ? (
-            <button
-              onClick={() => openAddModal()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-sm transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add New Saree</span>
-            </button>
+              {canEditProducts && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddCategoryOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+                >
+                  <FolderPlus className="w-4 h-4 text-amber-300" />
+                  <span>+ Create Category</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Categories Grid */}
+          {categories.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-dashed border-neutral-300 p-12 text-center space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto">
+                <Layers className="w-7 h-7" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1">
+                <h3 className="font-serif font-bold text-lg text-neutral-900">
+                  No Categories Created Yet
+                </h3>
+                <p className="text-xs text-neutral-500 leading-relaxed">
+                  To follow the hierarchical workflow, create a category first (e.g. Poontamil Sarees, Foil Print Sarees, Banarasi Brocades), then click to enter inside it and add products directly.
+                </p>
+              </div>
+              {canEditProducts && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddCategoryOpen(true)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-bold transition shadow-sm cursor-pointer"
+                >
+                  <FolderPlus className="w-4 h-4 text-amber-300" />
+                  <span>Create First Category</span>
+                </button>
+              )}
+            </div>
           ) : (
-            <div className="px-3 py-1.5 rounded-xl bg-neutral-200 text-neutral-600 text-xs font-medium">
-              Staff View-Only (Adding Sarees Restricted)
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              {categories.map((cat) => {
+                const count = categoryCounts[cat.name] || 0;
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => setActiveCategoryView(cat)}
+                    className="group bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-between border-t-4 border-t-amber-500 hover:border-t-rose-800"
+                  >
+                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-100">
+                      <img
+                        src={cat.imageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                        alt={cat.name}
+                        className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+
+                      <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                        <span className="bg-white/95 backdrop-blur-xs text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                          {count} {count === 1 ? 'Saree' : 'Sarees'}
+                        </span>
+                        {canEditProducts && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCategoryToDelete(cat);
+                            }}
+                            className="p-1 rounded-full bg-black/60 hover:bg-rose-600 text-white transition cursor-pointer"
+                            title="Remove category"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="absolute bottom-3 left-3 right-3 text-white">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300">
+                          Category Collection
+                        </span>
+                        <h3 className="font-serif font-bold text-lg sm:text-xl text-white group-hover:text-amber-200 transition">
+                          {cat.name}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 bg-white flex items-center justify-between text-xs border-t border-neutral-100 gap-2">
+                      <p className="text-neutral-500 line-clamp-1 text-[11px] flex-1">
+                        {cat.description || 'Curated pure handloom collection.'}
+                      </p>
+                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {canEditProducts && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveCategoryView(cat);
+                              openAddModal(cat.name);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-semibold transition cursor-pointer"
+                            title={`Add saree directly inside ${cat.name}`}
+                          >
+                            + Add Saree
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setActiveCategoryView(cat)}
+                          className="px-3 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>Enter</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-      </div>
+      ) : activeCategoryView ? (
+        /* Active Category Header with Breadcrumb & Direct Add Button */
+        <div className="bg-white rounded-2xl border border-neutral-200 p-4 sm:p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryView(null)}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-rose-900 hover:text-rose-700 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>All Categories</span>
+                </button>
+                <span className="text-neutral-300">/</span>
+                <span className="text-xs font-semibold text-neutral-600 truncate">
+                  {activeCategoryView.name}
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 flex items-center gap-2 flex-wrap">
+                <span>{activeCategoryView.name}</span>
+                <span className="text-xs font-sans font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                  {currentCategoryProducts.length} {currentCategoryProducts.length === 1 ? 'Saree' : 'Sarees'} inside
+                </span>
+              </h2>
+              <p className="text-xs text-neutral-500">
+                {activeCategoryView.description || 'Products added below are filed directly inside this category.'}
+              </p>
+            </div>
 
-      {/* Search & Filter Bar */}
-      <div className="bg-white p-3 rounded-2xl border border-neutral-200 shadow-xs flex items-center gap-2.5">
-        <Search className="w-4 h-4 text-neutral-400 shrink-0 ml-1" />
-        <input
-          type="text"
-          value={tableSearchQuery}
-          onChange={(e) => setTableSearchQuery(e.target.value)}
-          placeholder="Search by Unique Saree Code (e.g. AARA-KAN-CRIM-101) or Saree Name..."
-          className="flex-1 bg-transparent text-xs text-neutral-900 focus:outline-hidden"
-        />
-        {tableSearchQuery && (
-          <button
-            onClick={() => setTableSearchQuery('')}
-            className="text-[11px] text-neutral-400 hover:text-neutral-700 px-2 py-0.5 rounded"
-          >
-            Clear
-          </button>
-        )}
-      </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setActiveCategoryView(null)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-700 text-xs font-semibold transition cursor-pointer"
+              >
+                <Layers className="w-3.5 h-3.5 text-amber-600" />
+                <span>Back to Categories</span>
+              </button>
 
-      {/* Saree Inventory Table */}
-      <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-xs">
-        {/* Responsive Mobile & Tablet Card Grid (User Request 3) */}
-        <div className="md:hidden divide-y divide-neutral-100 p-2 sm:p-3 space-y-3">
-          {filteredProducts.map((product) => (
+              {canEditProducts && (
+                <button
+                  type="button"
+                  onClick={() => setCategoryToDelete(activeCategoryView)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-semibold transition cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Category</span>
+                </button>
+              )}
+
+              {canEditProducts && (
+                <button
+                  type="button"
+                  onClick={() => openAddModal(activeCategoryView.name)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 text-amber-300" />
+                  <span>Add Saree in {activeCategoryView.name}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Flat Saree Inventory Header */
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAllSareesFlat(false)}
+              className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 hover:text-amber-900 mb-1 transition cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Switch to Category-First Workflow</span>
+            </button>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900">
+              Saree Catalog & Inventory (Flat View)
+            </h2>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              Total {products.length} sarees · {products.filter((p) => p.isVisible).length} visible on storefront
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsAddCategoryOpen(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-800 text-xs font-semibold shadow-2xs transition cursor-pointer"
+            >
+              <FolderPlus className="w-4 h-4 text-amber-600" />
+              <span>+ Create Category</span>
+            </button>
+
+            {canEditProducts && (
+              <button
+                onClick={() => openAddModal()}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add New Saree</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Search & Saree Inventory Table - only shown inside a category or when viewing flat inventory */}
+      {(activeCategoryView || showAllSareesFlat) && (
+        <>
+          {/* Search & Filter Bar */}
+          <div className="bg-white p-3 rounded-2xl border border-neutral-200 shadow-xs flex items-center gap-2.5">
+            <Search className="w-4 h-4 text-neutral-400 shrink-0 ml-1" />
+            <input
+              type="text"
+              value={tableSearchQuery}
+              onChange={(e) => setTableSearchQuery(e.target.value)}
+              placeholder={
+                activeCategoryView
+                  ? `Search sarees within ${activeCategoryView.name}...`
+                  : 'Search by Unique Saree Code (e.g. AARA-KAN-CRIM-101) or Saree Name...'
+              }
+              className="flex-1 bg-transparent text-xs text-neutral-900 focus:outline-hidden"
+            />
+            {tableSearchQuery && (
+              <button
+                onClick={() => setTableSearchQuery('')}
+                className="text-[11px] text-neutral-400 hover:text-neutral-700 px-2 py-0.5 rounded cursor-pointer"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Saree Inventory Table */}
+          <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-xs">
+            {filteredProducts.length === 0 ? (
+              <div className="p-12 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-neutral-100 text-neutral-400 mx-auto flex items-center justify-center">
+                  <Package className="w-6 h-6" />
+                </div>
+                <h3 className="font-serif font-bold text-base text-neutral-900">
+                  {activeCategoryView
+                    ? `No sarees inside "${activeCategoryView.name}" yet`
+                    : 'No sarees matching your search'}
+                </h3>
+                <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                  {activeCategoryView
+                    ? `Click below to add your first handcrafted saree directly into ${activeCategoryView.name}.`
+                    : 'Try searching with a different SKU code, fabric, or saree title.'}
+                </p>
+                {activeCategoryView && canEditProducts && (
+                  <button
+                    type="button"
+                    onClick={() => openAddModal(activeCategoryView.name)}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 transition cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 text-amber-300" />
+                    <span>Add Saree to {activeCategoryView.name}</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* Responsive Mobile & Tablet Card Grid (User Request 3) */}
+                <div className="md:hidden divide-y divide-neutral-100 p-2 sm:p-3 space-y-3">
+                  {filteredProducts.map((product) => (
             <div
               key={product.id}
               onClick={() => openEditModal(product)}
@@ -1017,7 +1313,11 @@ export const ProductManager: React.FC = () => {
             </tbody>
           </table>
         </div>
-      </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Add / Edit Saree Modal */}
       {isEditingModalOpen && (
@@ -1180,37 +1480,7 @@ export const ProductManager: React.FC = () => {
                   />
                 </div>
 
-                {/* Saree Category Assignment (User Request 7) */}
-                <div className="sm:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-semibold text-neutral-700">Saree Category *</label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCategoryModalOpen(true)}
-                      className="text-xs text-rose-700 hover:text-rose-900 font-semibold underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>Manage / Create Categories</span>
-                    </button>
-                  </div>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-medium"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name}
-                      </option>
-                    ))}
-                    {categories.length === 0 && (
-                      <option value="Poontamil sarees">Poontamil sarees</option>
-                    )}
-                  </select>
-                  <p className="text-[11px] text-neutral-500 mt-1">
-                    Groups this saree under customer front-facing category navigation.
-                  </p>
-                </div>
+
 
                 <div>
                   <label className="block font-semibold text-neutral-700 mb-1">Fabric Type *</label>
@@ -1841,6 +2111,238 @@ export const ProductManager: React.FC = () => {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Category Modal (Dynamic Real-Time Category Management) */}
+      {(isAddCategoryOpen || isCategoryModalOpen) && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <FolderPlus className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Create Saree Category
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Step 1 of Hierarchical Category-First Workflow
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddCategoryOpen(false);
+                  setIsCategoryModalOpen(false);
+                  setCatActionError(null);
+                }}
+                className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCategory} className="p-5 space-y-4 text-xs">
+              {catActionError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{catActionError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1">
+                  Category Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  placeholder="e.g. Poontamil Sarees, Foil Print Sarees, Banarasi Brocades"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-medium focus:ring-2 focus:ring-amber-500/40"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1">
+                  Description (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={newCatDesc}
+                  onChange={(e) => setNewCatDesc(e.target.value)}
+                  placeholder="e.g. Traditional pure silk handlooms with authentic tested zari motifs..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1">
+                  Category Preview Image (Upload or URL)
+                </label>
+
+                {newCatImg ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-100 aspect-16/9 max-h-44 mb-2 group">
+                    <img
+                      src={newCatImg}
+                      alt="Category preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewCatImg('')}
+                        className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs flex items-center gap-1 shadow-md hover:bg-rose-700 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Preview</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-2">
+                    <label className="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-dashed border-amber-300 hover:border-amber-500 bg-amber-50/50 hover:bg-amber-50 transition cursor-pointer text-center">
+                      <Upload className="w-6 h-6 text-amber-700 mb-1" />
+                      <span className="font-bold text-neutral-800 text-xs">
+                        {isCatImgUploading ? 'Reading image...' : 'Upload Category Image'}
+                      </span>
+                      <span className="text-[10px] text-neutral-500 mt-0.5">
+                        PNG, JPG, WebP from your device to attach preview to this category card
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleCatImageFileChange}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="url"
+                    value={newCatImg}
+                    onChange={(e) => setNewCatImg(e.target.value)}
+                    placeholder="Or paste image URL (https://...)"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 text-xs"
+                  />
+                  {newCatImg && (
+                    <button
+                      type="button"
+                      onClick={() => setNewCatImg('')}
+                      className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 border border-neutral-300 shrink-0 cursor-pointer"
+                      title="Clear image"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddCategoryOpen(false);
+                    setIsCategoryModalOpen(false);
+                    setCatActionError(null);
+                  }}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 hover:bg-neutral-100 font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <FolderPlus className="w-4 h-4 text-amber-400" />
+                  <span>Create & Enter Category</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Real-Time Delete Category Confirmation Modal */}
+      {categoryToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  <Trash2 className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Delete Category
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Real-time category removal from database
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCategoryToDelete(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex items-center gap-3">
+                <img
+                  src={categoryToDelete.imageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                  alt={categoryToDelete.name}
+                  className="w-12 h-12 rounded-lg object-cover bg-neutral-200"
+                />
+                <div>
+                  <p className="font-serif font-bold text-sm text-neutral-900">
+                    {categoryToDelete.name}
+                  </p>
+                  <p className="text-[11px] text-neutral-500">
+                    {categoryCounts[categoryToDelete.name] || 0} sarees currently filed under this category
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-700 shrink-0" />
+                  <span>Confirm Real-Time Category Deletion</span>
+                </p>
+                <p className="text-[11px] text-rose-800 leading-relaxed">
+                  Are you sure you want to delete &quot;{categoryToDelete.name}&quot;? The category will be removed instantly from the database and customer storefront without requiring a page reload. Existing sarees will remain safely in the inventory.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setCategoryToDelete(null)}
+                  className="py-2.5 px-4 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-semibold transition text-center cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteCategory}
+                  className="py-2.5 px-4 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Yes, Delete Category</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

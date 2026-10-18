@@ -341,6 +341,7 @@ export interface StorefrontDisplaySettings {
   showCustomerReviews?: boolean; // Enable or disable review section display on customer front
   allowCustomerDeliveryDisputes?: boolean; // Global toggle: Report delivery issue on customer front
   allowCustomerRefundDisputes?: boolean; // Global toggle: Report refund issue on customer front
+  allowLiveChat?: boolean; // Dedicated Enable/Disable toggle switch for customer live chat availability
   freeShippingText: string;
   footerAboutText?: string;
   footerCertifications?: string[];

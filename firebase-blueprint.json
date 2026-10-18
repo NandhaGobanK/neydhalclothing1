@@ -129,6 +129,10 @@
       "schema": { "$ref": "Product" },
       "description": "Handcrafted sarees collection"
     },
+    "/sku_codes/{skuCode}": {
+      "schema": { "$ref": "SkuRecord" },
+      "description": "Dedicated centralized Firestore SKU codes collection to track and cross-verify all active unique SKU codes"
+    },
     "/skus/{skuCode}": {
       "schema": { "$ref": "SkuRecord" },
       "description": "Centralized SKU collection for duplicate prevention and one-time edit lock"

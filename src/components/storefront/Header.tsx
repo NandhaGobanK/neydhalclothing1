@@ -17,7 +17,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectCategory,
   selectedCategory = 'all',
 }) => {
-  const { settings, cartCount, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen, publicProducts } = useStore();
+  const { settings, cartCount, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen, publicProducts, categories: boutiqueCategories } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoError, setLogoError] = React.useState(false);
 
@@ -36,10 +36,18 @@ export const Header: React.FC<HeaderProps> = ({
     return Array.from(set).sort();
   }, [publicProducts]);
 
-  const categories = React.useMemo(() => [
-    { id: 'all', label: 'All Sarees' },
-    ...publishedFabrics.map((fab) => ({ id: fab, label: fab })),
-  ], [publishedFabrics]);
+  const categories = React.useMemo(() => {
+    if (boutiqueCategories && boutiqueCategories.length > 0) {
+      return [
+        { id: 'all', label: 'All Categories' },
+        ...boutiqueCategories.map((c) => ({ id: c.name, label: c.name })),
+      ];
+    }
+    return [
+      { id: 'all', label: 'All Sarees' },
+      ...publishedFabrics.map((fab) => ({ id: fab, label: fab })),
+    ];
+  }, [boutiqueCategories, publishedFabrics]);
 
   const showTrackOrder = settings.storefrontDisplay?.showTrackOrder !== false;
 

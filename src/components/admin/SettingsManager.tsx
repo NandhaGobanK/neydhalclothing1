@@ -110,6 +110,9 @@ export const SettingsManager: React.FC = () => {
   const [allowCustomerRefundDisputes, setAllowCustomerRefundDisputes] = useState(
     settings.storefrontDisplay?.allowCustomerRefundDisputes !== false
   );
+  const [allowLiveChat, setAllowLiveChat] = useState(
+    settings.storefrontDisplay?.allowLiveChat !== false
+  );
   const [showCraftsmanshipStory, setShowCraftsmanshipStory] = useState(defaultDisplay.showCraftsmanshipStory);
   const [storyTitle, setStoryTitle] = useState(defaultDisplay.storyTitle);
   const [storyContent, setStoryContent] = useState(defaultDisplay.storyContent);
@@ -211,6 +214,7 @@ export const SettingsManager: React.FC = () => {
         if (disp.showCustomerReviews !== undefined) setShowCustomerReviews(disp.showCustomerReviews !== false);
         if (disp.allowCustomerDeliveryDisputes !== undefined) setAllowCustomerDeliveryDisputes(disp.allowCustomerDeliveryDisputes !== false);
         if (disp.allowCustomerRefundDisputes !== undefined) setAllowCustomerRefundDisputes(disp.allowCustomerRefundDisputes !== false);
+        if (disp.allowLiveChat !== undefined) setAllowLiveChat(disp.allowLiveChat !== false);
         if (disp.showCraftsmanshipStory !== undefined) setShowCraftsmanshipStory(disp.showCraftsmanshipStory);
         if (disp.storyTitle !== undefined) setStoryTitle(disp.storyTitle);
         if (disp.storyContent !== undefined) setStoryContent(disp.storyContent);
@@ -464,6 +468,7 @@ export const SettingsManager: React.FC = () => {
         showCustomerReviews,
         allowCustomerDeliveryDisputes,
         allowCustomerRefundDisputes,
+        allowLiveChat,
         freeShippingText: freeShippingText.trim(),
       },
       announcement: {
@@ -951,6 +956,30 @@ export const SettingsManager: React.FC = () => {
                     </span>
                     <span className="text-[11px] text-neutral-500 font-normal">
                       When enabled, customers can report refund queries, missing settlements, or transaction reconciliation from the tracking modal via the generalized "Report Issue" dropdown menu. When disabled, this option is hidden from customer view.
+                    </span>
+                  </div>
+                </label>
+
+                {/* Customer Live Chat Admin Toggle (User Request 1) */}
+                <label className="flex items-center gap-2 cursor-pointer sm:col-span-3 pt-2 border-t border-neutral-200">
+                  <input
+                    type="checkbox"
+                    disabled={!canEditStorefront}
+                    checked={allowLiveChat}
+                    onChange={(e) => setAllowLiveChat(e.target.checked)}
+                    className="rounded text-rose-900"
+                  />
+                  <div className="flex-1">
+                    <span className="font-semibold text-neutral-800 block flex items-center gap-2">
+                      <span>Enable Customer Live Chat Feature</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        allowLiveChat ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
+                      }`}>
+                        {allowLiveChat ? 'Live Chat Enabled' : 'Live Chat Disabled'}
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-neutral-500 font-normal">
+                      Dedicated toggle switch controlling customer live chat availability on orders. When enabled, customers can access live concierge chat to communicate with boutique staff. When disabled, the live chat feature is turned off.
                     </span>
                   </div>
                 </label>

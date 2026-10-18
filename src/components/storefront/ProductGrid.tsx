@@ -113,7 +113,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
             <span>Handloom Masterpieces</span>
           </div>
           <h2 className={`text-2xl sm:text-3xl font-serif font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-            Curated Saree Collection
+            Search Saree Catalog
           </h2>
           <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
             Showing {filteredProducts.length} of {publicProducts.length} available handlooms
@@ -129,7 +129,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search silk, weave, color..."
+              placeholder="Search by name, SKU code..."
               className={`w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl border focus:outline-hidden focus:ring-2 focus:ring-amber-500/50 ${
                 isDark
                   ? 'bg-neutral-900 border-neutral-800 text-white placeholder-neutral-500'

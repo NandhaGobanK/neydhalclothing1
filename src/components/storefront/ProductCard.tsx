@@ -64,18 +64,39 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           )}
         </div>
 
+        {/* Add to Wishlist Heart Option (User Request) */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleWishlist(product.id);
+          }}
+          className={`absolute top-3 right-3 z-20 w-8 h-8 rounded-full flex items-center justify-center shadow-md backdrop-blur-md transition-all duration-200 cursor-pointer ${
+            inWishlist
+              ? 'bg-rose-600 text-white ring-2 ring-white scale-105 shadow-rose-900/30'
+              : 'bg-white/85 text-neutral-700 hover:text-rose-600 hover:bg-white hover:scale-105'
+          }`}
+          title={inWishlist ? 'Remove from Wishlist' : 'Add to Wishlist'}
+          aria-label={inWishlist ? 'Remove from Wishlist' : 'Add to Wishlist'}
+        >
+          <Heart
+            className="w-4 h-4 transition-transform active:scale-125"
+            fill={inWishlist ? 'currentColor' : 'none'}
+          />
+        </button>
+
         {/* Stock availability badge */}
         {isOutOfStock ? (
-          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-neutral-900/90 text-neutral-300 text-[11px] font-medium border border-neutral-700">
+          <div className="absolute top-12.5 right-3 px-2.5 py-0.5 rounded-full bg-neutral-900/90 text-neutral-300 text-[10px] font-medium border border-neutral-700">
             Out of Stock
           </div>
         ) : product.stockCount !== undefined && product.stockCount <= 3 ? (
-          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-rose-900/90 text-rose-200 text-[11px] font-medium border border-rose-700/60 shadow-xs">
+          <div className="absolute top-12.5 right-3 px-2.5 py-0.5 rounded-full bg-rose-900/90 text-rose-200 text-[10px] font-medium border border-rose-700/60 shadow-xs">
             Only {product.stockCount} Left
           </div>
         ) : (
-          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-emerald-950/85 text-emerald-300 text-[11px] font-medium border border-emerald-700/50 backdrop-blur-xs">
-            {product.stockCount ? `${product.stockCount} Available` : 'In Stock'}
+          <div className="absolute top-12.5 right-3 px-2.5 py-0.5 rounded-full bg-emerald-950/85 text-emerald-300 text-[10px] font-medium border border-emerald-700/50 backdrop-blur-xs">
+            {product.stockCount ? `${product.stockCount} Avail` : 'In Stock'}
           </div>
         )}
 

@@ -35,13 +35,25 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
     wishlist,
     toggleWishlist,
     isInWishlist,
+    setIsCheckoutOpen,
   } = useStore();
 
   const [activeCategory, setActiveCategory] = useState<string | null>(
     selectedCategoryName && selectedCategoryName !== 'all' ? selectedCategoryName : null
   );
 
+  React.useEffect(() => {
+    if (selectedCategoryName && selectedCategoryName !== 'all') {
+      setActiveCategory(selectedCategoryName);
+    } else if (selectedCategoryName === 'all') {
+      setActiveCategory(null);
+    }
+  }, [selectedCategoryName]);
+
   const [searchFilter, setSearchFilter] = useState('');
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<'featured' | 'price_low' | 'price_high'>('featured');
+  const [selectedFabric, setSelectedFabric] = useState<string>('all');
   const [addedProductId, setAddedProductId] = useState<string | null>(null);
 
   // Group products by category to show counts
@@ -54,21 +66,42 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
     return map;
   }, [publicProducts]);
 
+  // Available fabrics inside active category
+  const categoryFabrics = React.useMemo(() => {
+    if (!activeCategory) return [];
+    const set = new Set<string>();
+    publicProducts.forEach((p) => {
+      const matchesCategory =
+        p.category === activeCategory ||
+        p.category?.toLowerCase() === activeCategory.toLowerCase();
+      if (matchesCategory && p.fabric) {
+        set.add(p.fabric.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [publicProducts, activeCategory]);
+
   // When a category is clicked
   const handleCategoryClick = (categoryName: string) => {
     setActiveCategory(categoryName);
+    setSearchFilter('');
+    setSelectedFabric('all');
+    setInStockOnly(false);
     onSelectCategory?.(categoryName);
   };
 
   const handleBackToAllCategories = () => {
     setActiveCategory(null);
+    setSearchFilter('');
+    setSelectedFabric('all');
+    setInStockOnly(false);
     onSelectCategory?.('all');
   };
 
-  // Products for selected category
+  // Filtered & sorted products for selected category
   const categoryProducts = React.useMemo(() => {
     if (!activeCategory) return [];
-    return publicProducts.filter((p) => {
+    let list = publicProducts.filter((p) => {
       const matchesCategory =
         p.category === activeCategory ||
         p.category?.toLowerCase() === activeCategory.toLowerCase() ||
@@ -76,17 +109,38 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
 
       if (!matchesCategory) return false;
 
+      // In-category search by product name or SKU code (and color)
       if (searchFilter.trim()) {
-        const q = searchFilter.toLowerCase();
-        return (
-          p.title.toLowerCase().includes(q) ||
-          p.productCode.toLowerCase().includes(q) ||
-          p.color.toLowerCase().includes(q)
-        );
+        const q = searchFilter.toLowerCase().trim();
+        const matchesName = p.title.toLowerCase().includes(q);
+        const matchesSku = p.productCode.toLowerCase().includes(q);
+        const matchesColor = p.color.toLowerCase().includes(q);
+        if (!matchesName && !matchesSku && !matchesColor) return false;
       }
+
+      // In-stock only filter
+      if (inStockOnly) {
+        const isOut = p.stockStatus === 'out_of_stock' || (p.stockCount !== undefined && p.stockCount <= 0);
+        if (isOut) return false;
+      }
+
+      // Fabric filter
+      if (selectedFabric !== 'all' && p.fabric !== selectedFabric) {
+        return false;
+      }
+
       return true;
     });
-  }, [publicProducts, activeCategory, searchFilter]);
+
+    // Sorting
+    if (sortBy === 'price_low') {
+      list = [...list].sort((a, b) => a.price - b.price);
+    } else if (sortBy === 'price_high') {
+      list = [...list].sort((a, b) => b.price - a.price);
+    }
+
+    return list;
+  }, [publicProducts, activeCategory, searchFilter, inStockOnly, selectedFabric, sortBy]);
 
   const activeCategoryObj = categories.find(
     (c) => c.name.toLowerCase() === (activeCategory || '').toLowerCase()
@@ -97,6 +151,12 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
     addToCart(product, 1);
     setAddedProductId(product.id);
     setTimeout(() => setAddedProductId(null), 1800);
+  };
+
+  const handleDirectBuyNow = (e: React.MouseEvent, product: Product) => {
+    e.stopPropagation();
+    addToCart(product, 1);
+    setIsCheckoutOpen(true);
   };
 
   const handleToggleWishlist = (e: React.MouseEvent, productId: string) => {
@@ -155,26 +215,105 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
             )}
           </div>
 
-          {/* Results Notification Banner (matching user prompt: "We found 40 items for you!") */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-neutral-200/90 shadow-2xs">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-xs font-bold text-neutral-900">
-                We found <span className="text-rose-900 font-extrabold">{categoryProducts.length} items</span> for you in{' '}
-                <span className="underline decoration-amber-400 underline-offset-2">{activeCategory}</span>!
-              </p>
+          {/* In-Category Search and Filtering Options Bar (User Request) */}
+          <div className="bg-white p-4 rounded-2xl border border-neutral-200/90 shadow-2xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-xs font-bold text-neutral-900">
+                  We found <span className="text-rose-900 font-extrabold">{categoryProducts.length} items</span> for you in{' '}
+                  <span className="underline decoration-amber-400 underline-offset-2">{activeCategory}</span>
+                </p>
+              </div>
+
+              {/* In-Category Search Input (by Product Name or SKU code) */}
+              <div className="relative w-full sm:w-80">
+                <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder="Search by product name or SKU code..."
+                  className="w-full pl-8 pr-8 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-neutral-50/50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30"
+                />
+                {searchFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchFilter('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-neutral-400 hover:text-neutral-700 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Quick in-category search */}
-            <div className="relative min-w-[200px] sm:w-64">
-              <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                placeholder="Filter in this category..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-neutral-50/50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30"
-              />
+            {/* In-Category Filter Controls: In-Stock Toggle, Fabric Selector, Price Sorting */}
+            <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-neutral-100 text-xs">
+              <span className="text-[11px] font-semibold text-neutral-500 flex items-center gap-1">
+                <SlidersHorizontal className="w-3 h-3 text-amber-700" />
+                <span>Filters:</span>
+              </span>
+
+              {/* In-Stock Only Chip */}
+              <button
+                type="button"
+                onClick={() => setInStockOnly((v) => !v)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                  inStockOnly
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
+                    : 'bg-neutral-50 text-neutral-600 border-neutral-200 hover:bg-neutral-100'
+                }`}
+              >
+                {inStockOnly ? '✓ In Stock Only' : 'In Stock Only'}
+              </button>
+
+              {/* Fabric Filter */}
+              {categoryFabrics.length > 1 && (
+                <div className="flex items-center gap-1">
+                  <select
+                    value={selectedFabric}
+                    onChange={(e) => setSelectedFabric(e.target.value)}
+                    className="p-1 px-2 rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-800 text-xs font-medium cursor-pointer"
+                  >
+                    <option value="all">All Fabrics ({categoryFabrics.length})</option>
+                    {categoryFabrics.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Price / Featured Sorting */}
+              <div className="flex items-center gap-1 ml-auto">
+                <span className="text-[11px] text-neutral-400">Sort:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="p-1 px-2 rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-800 text-xs font-medium cursor-pointer"
+                >
+                  <option value="featured">Featured</option>
+                  <option value="price_low">Price: Low to High</option>
+                  <option value="price_high">Price: High to Low</option>
+                </select>
+              </div>
+
+              {(searchFilter || inStockOnly || selectedFabric !== 'all' || sortBy !== 'featured') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchFilter('');
+                    setInStockOnly(false);
+                    setSelectedFabric('all');
+                    setSortBy('featured');
+                  }}
+                  className="text-[11px] text-rose-700 hover:text-rose-900 font-semibold underline cursor-pointer ml-1"
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
           </div>
 
@@ -279,32 +418,43 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                           )}
                         </div>
 
-                        {/* Quick Add to Cart button */}
-                        <button
-                          type="button"
-                          onClick={(e) => handleQuickAddToCart(e, product)}
-                          disabled={product.stockStatus === 'out_of_stock'}
-                          className={`p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-semibold transition flex items-center gap-1 cursor-pointer shrink-0 ${
-                            addedProductId === product.id
-                              ? 'bg-emerald-600 text-white'
-                              : product.stockStatus === 'out_of_stock'
-                              ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
-                              : 'bg-neutral-900 hover:bg-neutral-800 text-white'
-                          }`}
-                          title="Add to bag"
-                        >
-                          {addedProductId === product.id ? (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline text-[10px]">Added</span>
-                            </>
-                          ) : (
-                            <>
-                              <ShoppingBag className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline text-[10px]">Add</span>
-                            </>
-                          )}
-                        </button>
+                        {/* Action buttons: Add to Bag & Buy Now */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => handleQuickAddToCart(e, product)}
+                            disabled={product.stockStatus === 'out_of_stock'}
+                            className={`p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
+                              addedProductId === product.id
+                                ? 'bg-emerald-600 text-white'
+                                : product.stockStatus === 'out_of_stock'
+                                ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                                : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
+                            }`}
+                            title="Add to bag"
+                          >
+                            {addedProductId === product.id ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline text-[10px]">Added</span>
+                              </>
+                            ) : (
+                              <>
+                                <ShoppingBag className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline text-[10px]">Add</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDirectBuyNow(e, product)}
+                            disabled={product.stockStatus === 'out_of_stock'}
+                            className="p-1.5 sm:px-3 sm:py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 bg-rose-900 hover:bg-rose-800 text-white cursor-pointer shadow-2xs disabled:bg-neutral-200 disabled:text-neutral-400 disabled:cursor-not-allowed"
+                            title="Buy now with instant checkout"
+                          >
+                            <span className="text-[10px] uppercase tracking-wider">Buy</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

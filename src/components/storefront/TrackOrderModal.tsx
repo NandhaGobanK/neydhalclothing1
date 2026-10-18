@@ -872,15 +872,19 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           order.deliveryIssue && order.deliveryIssue.status === 'resolved'
                         );
                         const isOrderClosed = Boolean(order.isClosed);
+                        const isLiveChatGloballyEnabled = settings.storefrontDisplay?.allowLiveChat !== false;
 
                         // Chat enabled if:
+                        // - Live Chat is enabled in admin settings
                         // - Active order (Pending, Confirmed, Shipped)
                         // - Active dispute on any order (even if Delivered)
                         // Chat disabled if:
+                        // - Admin disabled Live Chat in settings
                         // - Delivered without active dispute
                         // - Order is closed or dispute is officially resolved
                         // - Cancelled / Rejected without active dispute
                         const isChatAvailable =
+                          isLiveChatGloballyEnabled &&
                           !isOrderClosed &&
                           !isDisputeResolved &&
                           (hasActiveDispute || (!isDelivered && order.status !== 'Cancelled' && order.status !== 'Rejected'));

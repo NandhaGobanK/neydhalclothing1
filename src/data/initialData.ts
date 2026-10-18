@@ -210,6 +210,7 @@ export const INITIAL_SETTINGS: StoreSettings = {
     showCustomerReviews: true,
     allowCustomerDeliveryDisputes: true,
     allowCustomerRefundDisputes: true,
+    allowLiveChat: true,
     freeShippingText: 'Complimentary Insured Delivery on orders above ₹20,000',
   },
   adminPin: '889988', // 6-digit access PIN

@@ -26,7 +26,12 @@ service cloud.firestore {
       allow delete: if isSignedIn() || true;
     }
 
-    // Centralized SKU Registry Collection for uniqueness and duplicate prevention
+    // Dedicated Firestore "sku_codes" Registry Collection for uniqueness and duplicate prevention
+    match /sku_codes/{skuCode} {
+      allow read, write: if true;
+    }
+
+    // Centralized SKU Registry Collection for backwards-compatibility
     match /skus/{skuCode} {
       // Public & admin SKU verification
       allow read: if true;

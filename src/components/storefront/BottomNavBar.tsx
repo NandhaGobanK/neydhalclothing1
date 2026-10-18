@@ -3,27 +3,20 @@ import { useStore } from '../../context/StoreContext';
 import { Home, Grid, Search, Heart, ShoppingBag, User } from 'lucide-react';
 
 interface BottomNavBarProps {
-  activeTab: 'home' | 'categories' | 'search' | 'wishlist';
-  onTabChange: (tab: 'home' | 'categories' | 'search' | 'wishlist') => void;
+  activeTab: 'categories' | 'search' | 'wishlist' | 'home';
+  onTabChange: (tab: 'categories' | 'search' | 'wishlist') => void;
   onOpenCart: () => void;
-  onOpenAccount: () => void;
+  onOpenAccount?: () => void;
 }
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeTab,
   onTabChange,
   onOpenCart,
-  onOpenAccount,
 }) => {
   const { cartCount, wishlist } = useStore();
 
   const navItems = [
-    {
-      id: 'home' as const,
-      label: 'Home',
-      icon: Home,
-      action: () => onTabChange('home'),
-    },
     {
       id: 'categories' as const,
       label: 'Categories',
@@ -59,7 +52,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
               key={item.id}
               type="button"
               onClick={item.action}
-              className={`relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition cursor-pointer ${
+              className={`relative flex flex-col items-center justify-center py-1 px-3 rounded-xl transition cursor-pointer ${
                 isActive
                   ? 'text-rose-900 font-bold'
                   : 'text-neutral-500 hover:text-neutral-900 font-medium'
@@ -70,7 +63,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
                   className={`w-5 h-5 transition-transform ${
                     isActive ? 'scale-110 text-rose-900 stroke-[2.4]' : 'stroke-[1.8]'
                   }`}
-                  fill={isActive && (item.id === 'home' || item.id === 'wishlist') ? 'currentColor' : 'none'}
+                  fill={isActive && item.id === 'wishlist' ? 'currentColor' : 'none'}
                 />
                 {item.badge !== undefined && (
                   <span className="absolute -top-1 -right-2 bg-rose-700 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-xs">
@@ -86,21 +79,11 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
           );
         })}
 
-        {/* Account / Track Order Item */}
-        <button
-          type="button"
-          onClick={onOpenAccount}
-          className="relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-neutral-500 hover:text-neutral-900 font-medium transition cursor-pointer"
-        >
-          <User className="w-5 h-5 stroke-[1.8]" />
-          <span className="text-[10px] mt-1 tracking-tight">Account</span>
-        </button>
-
         {/* Bag / Cart Item with Badge */}
         <button
           type="button"
           onClick={onOpenCart}
-          className="relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-neutral-700 hover:text-neutral-950 font-medium transition cursor-pointer"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-xl text-neutral-700 hover:text-neutral-950 font-medium transition cursor-pointer"
         >
           <div className="relative">
             <ShoppingBag className="w-5 h-5 stroke-[1.8]" />
