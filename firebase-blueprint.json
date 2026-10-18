@@ -33,6 +33,36 @@
       },
       "required": ["id", "productCode", "title", "fabric", "color", "price", "stockStatus", "isVisible"]
     },
+    "SkuRecord": {
+      "title": "SkuRecord",
+      "description": "Centralized database registry for unique product SKU codes",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 64 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "productTitle": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "isLocked": { "type": "boolean" },
+        "editCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["code", "productId", "isLocked"]
+    },
+    "CategoryRecord": {
+      "title": "CategoryRecord",
+      "description": "Saree and apparel categories collection for real-time hierarchical management",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 500 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "displayOrder": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
     "Order": {
       "title": "Order",
       "description": "Customer saree reservation and prepaid UPI order",
@@ -98,6 +128,14 @@
     "/products/{productId}": {
       "schema": { "$ref": "Product" },
       "description": "Handcrafted sarees collection"
+    },
+    "/skus/{skuCode}": {
+      "schema": { "$ref": "SkuRecord" },
+      "description": "Centralized SKU collection for duplicate prevention and one-time edit lock"
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "CategoryRecord" },
+      "description": "Hierarchical saree categories collection for dynamic real-time management"
     },
     "/orders/{orderId}": {
       "schema": { "$ref": "Order" },

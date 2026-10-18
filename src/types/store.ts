@@ -64,6 +64,17 @@ export interface SareeCategory {
   displayOrder?: number;
 }
 
+export interface SkuRecord {
+  code: string; // Uppercase SKU code, acts as primary key in /skus collection
+  productId: string;
+  productTitle: string;
+  category?: string;
+  createdAt: string;
+  updatedAt?: string;
+  isLocked: boolean;
+  editCount: number;
+}
+
 export interface ProductReview {
   id: string;
   productId: string;

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Product, SareeFabric, SareeColor } from '../../types/store';
+import { Product, SareeFabric, SareeColor, SareeCategory } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
 import {
   Plus,
@@ -23,6 +23,9 @@ import {
   ShoppingBag,
   ExternalLink,
   Layers,
+  ArrowLeft,
+  ArrowRight,
+  FolderPlus,
 } from 'lucide-react';
 
 export const ProductManager: React.FC = () => {
@@ -37,7 +40,14 @@ export const ProductManager: React.FC = () => {
     categories,
     addCategory,
     deleteCategory,
+    checkSkuUniqueInRegistry,
   } = useStore();
+
+  const [activeCategoryView, setActiveCategoryView] = useState<SareeCategory | null>(null);
+  const [showAllSareesFlat, setShowAllSareesFlat] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<SareeCategory | null>(null);
+  const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
+  const [catActionError, setCatActionError] = useState<string | null>(null);
 
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -219,15 +229,16 @@ export const ProductManager: React.FC = () => {
     'Ivory Cream',
   ];
 
-  // Strict Database Duplicate SKU Prevention across all products
+  // Strict Database Duplicate SKU Prevention across all products and centralized SKU database registry
   const checkSkuInDatabase = (code: string, currentEditingId?: string) => {
     const clean = code.trim().toUpperCase();
     if (!clean) return null;
-    const existing = products.find(
-      (p) => p.productCode.trim().toUpperCase() === clean && p.id !== currentEditingId
-    );
-    if (existing) {
-      return `Duplicate SKU Error: "${clean}" is already assigned to saree "${existing.title}". Duplicate SKUs are prevented across the database. Please enter a different, unique SKU code. (Your one-time edit chance is preserved until you submit a unique code).`;
+    const res = checkSkuUniqueInRegistry(clean, currentEditingId);
+    if (!res.isUnique) {
+      return (
+        res.error ||
+        `Duplicate SKU Error: "${clean}" is already assigned to saree "${res.conflictingProduct || 'another product'}". Duplicate SKUs are prevented across the database. Please enter a different, unique SKU code. (Your one-time edit option is preserved until you submit a unique code).`
+      );
     }
     return null;
   };
@@ -238,7 +249,7 @@ export const ProductManager: React.FC = () => {
     setSkuError(err);
   };
 
-  const openAddModal = () => {
+  const openAddModal = (presetCategory?: string) => {
     setEditingProduct(null);
     setIsEditingSku(true);
     setAutoGenerateEnabled(false);
@@ -247,7 +258,10 @@ export const ProductManager: React.FC = () => {
     const initialFabric: SareeFabric = 'Kanjivaram Silk';
     const initialColor = 'Crimson Red';
     setProductCode('');
-    setCategory(categories[0]?.name || 'Poontamil sarees');
+    const targetCat =
+      presetCategory ||
+      (activeCategoryView ? activeCategoryView.name : categories[0]?.name || 'Poontamil sarees');
+    setCategory(targetCat);
     setFabric(initialFabric);
     setCustomFabric('');
     setSelectedColorOption(initialColor);
@@ -264,6 +278,44 @@ export const ProductManager: React.FC = () => {
     setLengthMeters(6.3);
     setOccasion('Wedding & Reception');
     setIsEditingModalOpen(true);
+  };
+
+  // Dynamic Category Creation and Real-Time Deletion
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) {
+      setCatActionError('Please enter a category name');
+      return;
+    }
+    setCatActionError(null);
+    try {
+      const created = await addCategory({
+        name: newCatName.trim(),
+        description: newCatDesc.trim() || undefined,
+        imageUrl: newCatImg.trim() || '/src/assets/images/hero_saree_atelier_1791651761357.jpg',
+      });
+      setNewCatName('');
+      setNewCatDesc('');
+      setNewCatImg('');
+      setIsAddCategoryOpen(false);
+      // Automatically enter the newly created category so admin can directly add sarees inside!
+      setActiveCategoryView(created);
+    } catch (err: any) {
+      setCatActionError(err?.message || 'Failed to create category');
+    }
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    try {
+      await deleteCategory(categoryToDelete.id);
+      if (activeCategoryView?.id === categoryToDelete.id) {
+        setActiveCategoryView(null);
+      }
+      setCategoryToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete category:', err);
+    }
   };
 
   const openEditModal = (prod: Product) => {
@@ -472,17 +524,29 @@ export const ProductManager: React.FC = () => {
     });
   }, [products]);
 
-  const filteredProducts = useMemo(() => {
-    if (!tableSearchQuery.trim()) return products;
-    const q = tableSearchQuery.toLowerCase().trim();
+  const currentCategoryProducts = useMemo(() => {
+    if (!activeCategoryView) return products;
     return products.filter(
+      (p) =>
+        p.category?.toLowerCase() === activeCategoryView.name.toLowerCase() ||
+        p.fabric?.toLowerCase() === activeCategoryView.name.toLowerCase()
+    );
+  }, [products, activeCategoryView]);
+
+  const displayedProducts = showAllSareesFlat ? products : currentCategoryProducts;
+
+  const filteredProducts = useMemo(() => {
+    if (!tableSearchQuery.trim()) return displayedProducts;
+    const q = tableSearchQuery.toLowerCase().trim();
+    return displayedProducts.filter(
       (p) =>
         p.productCode.toLowerCase().includes(q) ||
         p.title.toLowerCase().includes(q) ||
         p.fabric.toLowerCase().includes(q) ||
-        p.color.toLowerCase().includes(q)
+        p.color.toLowerCase().includes(q) ||
+        (p.category && p.category.toLowerCase().includes(q))
     );
-  }, [products, tableSearchQuery]);
+  }, [displayedProducts, tableSearchQuery]);
 
   return (
     <div className="space-y-6">
@@ -742,13 +806,13 @@ export const ProductManager: React.FC = () => {
         <div className="hidden md:block w-full max-w-full overflow-hidden">
           <table className="w-full text-left text-xs table-fixed">
             <colgroup>
-              <col className="w-[18%]" />
-              <col className="w-[26%]" />
-              <col className="w-[18%]" />
+              <col className="w-[16%]" />
+              <col className="w-[27%]" />
+              <col className="w-[17%]" />
               <col className="w-[13%]" />
-              <col className="w-[11%]" />
+              <col className="w-[12%]" />
               <col className="w-[8%]" />
-              <col className="w-[6%]" />
+              <col className="w-[7%]" />
             </colgroup>
             <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-500 uppercase tracking-wider font-semibold">
               <tr>
@@ -757,7 +821,7 @@ export const ProductManager: React.FC = () => {
                 <th className="py-3 px-3">Category & Fabric</th>
                 <th className="py-3 px-3">Price</th>
                 <th className="py-3 px-3">Stock</th>
-                <th className="py-3 px-2">Storefront</th>
+                <th className="py-3 px-2 text-center">Storefront</th>
                 <th className="py-3 px-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -775,6 +839,11 @@ export const ProductManager: React.FC = () => {
                       <span className="font-mono text-xs font-bold text-rose-950 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-200 truncate">
                         {product.productCode}
                       </span>
+                      {product.isSkuLocked && (
+                        <span title="SKU permanently locked after one edit" className="text-amber-700 shrink-0">
+                          <Lock className="w-3 h-3" />
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -875,14 +944,14 @@ export const ProductManager: React.FC = () => {
                   </td>
 
                   {/* Visibility Toggle Button */}
-                  <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                  <td className="py-3 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         canEditProducts && toggleProductVisibility(product.id);
                       }}
                       disabled={!canEditProducts}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition ${
+                      className={`inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition ${
                         product.isVisible
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
                           : 'bg-neutral-100 text-neutral-500 border border-neutral-300 hover:bg-neutral-200'
@@ -891,13 +960,13 @@ export const ProductManager: React.FC = () => {
                     >
                       {product.isVisible ? (
                         <>
-                          <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Visible</span>
+                          <Eye className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="hidden xl:inline">Visible</span>
                         </>
                       ) : (
                         <>
-                          <EyeOff className="w-3.5 h-3.5 text-neutral-400" />
-                          <span>Hidden</span>
+                          <EyeOff className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                          <span className="hidden xl:inline">Hidden</span>
                         </>
                       )}
                     </button>

@@ -26,6 +26,20 @@ service cloud.firestore {
       allow delete: if isSignedIn() || true;
     }
 
+    // Centralized SKU Registry Collection for uniqueness and duplicate prevention
+    match /skus/{skuCode} {
+      // Public & admin SKU verification
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Hierarchical Categories Collection for real-time dynamic additions & removals
+    match /categories/{categoryId} {
+      // Anyone can browse categories
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
     // Customer product reviews
     match /reviews/{reviewId} {
       // Anyone can read reviews

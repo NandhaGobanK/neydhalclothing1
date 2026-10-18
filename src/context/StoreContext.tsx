@@ -16,6 +16,7 @@ import {
   LoginPunchRecord,
   OrderChatMessage,
   SareeCategory,
+  SkuRecord,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -205,6 +206,10 @@ interface StoreContextType {
   remoteLogoutNotice: string | null;
   clearRemoteLogoutNotice: () => void;
 
+  // Centralized SKU Collection Registry
+  skus: SkuRecord[];
+  checkSkuUniqueInRegistry: (code: string, currentEditingId?: string) => { isUnique: boolean; conflictingProduct?: string; error?: string };
+
   // Categories & Customer Browsing
   categories: SareeCategory[];
   addCategory: (category: Omit<SareeCategory, 'id'>) => Promise<SareeCategory>;
@@ -334,15 +339,22 @@ export const normalizeProductStock = (product: Product): Product => {
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('neydhal_fresh_brand_new') === 'true') {
+      const stored = loadFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, []);
+      return Array.isArray(stored) ? stored.map(normalizeProductStock) : [];
+    }
     const deletedIds = getDeletedProductIds();
     const stored = loadFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     const source = stored && Array.isArray(stored) ? stored : INITIAL_PRODUCTS;
     return source.filter((p) => !deletedIds.has(p.id)).map(normalizeProductStock);
   });
 
-  const [orders, setOrders] = useState<Order[]>(() =>
-    loadFromStorage(STORAGE_KEYS.ORDERS, INITIAL_ORDERS)
-  );
+  const [orders, setOrders] = useState<Order[]>(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('neydhal_fresh_brand_new') === 'true') {
+      return loadFromStorage(STORAGE_KEYS.ORDERS, []);
+    }
+    return loadFromStorage(STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
+  });
 
   const [settings, setSettings] = useState<StoreSettings>(() => {
     const loaded = loadFromStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
@@ -421,6 +433,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   );
   const [customerActiveTab, setCustomerActiveTab] = useState<'home' | 'categories' | 'search' | 'wishlist'>('home');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Centralized SKU Registry State
+  const [skus, setSkus] = useState<SkuRecord[]>(() =>
+    loadFromStorage<SkuRecord[]>('aara_boutique_skus_v3', [])
+  );
+
+  // Dynamic Hierarchical Saree Categories State (Synced with Firestore /categories)
+  const [categories, setCategories] = useState<SareeCategory[]>(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('neydhal_fresh_brand_new') === 'true') {
+      return loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', []);
+    }
+    return loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', DEFAULT_SAREE_CATEGORIES);
+  });
 
   const toggleWishlist = (productId: string) => {
     setWishlist((prev) => {
@@ -674,6 +699,83 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, [settings.staffMembers?.length]);
 
+  // Real-time Firestore sync for Centralized SKU Collection (/skus)
+  useEffect(() => {
+    let isInitial = true;
+    const unsub = onSnapshot(
+      collection(db, 'skus'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: SkuRecord[] = [];
+          snapshot.forEach((d) => {
+            list.push({ code: d.id, ...d.data() } as SkuRecord);
+          });
+          setSkus(list);
+          saveToStorage('aara_boutique_skus_v3', list);
+        } else {
+          setSkus([]);
+          saveToStorage('aara_boutique_skus_v3', []);
+          // If Firestore /skus collection is empty but local products exist and not reset, populate /skus
+          if (isInitial && products.length > 0 && localStorage.getItem('neydhal_fresh_brand_new') !== 'true') {
+            products.forEach((p) => {
+              const cleanCode = p.productCode?.trim().toUpperCase();
+              if (cleanCode) {
+                const skuDoc: SkuRecord = {
+                  code: cleanCode,
+                  productId: p.id,
+                  productTitle: p.title,
+                  category: p.category,
+                  isLocked: Boolean(p.isSkuLocked),
+                  editCount: p.skuEditCount || 0,
+                  createdAt: p.createdAt || new Date().toISOString(),
+                };
+                setDoc(doc(db, 'skus', cleanCode), sanitizeForFirestore(skuDoc)).catch(() => {});
+              }
+            });
+          }
+        }
+        isInitial = false;
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'skus');
+      }
+    );
+    return () => unsub();
+  }, [products.length]);
+
+  // Real-time Firestore sync for Hierarchical Categories Collection (/categories)
+  useEffect(() => {
+    let isInitial = true;
+    const unsub = onSnapshot(
+      collection(db, 'categories'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: SareeCategory[] = [];
+          snapshot.forEach((d) => {
+            list.push({ id: d.id, ...d.data() } as SareeCategory);
+          });
+          list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+          setCategories(list);
+          saveToStorage('aara_boutique_categories_v3', list);
+        } else {
+          if (isInitial && DEFAULT_SAREE_CATEGORIES.length > 0 && localStorage.getItem('neydhal_fresh_brand_new') !== 'true') {
+            DEFAULT_SAREE_CATEGORIES.forEach((cat) => {
+              setDoc(doc(db, 'categories', cat.id), sanitizeForFirestore(cat)).catch(() => {});
+            });
+          } else if (localStorage.getItem('neydhal_fresh_brand_new') === 'true') {
+            setCategories([]);
+            saveToStorage('aara_boutique_categories_v3', []);
+          }
+        }
+        isInitial = false;
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'categories');
+      }
+    );
+    return () => unsub();
+  }, []);
+
   // If current logged-in user is a staff member who was removed, locked, or logged out by admin, revoke session immediately
   useEffect(() => {
     if (currentUser?.type === 'staff') {
@@ -834,6 +936,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       handleFirestoreError(err, OperationType.CREATE, `products/${newProduct.id}`)
     );
 
+    // Persist to Centralized SKU Database
+    if (manualSku) {
+      const skuRecord: SkuRecord = {
+        code: manualSku,
+        productId: newProduct.id,
+        productTitle: newProduct.title,
+        category: newProduct.category,
+        isLocked: false,
+        editCount: 0,
+        createdAt: newProduct.createdAt,
+      };
+      setDoc(doc(db, 'skus', manualSku), sanitizeForFirestore(skuRecord)).catch((err) =>
+        handleFirestoreError(err, OperationType.CREATE, `skus/${manualSku}`)
+      );
+    }
+
     return newProduct;
   };
 
@@ -856,7 +974,39 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           sanitizedUpdates.skuEditCount = (existingProd.skuEditCount || 0) + 1;
           sanitizedUpdates.isSkuLocked = true;
           sanitizedUpdates.initialSku = existingProd.initialSku || currentSku;
+
+          // Centralized SKU database registry update
+          if (currentSku) {
+            deleteDoc(doc(db, 'skus', currentSku)).catch(() => {});
+          }
+          const skuRecord: SkuRecord = {
+            code: cleanNewSku,
+            productId: id,
+            productTitle: sanitizedUpdates.title || existingProd.title,
+            category: sanitizedUpdates.category || existingProd.category,
+            isLocked: true,
+            editCount: 1,
+            createdAt: existingProd.createdAt,
+            updatedAt: new Date().toISOString(),
+          };
+          setDoc(doc(db, 'skus', cleanNewSku), sanitizeForFirestore(skuRecord)).catch((err) =>
+            handleFirestoreError(err, OperationType.CREATE, `skus/${cleanNewSku}`)
+          );
         }
+      }
+    } else if (existingProd && (sanitizedUpdates.title || sanitizedUpdates.category)) {
+      // Keep title and category synced in centralized SKU database
+      const existingSku = existingProd.productCode?.trim().toUpperCase();
+      if (existingSku) {
+        setDoc(
+          doc(db, 'skus', existingSku),
+          sanitizeForFirestore({
+            productTitle: sanitizedUpdates.title || existingProd.title,
+            category: sanitizedUpdates.category || existingProd.category,
+            updatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        ).catch(() => {});
       }
     }
 
@@ -908,6 +1058,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const deleteProduct = (id: string) => {
     markProductAsDeleted(id);
+    const targetProd = products.find((p) => p.id === id);
+    if (targetProd?.productCode) {
+      const cleanSku = targetProd.productCode.trim().toUpperCase();
+      deleteDoc(doc(db, 'skus', cleanSku)).catch(() => {});
+    }
+
     setProducts((prev) => {
       const next = prev.filter((p) => p.id !== id);
       saveToStorage(STORAGE_KEYS.PRODUCTS, next);
@@ -2114,11 +2270,34 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
   };
 
-  const categories: SareeCategory[] = useMemo(() => {
-    return settings.sareeCategories && settings.sareeCategories.length > 0
-      ? settings.sareeCategories
-      : DEFAULT_SAREE_CATEGORIES;
-  }, [settings.sareeCategories]);
+  const checkSkuUniqueInRegistry = (code: string, currentEditingId?: string) => {
+    const clean = code.trim().toUpperCase();
+    if (!clean) return { isUnique: true };
+
+    const inProducts = products.find(
+      (p) => p.productCode?.trim().toUpperCase() === clean && p.id !== currentEditingId
+    );
+    if (inProducts) {
+      return {
+        isUnique: false,
+        conflictingProduct: inProducts.title,
+        error: `Duplicate SKU Error: "${clean}" is already assigned to saree "${inProducts.title}". Duplicate SKUs are prevented across the database. Please enter a different, unique SKU code. (Your one-time edit option is preserved until you submit a unique code).`,
+      };
+    }
+
+    const inSkus = skus.find(
+      (s) => s.code?.trim().toUpperCase() === clean && s.productId !== currentEditingId
+    );
+    if (inSkus) {
+      return {
+        isUnique: false,
+        conflictingProduct: inSkus.productTitle,
+        error: `Duplicate SKU Error: "${clean}" is already registered in the SKU database table for "${inSkus.productTitle}". Duplicate SKUs are prevented. Please enter a unique SKU code.`,
+      };
+    }
+
+    return { isUnique: true };
+  };
 
   const addCategory = async (catInput: Omit<SareeCategory, 'id'>): Promise<SareeCategory> => {
     const newCat: SareeCategory = {
@@ -2129,18 +2308,36 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       displayOrder: catInput.displayOrder ?? (categories.length + 1),
     };
     const updated = [...categories, newCat];
+    setCategories(updated);
+    saveToStorage('aara_boutique_categories_v3', updated);
     updateSettings({ sareeCategories: updated });
+
+    setDoc(doc(db, 'categories', newCat.id), sanitizeForFirestore(newCat)).catch((err) =>
+      handleFirestoreError(err, OperationType.CREATE, `categories/${newCat.id}`)
+    );
     return newCat;
   };
 
   const updateCategory = async (id: string, updates: Partial<SareeCategory>) => {
     const updated = categories.map((c) => (c.id === id ? { ...c, ...updates } : c));
+    setCategories(updated);
+    saveToStorage('aara_boutique_categories_v3', updated);
     updateSettings({ sareeCategories: updated });
+
+    setDoc(doc(db, 'categories', id), sanitizeForFirestore(updates), { merge: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `categories/${id}`)
+    );
   };
 
   const deleteCategory = async (id: string) => {
     const updated = categories.filter((c) => c.id !== id);
+    setCategories(updated);
+    saveToStorage('aara_boutique_categories_v3', updated);
     updateSettings({ sareeCategories: updated });
+
+    deleteDoc(doc(db, 'categories', id)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `categories/${id}`)
+    );
   };
 
   const resetToInitialData = async () => {
@@ -2149,6 +2346,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       isFreshBrandNew: true,
       lastResetAt: new Date().toISOString(),
       staffMembers: [],
+      sareeCategories: [],
     };
     clearDeletedProductIds();
     setProducts([]);
@@ -2157,6 +2355,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setSettings(freshSettings);
     setCart([]);
     setWishlist([]);
+    setSkus([]);
+    setCategories([]);
     setCurrentUser(null);
     setCurrentView('store');
 
@@ -2169,6 +2369,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
       saveToStorage(STORAGE_KEYS.REVIEWS, []);
       saveToStorage('aara_boutique_wishlist_v3', []);
+      saveToStorage('aara_boutique_skus_v3', []);
+      saveToStorage('aara_boutique_categories_v3', []);
       localStorage.setItem('neydhal_products_initialized', 'true');
       localStorage.setItem('neydhal_fresh_brand_new', 'true');
     } catch {
@@ -2192,11 +2394,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       try {
         const staffSnap = await getDocs(collection(db, 'staff'));
         await Promise.all(staffSnap.docs.map((d) => deleteDoc(d.ref)));
-      } catch {
-        // ignore if collection empty
-      }
+      } catch {}
 
-      // 5. Reset store settings to clean store_config in Firestore
+      // 5. Wipe skus collection from Firestore
+      try {
+        const skusSnap = await getDocs(collection(db, 'skus'));
+        await Promise.all(skusSnap.docs.map((d) => deleteDoc(d.ref)));
+      } catch {}
+
+      // 6. Wipe categories collection from Firestore
+      try {
+        const catSnap = await getDocs(collection(db, 'categories'));
+        await Promise.all(catSnap.docs.map((d) => deleteDoc(d.ref)));
+      } catch {}
+
+      // 7. Reset store settings to clean store_config in Firestore
       await setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore(freshSettings));
     } catch (err) {
       console.warn('Firestore reset sync note:', err);
@@ -2700,6 +2912,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateStaffActivity,
         remoteLogoutNotice,
         clearRemoteLogoutNotice,
+        skus,
+        checkSkuUniqueInRegistry,
         categories,
         addCategory,
         updateCategory,

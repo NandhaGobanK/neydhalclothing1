@@ -883,9 +883,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                         const isChatAvailable =
                           !isOrderClosed &&
                           !isDisputeResolved &&
-                          (!isDelivered || hasActiveDispute) &&
-                          order.status !== 'Cancelled' &&
-                          order.status !== 'Rejected';
+                          (hasActiveDispute || (!isDelivered && order.status !== 'Cancelled' && order.status !== 'Rejected'));
 
                         return (
                           <div className="flex items-center gap-2 ml-auto">
