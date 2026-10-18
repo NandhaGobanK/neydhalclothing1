@@ -2117,7 +2117,7 @@ export const ProductManager: React.FC = () => {
       )}
 
       {/* Create Category Modal (Dynamic Real-Time Category Management) */}
-      {(isAddCategoryOpen || isCategoryModalOpen) && (
+      {isAddCategoryOpen && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 bg-neutral-900 text-white flex items-center justify-between">
@@ -2138,7 +2138,6 @@ export const ProductManager: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setIsAddCategoryOpen(false);
-                  setIsCategoryModalOpen(false);
                   setCatActionError(null);
                 }}
                 className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
@@ -2252,7 +2251,6 @@ export const ProductManager: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setIsAddCategoryOpen(false);
-                    setIsCategoryModalOpen(false);
                     setCatActionError(null);
                   }}
                   className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 hover:bg-neutral-100 font-semibold cursor-pointer"

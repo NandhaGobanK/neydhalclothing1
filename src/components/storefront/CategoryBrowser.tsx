@@ -12,6 +12,7 @@ import {
   Eye,
   ArrowRight,
   Grid,
+  X,
 } from 'lucide-react';
 import { formatPrice } from '../../utils/upi';
 
