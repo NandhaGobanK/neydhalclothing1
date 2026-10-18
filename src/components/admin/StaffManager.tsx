@@ -562,6 +562,22 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
         </button>
       </div>
 
+      {/* Staff Remote Logout Notification Banner (User Request) */}
+      {loggedOutNotice && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-semibold flex items-center justify-between gap-3 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{loggedOutNotice}</span>
+          </div>
+          <button
+            onClick={() => setLoggedOutNotice(null)}
+            className="text-emerald-700 hover:text-emerald-900 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Staff Members List Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {staffMembers.map((staff) => {
@@ -608,6 +624,17 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 border border-neutral-300">
                         <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
                         <span>Staff Logged Out</span>
+                      </span>
+                    )}
+
+                    {/* Staff Idle Alert Status Indicator (User Request) */}
+                    {staff.isIdle && (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse"
+                        title="Staff member has been inactive on device for 15+ minutes"
+                      >
+                        <Clock className="w-3 h-3 text-amber-600" />
+                        <span>Idle (15m+)</span>
                       </span>
                     )}
                   </div>
@@ -717,6 +744,19 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
                   </span>
                 </div>
 
+                {/* Staff Attendance Punch Timestamp (User Request: punch timestamp when staff logged in) */}
+                {staff.loginPunchAt && (
+                  <div className="mt-2.5 p-2 rounded-xl bg-amber-50/80 border border-amber-200/90 flex items-center justify-between text-[11px] text-amber-950 font-medium">
+                    <span className="flex items-center gap-1.5 font-bold text-amber-900">
+                      <Clock className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Login Punch:</span>
+                    </span>
+                    <span className="font-mono font-semibold text-neutral-800 text-[10px]">
+                      {formatDeviceDateTime(staff.loginPunchAt)}
+                    </span>
+                  </div>
+                )}
+
                 {/* Workload Metric */}
                 <div className="mt-3.5 p-3 rounded-xl bg-neutral-50 border border-neutral-200/80 space-y-1 text-xs">
                   <div className="flex justify-between font-semibold text-neutral-700">
@@ -731,19 +771,38 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-4 mt-4 border-t border-neutral-100 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => toggleStaffLock(staff.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
-                    staff.isLocked
-                      ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
-                      : 'border-rose-300 text-rose-700 hover:bg-rose-50'
-                  }`}
-                  title={staff.isLocked ? 'Unlock account' : 'Lock account (prohibit sign-in)'}
-                >
-                  {staff.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                  <span>{staff.isLocked ? 'Unlock' : 'Lock'}</span>
-                </button>
+              <div className="pt-4 mt-4 border-t border-neutral-100 flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => toggleStaffLock(staff.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                      staff.isLocked
+                        ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+                        : 'border-rose-300 text-rose-700 hover:bg-rose-50'
+                    }`}
+                    title={staff.isLocked ? 'Unlock account' : 'Lock account (prohibit sign-in)'}
+                  >
+                    {staff.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                    <span>{staff.isLocked ? 'Unlock' : 'Lock'}</span>
+                  </button>
+
+                  {/* Admin Remote Logout Control (User Request: Admin should have control to logout user on staff and ledger page) */}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Force log out ${staff.name}? Their active session on all devices will be terminated.`)) {
+                          handleRemoteLogoutStaff(staff.id, staff.name);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-amber-400/80 bg-amber-50 hover:bg-amber-100 text-amber-950 transition shadow-2xs cursor-pointer"
+                      title={`Force log out ${staff.name}`}
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-amber-800" />
+                      <span>Logout User</span>
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-1.5">
                   <button
@@ -1042,6 +1101,17 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
                             <span>Offline</span>
                           </span>
                         )}
+
+                        {/* Staff Idle Alert Indicator in Ledger (User Request) */}
+                        {staff.isIdle && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.2 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse"
+                            title="Inactive on device for 15+ minutes"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-amber-600" />
+                            <span>Idle (15m+)</span>
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-neutral-500 mt-0.5">
                         {staff.email ? `${staff.email}` : 'Google Auth'} {staff.phone ? `• ${staff.phone}` : ''}
@@ -1059,6 +1129,24 @@ export const StaffManager: React.FC<StaffManagerProps> = ({ onNavigateToBucket }
                         {formatPrice(totalAmount)}
                       </span>
                     </div>
+
+                    {/* Admin Logout Control on Ledger Page (User Request: Admin should have control to logout a user on the staff and ledger page) */}
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Force log out ${staff.name} from the ledger? Their session will be terminated immediately.`)) {
+                            handleRemoteLogoutStaff(staff.id, staff.name);
+                          }
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-semibold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                        title={`Force log out ${staff.name} from active device`}
+                      >
+                        <LogOut className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Logout User</span>
+                      </button>
+                    )}
 
                     {/* Move to Staff Bucket button (User Request) */}
                     {onNavigateToBucket && (

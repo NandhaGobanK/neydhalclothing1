@@ -4,6 +4,7 @@ import {
   Order,
   OrderStatusChatTemplates,
   StaffSectionPermissions,
+  SareeCategory,
 } from '../types/store';
 
 export const DEFAULT_CHAT_TEMPLATES: OrderStatusChatTemplates = {
@@ -114,9 +115,55 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
   settingsDelivery: { canView: true, canEdit: false },
 };
 
+export const DEFAULT_SAREE_CATEGORIES: SareeCategory[] = [
+  {
+    id: 'cat-poontamil',
+    name: 'Poontamil sarees',
+    description: 'Graceful floral handloom drapes woven with delicate silver and gold zari booties.',
+    imageUrl: '/src/assets/images/saree_kanjivaram_crimson_1791651781402.jpg',
+    displayOrder: 1,
+  },
+  {
+    id: 'cat-foil-print',
+    name: 'Foil print sarees',
+    description: 'Contemporary lustrous foil prints on festive pure silk and gossamer textures.',
+    imageUrl: '/src/assets/images/saree_banarasi_emerald_1791651794836.jpg',
+    displayOrder: 2,
+  },
+  {
+    id: 'cat-soft-menna',
+    name: 'Soft menna work saree',
+    description: 'Fine pastel drapes with delicate Meenakari floral threadwork and featherlight touch.',
+    imageUrl: '/src/assets/images/saree_chanderi_lavender_1791651806313.jpg',
+    displayOrder: 3,
+  },
+  {
+    id: 'cat-cotton-kids-dhoti',
+    name: 'Cotton kids dhoti set',
+    description: 'Traditional pure cotton festive dhoti and shirt ensembles crafted for young boys.',
+    imageUrl: '/src/assets/images/saree_tussar_pink_1791651839213.jpg',
+    displayOrder: 4,
+  },
+  {
+    id: 'cat-tissue-dhoti',
+    name: 'Tissue dhoti set',
+    description: 'Shimmering metallic gold and silver tissue dhoti sets with matching angavastram.',
+    imageUrl: '/src/assets/images/saree_organza_royal_1791651817454.jpg',
+    displayOrder: 5,
+  },
+  {
+    id: 'cat-couple-combo',
+    name: 'Couple combo / silk dhoti shirt',
+    description: 'Harmonious wedding matching combos featuring bride silk saree and groom silk dhoti shirt.',
+    imageUrl: '/src/assets/images/saree_georgette_mustard_1791651828784.jpg',
+    displayOrder: 6,
+  },
+];
+
 export const INITIAL_SETTINGS: StoreSettings = {
   boutiqueName: 'Neydhal',
   logoUrl: '/logo.png',
+  sareeCategories: DEFAULT_SAREE_CATEGORIES,
   tagline: 'Pure Handloom Silk & Heirloom Sarees',
   contactPhone: '+91 98765 43210',
   contactEmail: 'nandhagoban21@gmail.com',
@@ -264,6 +311,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     occasion: 'Bridal & Grand Wedding Muhurtham',
     isFeatured: true,
     createdAt: '2026-03-01T10:00:00Z',
+    category: 'Poontamil sarees',
+    initialSku: 'KAN-CRIM-101',
+    skuEditCount: 0,
+    isSkuLocked: false,
   },
   {
     id: 'saree-banarasi-emerald-02',
@@ -290,6 +341,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     occasion: 'Royal Reception & Festive Gala',
     isFeatured: true,
     createdAt: '2026-03-02T11:00:00Z',
+    category: 'Foil print sarees',
+    initialSku: 'BAN-EMER-202',
+    skuEditCount: 0,
+    isSkuLocked: false,
   },
   {
     id: 'saree-chanderi-lavender-03',
@@ -316,6 +371,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     occasion: 'Cocktails, Sangeet & Summer Soiree',
     isFeatured: true,
     createdAt: '2026-03-03T12:00:00Z',
+    category: 'Soft menna work saree',
+    initialSku: 'CHA-LAV-303',
+    skuEditCount: 0,
+    isSkuLocked: false,
   },
   {
     id: 'saree-organza-ivory-04',
@@ -342,6 +401,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     occasion: 'Daytime Mehendi & Intimate Dinners',
     isFeatured: false,
     createdAt: '2026-03-04T13:00:00Z',
+    category: 'Tissue dhoti set',
+    initialSku: 'ORG-IVOR-404',
+    skuEditCount: 0,
+    isSkuLocked: false,
   },
   {
     id: 'saree-georgette-royal-05',
@@ -368,6 +431,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     occasion: 'Sangeet, Night Receptions & Grand Festive',
     isFeatured: true,
     createdAt: '2026-03-05T14:00:00Z',
+    category: 'Couple combo / silk dhoti shirt',
+    initialSku: 'GEO-ROY-505',
+    skuEditCount: 0,
+    isSkuLocked: false,
   },
   {
     id: 'saree-kanjivaram-pink-06',
@@ -391,9 +458,13 @@ export const INITIAL_PRODUCTS: Product[] = [
     borderType: 'Contrast Emerald Green Ganga-Jamuna Temple Border',
     blousePieceIncluded: true,
     lengthMeters: 6.3,
-    occasion: 'South Indian Weddings & Haldi Rituals',
+    occasion: 'Weddings & Auspicious Rituals',
     isFeatured: false,
     createdAt: '2026-03-06T15:00:00Z',
+    category: 'Cotton kids dhoti set',
+    initialSku: 'KAN-PINK-606',
+    skuEditCount: 0,
+    isSkuLocked: false,
   },
 ];
 

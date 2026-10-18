@@ -24,15 +24,30 @@ import {
   X,
   Layers,
   AlertCircle,
+  Clock,
+  ArrowRight,
 } from 'lucide-react';
+import { useStaffIdleTracker } from '../../hooks/useStaffIdleTracker';
 
 interface AdminLayoutProps {
   onReturnToStore: () => void;
 }
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => {
-  const { settings, adminLogout, orders, staffMembers, currentUser, currentPermissions, adminOnlineStatus } = useStore();
+  const { settings, adminLogout, orders, staffMembers, currentUser, currentPermissions, adminOnlineStatus, forceLogoutStaff } = useStore();
   const isAdmin = currentUser?.type === 'admin';
+
+  // 15-Minute Staff Inactivity & Idle Detection Tracker (User Request)
+  const {
+    idleStaffMembers,
+    hasIdleStaff,
+    isIdleAlertEnabled,
+  } = useStaffIdleTracker();
+
+  const [dismissedIdleStaffIds, setDismissedIdleStaffIds] = useState<string[]>([]);
+  const unDismissedIdleStaff = idleStaffMembers.filter(
+    (s) => !dismissedIdleStaffIds.includes(s.id)
+  );
 
   const myBucketOrdersCount = orders.filter(
     (o) => o.assignedStaffId === (currentUser?.staffId || (isAdmin ? 'admin' : ''))
@@ -372,6 +387,14 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>Staff & Ledger</span>
+                {isIdleAlertEnabled && idleStaffMembers.length > 0 && (
+                  <span
+                    className="px-1.5 py-0.2 rounded-full bg-amber-400 text-neutral-950 text-[10px] font-bold animate-pulse"
+                    title={`${idleStaffMembers.length} staff specialist(s) idle for 15+ minutes`}
+                  >
+                    {idleStaffMembers.length} idle
+                  </span>
+                )}
               </button>
             )}
 
@@ -492,6 +515,66 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                 onClick={() => setIncomingDisputeAlert(null)}
                 className="p-1 rounded-lg text-white/80 hover:text-white cursor-pointer"
                 title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Inactivity 15-Minute Admin Intimation Alert Banner (User Request) */}
+      {isAdmin && isIdleAlertEnabled && unDismissedIdleStaff.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-rose-700 text-white px-4 py-3 shadow-md animate-in slide-in-from-top duration-300">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-full bg-white text-amber-700 flex items-center justify-center font-bold shadow-xs shrink-0 animate-pulse">
+                <Clock className="w-4 h-4" />
+              </span>
+              <div>
+                <p className="font-bold text-xs sm:text-sm text-white flex items-center gap-2 flex-wrap">
+                  <span>⏳ Staff Inactivity Intimation:</span>
+                  <span className="underline font-semibold">
+                    {unDismissedIdleStaff.map((s) => `${s.name} (@${s.username})`).join(', ')}
+                  </span>
+                  <span className="bg-amber-300 text-neutral-950 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                    Idle for 15+ Minutes
+                  </span>
+                </p>
+                <p className="text-[11px] text-amber-100 font-medium">
+                  Concerned staff specialist has had zero interaction for 15 minutes. You can review assignments or log them out directly.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setActiveTab('staff')}
+                className="px-3 py-1.5 rounded-lg bg-neutral-950 hover:bg-neutral-900 text-amber-300 font-bold text-xs transition shadow-sm flex items-center gap-1 cursor-pointer"
+              >
+                <span>Open Staff & Ledger</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+
+              {unDismissedIdleStaff[0] && (
+                <button
+                  onClick={() => {
+                    const target = unDismissedIdleStaff[0];
+                    if (window.confirm(`Force log out ${target.name}? Their device session will be terminated immediately.`)) {
+                      forceLogoutStaff(target.id);
+                    }
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white font-semibold text-xs transition cursor-pointer"
+                  title="Log out idle staff"
+                >
+                  Logout Staff
+                </button>
+              )}
+
+              <button
+                onClick={() => setDismissedIdleStaffIds((prev) => [...prev, ...unDismissedIdleStaff.map((s) => s.id)])}
+                className="p-1 rounded-lg text-white/80 hover:text-white cursor-pointer"
+                title="Dismiss Alert"
               >
                 <X className="w-4 h-4" />
               </button>

@@ -37,6 +37,8 @@ import {
   Phone,
   Mail,
   Edit,
+  Clock,
+  AlertCircle,
 } from 'lucide-react';
 
 export const SettingsManager: React.FC = () => {
@@ -161,6 +163,14 @@ export const SettingsManager: React.FC = () => {
   // Security (Strictly for admin)
   const [adminPin, setAdminPin] = useState(settings.adminPin);
 
+  // Staff Inactivity & 15-Minute Idle Detection (Admin Intimation) (User Request)
+  const [staffIdleAlertEnabled, setStaffIdleAlertEnabled] = useState<boolean>(
+    settings.staffIdleAlert?.enabled ?? true
+  );
+  const [idleThresholdMinutes, setIdleThresholdMinutes] = useState<number>(
+    settings.staffIdleAlert?.idleThresholdMinutes ?? 15
+  );
+
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [isCompressingLogo, setIsCompressingLogo] = useState(false);
@@ -220,6 +230,10 @@ export const SettingsManager: React.FC = () => {
         setPayeeName(settings.payment.payeeName);
         setQrCodeUrl(settings.payment.qrCodeUrl || '');
         setPaymentInstructions(settings.payment.instructions);
+      }
+      if (settings.staffIdleAlert) {
+        setStaffIdleAlertEnabled(settings.staffIdleAlert.enabled ?? true);
+        setIdleThresholdMinutes(settings.staffIdleAlert.idleThresholdMinutes ?? 15);
       }
     }
   }, [settings]);
@@ -470,6 +484,10 @@ export const SettingsManager: React.FC = () => {
       },
       chatTemplates,
       defaultStaffPermissions: staffPermissions,
+      staffIdleAlert: {
+        enabled: staffIdleAlertEnabled,
+        idleThresholdMinutes: Number(idleThresholdMinutes) || 15,
+      },
       ...(isAdmin ? { adminPin: adminPin.trim() || '889988' } : {}),
     });
 
@@ -1246,6 +1264,102 @@ export const SettingsManager: React.FC = () => {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Section 4B: Staff Inactivity & 15-Minute Idle Detection (Admin Intimation) (User Request) */}
+        {isAdmin && (
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-rose-950 font-serif font-bold text-base sm:text-lg">
+                <Clock className="w-5 h-5 text-amber-600" />
+                <h3>Staff Inactivity & 15-Minute Idle Detection (Admin Intimation)</h3>
+              </div>
+              <span
+                className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 ${
+                  staffIdleAlertEnabled
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    staffIdleAlertEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'
+                  }`}
+                />
+                <span>{staffIdleAlertEnabled ? 'Intimation Active' : 'Feature Disabled'}</span>
+              </span>
+            </div>
+
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              Monitors active staff interaction on their connected devices (mouse movements, clicks, keystrokes, touches, and scrolls). If a logged-in staff specialist remains inactive for <strong>15 minutes</strong>, their status is automatically marked as idle in real-time, and a high-priority alert intimates the store admin.
+            </p>
+
+            <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200/90 space-y-4 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-neutral-900 block text-sm">
+                    Intimate Admin when Staff is Idle (15 mins)
+                  </span>
+                  <span className="text-[11px] text-neutral-500">
+                    Enable or disable instant admin intimation banner and indicator when staff is idle for 15 minutes
+                  </span>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={staffIdleAlertEnabled}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setStaffIdleAlertEnabled(enabled);
+                      updateSettings({
+                        staffIdleAlert: {
+                          enabled,
+                          idleThresholdMinutes: Number(idleThresholdMinutes) || 15,
+                        },
+                      });
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                  <span className="ml-2.5 text-xs font-bold text-neutral-800">
+                    {staffIdleAlertEnabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </label>
+              </div>
+
+              <div className="pt-3 border-t border-neutral-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-neutral-700">
+                <div className="space-y-0.5">
+                  <span className="font-semibold text-neutral-800 block">Idle Inactivity Threshold:</span>
+                  <span className="text-[11px] text-neutral-500">
+                    Threshold time before staff presence is flagged as idle and intimated to admin
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={idleThresholdMinutes}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setIdleThresholdMinutes(val);
+                      updateSettings({
+                        staffIdleAlert: {
+                          enabled: staffIdleAlertEnabled,
+                          idleThresholdMinutes: val,
+                        },
+                      });
+                    }}
+                    className="px-3 py-1.5 rounded-xl border border-neutral-300 bg-white text-xs font-bold text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value={15}>15 Minutes (Default Standard)</option>
+                    <option value={10}>10 Minutes (Strict Monitoring)</option>
+                    <option value={20}>20 Minutes (Moderate)</option>
+                    <option value={30}>30 Minutes (Relaxed)</option>
+                  </select>
+                  <span className="text-[10px] text-neutral-400 font-mono">(Device Time Synced)</span>
+                </div>
+              </div>
             </div>
           </div>
         )}

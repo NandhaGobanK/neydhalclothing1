@@ -15,6 +15,7 @@ import {
   CourierService,
   LoginPunchRecord,
   OrderChatMessage,
+  SareeCategory,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -23,6 +24,7 @@ import {
   DEFAULT_STAFF_PERMISSIONS,
   DEFAULT_CHAT_TEMPLATES,
   INITIAL_REVIEWS,
+  DEFAULT_SAREE_CATEGORIES,
 } from '../data/initialData';
 import { googleSignOut, setCachedAccessToken } from '../utils/firebaseAuth';
 import { syncPWAAndDocumentMetadata } from '../utils/dynamicManifest';
@@ -202,6 +204,21 @@ interface StoreContextType {
   updateStaffActivity: (staffId: string) => Promise<void>;
   remoteLogoutNotice: string | null;
   clearRemoteLogoutNotice: () => void;
+
+  // Categories & Customer Browsing
+  categories: SareeCategory[];
+  addCategory: (category: Omit<SareeCategory, 'id'>) => Promise<SareeCategory>;
+  updateCategory: (id: string, updates: Partial<SareeCategory>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  selectedCategory: string;
+  setSelectedCategory: (cat: string) => void;
+  customerActiveTab: 'home' | 'categories' | 'search' | 'wishlist';
+  setCustomerActiveTab: (tab: 'home' | 'categories' | 'search' | 'wishlist') => void;
+
+  // Wishlist
+  wishlist: string[];
+  toggleWishlist: (productId: string) => void;
+  isInWishlist: (productId: string) => boolean;
 
   // UI state
   activeProductModal: Product | null;
@@ -397,6 +414,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [lastPlacedOrder, setLastPlacedOrder] = useState<Order | null>(null);
   const [remoteLogoutNotice, setRemoteLogoutNotice] = useState<string | null>(null);
   const clearRemoteLogoutNotice = () => setRemoteLogoutNotice(null);
+
+  // Customer Browsing State & Wishlist
+  const [wishlist, setWishlist] = useState<string[]>(() =>
+    loadFromStorage('aara_boutique_wishlist_v3', [])
+  );
+  const [customerActiveTab, setCustomerActiveTab] = useState<'home' | 'categories' | 'search' | 'wishlist'>('home');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const toggleWishlist = (productId: string) => {
+    setWishlist((prev) => {
+      const next = prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId];
+      saveToStorage('aara_boutique_wishlist_v3', next);
+      return next;
+    });
+  };
+
+  const isInWishlist = (productId: string) => wishlist.includes(productId);
 
   const [currentView, setCurrentView] = useState<'store' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
@@ -2099,12 +2135,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
   };
 
+  const categories: SareeCategory[] = useMemo(() => {
+    return settings.sareeCategories && settings.sareeCategories.length > 0
+      ? settings.sareeCategories
+      : DEFAULT_SAREE_CATEGORIES;
+  }, [settings.sareeCategories]);
+
+  const addCategory = async (catInput: Omit<SareeCategory, 'id'>): Promise<SareeCategory> => {
+    const newCat: SareeCategory = {
+      id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: catInput.name.trim(),
+      description: catInput.description?.trim() || '',
+      imageUrl: catInput.imageUrl?.trim() || '/src/assets/images/hero_saree_atelier_1791651761357.jpg',
+      displayOrder: catInput.displayOrder ?? (categories.length + 1),
+    };
+    const updated = [...categories, newCat];
+    updateSettings({ sareeCategories: updated });
+    return newCat;
+  };
+
+  const updateCategory = async (id: string, updates: Partial<SareeCategory>) => {
+    const updated = categories.map((c) => (c.id === id ? { ...c, ...updates } : c));
+    updateSettings({ sareeCategories: updated });
+  };
+
+  const deleteCategory = async (id: string) => {
+    const updated = categories.filter((c) => c.id !== id);
+    updateSettings({ sareeCategories: updated });
+  };
+
   const resetToInitialData = async () => {
     clearDeletedProductIds();
     setProducts([]);
     setOrders([]);
     setSettings(INITIAL_SETTINGS);
     setCart([]);
+    setWishlist([]);
     setCurrentUser(null);
     setCurrentView('store');
 
@@ -2115,6 +2181,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       saveToStorage(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
       saveToStorage(STORAGE_KEYS.CART, []);
       saveToStorage(STORAGE_KEYS.CURRENT_USER, null);
+      saveToStorage('aara_boutique_wishlist_v3', []);
       localStorage.setItem('neydhal_products_initialized', 'true');
     } catch {
       // ignore storage clear error
@@ -2133,7 +2200,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const reviewsSnap = await getDocs(collection(db, 'reviews'));
       await Promise.all(reviewsSnap.docs.map((d) => deleteDoc(d.ref)));
 
-      // 4. Reset store settings to clean store_config in Firestore
+      // 4. Wipe staff collection if initialized
+      try {
+        const staffSnap = await getDocs(collection(db, 'staff'));
+        await Promise.all(staffSnap.docs.map((d) => deleteDoc(d.ref)));
+      } catch {
+        // ignore if collection empty
+      }
+
+      // 5. Reset store settings to clean store_config in Firestore
       await setDoc(doc(db, 'settings', 'store_config'), sanitizeForFirestore(INITIAL_SETTINGS));
     } catch (err) {
       console.warn('Firestore reset sync note:', err);
@@ -2637,6 +2712,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateStaffActivity,
         remoteLogoutNotice,
         clearRemoteLogoutNotice,
+        categories,
+        addCategory,
+        updateCategory,
+        deleteCategory,
+        selectedCategory,
+        setSelectedCategory,
+        customerActiveTab,
+        setCustomerActiveTab,
+        wishlist,
+        toggleWishlist,
+        isInWishlist,
         activeProductModal,
         setActiveProductModal,
         isCartOpen,

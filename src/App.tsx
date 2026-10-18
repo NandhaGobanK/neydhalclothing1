@@ -16,6 +16,8 @@ import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminAuthModal } from './components/admin/AdminAuthModal';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { getThemeColors } from './utils/theme';
+import { LogOut } from 'lucide-react';
+import { useStaffIdleTracker } from './hooks/useStaffIdleTracker';
 
 function MainAppContent() {
   const {
@@ -32,7 +34,12 @@ function MainAppContent() {
     setIsTrackOrderOpen,
     lastPlacedOrder,
     setLastPlacedOrder,
+    remoteLogoutNotice,
+    clearRemoteLogoutNotice,
   } = useStore();
+
+  // Keep device activity & 15-minute idle detection active across the app
+  useStaffIdleTracker();
 
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -266,6 +273,30 @@ function MainAppContent() {
             />
           )}
         </>
+      )}
+
+      {/* Remote Staff Session Revocation Notice Modal (User Request) */}
+      {remoteLogoutNotice && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4">
+            <div className="flex items-center gap-3 text-rose-700">
+              <span className="p-2.5 rounded-xl bg-rose-100">
+                <LogOut className="w-5 h-5 text-rose-600" />
+              </span>
+              <h3 className="font-serif text-lg font-bold text-neutral-900">Session Ended</h3>
+            </div>
+            <p className="text-sm text-neutral-700 leading-relaxed">{remoteLogoutNotice}</p>
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={clearRemoteLogoutNotice}
+                className="px-4 py-2 rounded-xl bg-neutral-900 text-white font-semibold text-xs hover:bg-neutral-800 transition cursor-pointer"
+              >
+                Acknowledge & Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

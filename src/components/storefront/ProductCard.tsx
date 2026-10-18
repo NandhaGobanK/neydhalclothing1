@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Product } from '../../types/store';
 import { formatPrice, calculateDiscount } from '../../utils/upi';
-import { Play, ShoppingBag, Eye, Star, Plus, Minus, Check } from 'lucide-react';
+import { Play, ShoppingBag, Eye, Star, Plus, Minus, Check, Heart } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 
 interface ProductCardProps {
@@ -10,10 +10,11 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails }) => {
-  const { addToCart, settings, getProductAverageRating } = useStore();
+  const { addToCart, settings, getProductAverageRating, toggleWishlist, isInWishlist } = useStore();
   const { rating, count } = getProductAverageRating(product.id);
   const [quantity, setQuantity] = useState(1);
   const [addedSuccess, setAddedSuccess] = useState(false);
+  const inWishlist = isInWishlist(product.id);
 
   const isOutOfStock = product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0);
   const maxStock = isOutOfStock ? 0 : (product.stockCount !== undefined && product.stockCount > 0 ? product.stockCount : 99);

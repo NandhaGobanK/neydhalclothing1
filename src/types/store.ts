@@ -53,6 +53,15 @@ export interface Product {
   skuEditCount?: number; // Count of SKU modifications (maximum 1 allowed)
   isSkuLocked?: boolean; // True once edited one time; locks SKU permanently
   initialSku?: string; // Original SKU stored upon creation for comparison
+  category?: string; // Category grouping (e.g. Poontamil Sarees, Foil Print Sarees, etc.)
+}
+
+export interface SareeCategory {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  displayOrder?: number;
 }
 
 export interface ProductReview {
@@ -365,4 +374,5 @@ export interface StoreSettings {
   chatTemplates: OrderStatusChatTemplates;
   defaultStaffPermissions?: StaffSectionPermissions;
   staffIdleAlert?: StaffIdleAlertSettings;
+  sareeCategories?: SareeCategory[]; // Configured saree and apparel categories
 }
