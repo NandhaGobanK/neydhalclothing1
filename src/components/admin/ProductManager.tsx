@@ -301,8 +301,6 @@ export const ProductManager: React.FC = () => {
       setCustomFabric(prod.fabric);
     }
 
-    const codeMap = { [prod.color.toLowerCase()]: prod.productCode };
-    setAssignedColorCodes(codeMap);
     setProductCode(prod.productCode);
     setTitle(prod.title);
     setSubtitle(prod.subtitle || '');
