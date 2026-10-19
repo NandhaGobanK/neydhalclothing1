@@ -304,8 +304,8 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
       return;
     }
 
-    if (newStatus === 'Shipped' && !order.shippingDetails?.trackingNumber) {
-      // Open Shipping details modal
+    if (newStatus === 'Shipped') {
+      // Courier Details Exception for Shipped Stage: prompt for courier details first
       setShippingModalOrder(order);
       setCourierName(order.shippingDetails?.courierName || 'DTDC Express');
       setTrackingNumber(order.shippingDetails?.trackingNumber || '');

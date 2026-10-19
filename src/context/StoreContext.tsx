@@ -17,6 +17,7 @@ import {
   OrderChatMessage,
   SareeCategory,
   SkuRecord,
+  ProductAttributeDefinition,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -26,6 +27,7 @@ import {
   DEFAULT_CHAT_TEMPLATES,
   INITIAL_REVIEWS,
   DEFAULT_SAREE_CATEGORIES,
+  DEFAULT_PRODUCT_ATTRIBUTES,
 } from '../data/initialData';
 import { googleSignOut, setCachedAccessToken } from '../utils/firebaseAuth';
 import { syncPWAAndDocumentMetadata } from '../utils/dynamicManifest';
@@ -224,6 +226,18 @@ interface StoreContextType {
   wishlist: string[];
   toggleWishlist: (productId: string) => void;
   isInWishlist: (productId: string) => boolean;
+
+  // Customer Orders Count
+  customerOrdersCount: number;
+  customerOrders: Order[];
+  recordCustomerOrder: (orderNumber: string, phone?: string) => void;
+
+  // Dynamic Product Specifications / Custom Attributes
+  productAttributes: ProductAttributeDefinition[];
+  addProductAttribute: (name: string, placeholder?: string, isOptional?: boolean) => ProductAttributeDefinition;
+  updateProductAttribute: (id: string, updates: Partial<ProductAttributeDefinition>) => void;
+  deleteProductAttribute: (id: string) => void;
+  toggleFabricOptional: (isOptional?: boolean) => void;
 
   // UI state
   activeProductModal: Product | null;
@@ -447,7 +461,35 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', DEFAULT_SAREE_CATEGORIES);
   });
 
+  // Active, visible wishlist derived state: instantly purges any deleted or hidden product from badges & lists
+  const activeWishlist = useMemo(() => {
+    const activeVisibleIds = new Set(
+      products.filter((p) => p.isVisible !== false).map((p) => p.id)
+    );
+    return wishlist.filter((id) => activeVisibleIds.has(id));
+  }, [wishlist, products]);
+
+  // Automatic Wishlist Removal & Dynamic Adjustment for Deleted or Hidden Products
+  useEffect(() => {
+    if (products.length > 0) {
+      setWishlist((prevWishlist) => {
+        const activeVisibleIds = new Set(
+          products.filter((p) => p.isVisible !== false).map((p) => p.id)
+        );
+        const cleaned = prevWishlist.filter((id) => activeVisibleIds.has(id));
+        if (cleaned.length !== prevWishlist.length) {
+          saveToStorage('aara_boutique_wishlist_v3', cleaned);
+          return cleaned;
+        }
+        return prevWishlist;
+      });
+    }
+  }, [products]);
+
   const toggleWishlist = (productId: string) => {
+    const target = products.find((p) => p.id === productId);
+    if (!target || target.isVisible === false) return;
+
     setWishlist((prev) => {
       const next = prev.includes(productId)
         ? prev.filter((id) => id !== productId)
@@ -457,7 +499,59 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
-  const isInWishlist = (productId: string) => wishlist.includes(productId);
+  const isInWishlist = (productId: string) => {
+    const target = products.find((p) => p.id === productId);
+    if (!target || target.isVisible === false) return false;
+    return activeWishlist.includes(productId);
+  };
+
+  // Customer's placed order numbers tracking for "My Orders" badge counter
+  const [customerOrderNumbers, setCustomerOrderNumbers] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = JSON.parse(localStorage.getItem('aara_customer_orders') || '[]');
+      return Array.isArray(stored) ? stored : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const recordCustomerOrder = (orderNumber: string, phone?: string) => {
+    if (!orderNumber) return;
+    const cleanNum = orderNumber.trim().toUpperCase();
+    setCustomerOrderNumbers((prev) => {
+      if (prev.includes(cleanNum)) return prev;
+      const next = [cleanNum, ...prev];
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('aara_customer_orders', JSON.stringify(next));
+          if (phone) {
+            localStorage.setItem('aara_customer_phone', phone.trim());
+          }
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  const customerOrders = useMemo(() => {
+    if (!orders || orders.length === 0) return [];
+    const savedNumbers = new Set(customerOrderNumbers.map((n) => n.trim().toUpperCase()));
+    if (lastPlacedOrder?.orderNumber) {
+      savedNumbers.add(lastPlacedOrder.orderNumber.trim().toUpperCase());
+    }
+    const savedPhone = typeof window !== 'undefined' ? (localStorage.getItem('aara_customer_phone') || '').trim() : '';
+    const cleanSavedPhone = savedPhone.replace(/\D/g, '').slice(-10);
+
+    return orders.filter((o) => {
+      const matchNumber = savedNumbers.has(o.orderNumber.trim().toUpperCase());
+      const orderPhone = (o.customer?.phone || '').replace(/\D/g, '').slice(-10);
+      const matchPhone = cleanSavedPhone && orderPhone && orderPhone === cleanSavedPhone;
+      return matchNumber || matchPhone;
+    });
+  }, [orders, customerOrderNumbers, lastPlacedOrder]);
+
+  const customerOrdersCount = customerOrders.length;
 
   const [currentView, setCurrentView] = useState<'store' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
@@ -1057,6 +1151,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       saveToStorage(STORAGE_KEYS.PRODUCTS, next);
       return next;
     });
+    if (sanitizedUpdates.isVisible === false) {
+      setWishlist((prev) => {
+        const next = prev.filter((item) => item !== id);
+        saveToStorage('aara_boutique_wishlist_v3', next);
+        return next;
+      });
+    }
     if (activeProductModal && activeProductModal.id === id) {
       setActiveProductModal((prev) => (prev ? normalizeProductStock({ ...prev, ...sanitizedUpdates }) : null));
     }
@@ -1102,6 +1203,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       saveToStorage(STORAGE_KEYS.CART, next);
       return next;
     });
+    setWishlist((prev) => {
+      const next = prev.filter((item) => item !== id);
+      saveToStorage('aara_boutique_wishlist_v3', next);
+      return next;
+    });
     if (activeProductModal?.id === id) {
       setActiveProductModal(null);
     }
@@ -1121,6 +1227,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       saveToStorage(STORAGE_KEYS.PRODUCTS, next);
       return next;
     });
+    if (!nextVis) {
+      setWishlist((prev) => {
+        const next = prev.filter((item) => item !== id);
+        saveToStorage('aara_boutique_wishlist_v3', next);
+        return next;
+      });
+    }
 
     // Update in Firestore with setDoc merge: true to guarantee permanence across refreshes
     setDoc(doc(db, 'products', id), { isVisible: nextVis }, { merge: true }).catch((err) =>
@@ -1322,9 +1435,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setOrders((prev) => [newOrder, ...prev]);
     clearCart();
     setLastPlacedOrder(newOrder);
+    setCustomerOrderNumbers((prev) => [newOrder.orderNumber, ...prev.filter((n) => n !== newOrder.orderNumber)]);
     try {
       if (typeof window !== 'undefined') {
         localStorage.setItem('aara_last_order', newOrder.orderNumber);
+        if (newOrder.customer?.phone) {
+          localStorage.setItem('aara_customer_phone', newOrder.customer.phone.trim());
+        }
         const stored = JSON.parse(localStorage.getItem('aara_customer_orders') || '[]');
         const nextList = [newOrder.orderNumber, ...stored.filter((n: string) => n !== newOrder.orderNumber)];
         localStorage.setItem('aara_customer_orders', JSON.stringify(nextList));
@@ -2306,6 +2423,47 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
   };
 
+  // Dynamic Product Specifications / Custom Attributes Management
+  const productAttributes = settings.productAttributes && settings.productAttributes.length > 0
+    ? settings.productAttributes
+    : DEFAULT_PRODUCT_ATTRIBUTES;
+
+  const addProductAttribute = (name: string, placeholder?: string, isOptional: boolean = true) => {
+    const newAttr: ProductAttributeDefinition = {
+      id: `attr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: name.trim(),
+      placeholder: placeholder?.trim() || `e.g. Enter ${name.trim()}`,
+      isOptional,
+    };
+    const current = settings.productAttributes && settings.productAttributes.length > 0
+      ? settings.productAttributes
+      : DEFAULT_PRODUCT_ATTRIBUTES;
+    const updated = [...current, newAttr];
+    updateSettings({ productAttributes: updated });
+    return newAttr;
+  };
+
+  const updateProductAttribute = (id: string, updates: Partial<ProductAttributeDefinition>) => {
+    const current = settings.productAttributes && settings.productAttributes.length > 0
+      ? settings.productAttributes
+      : DEFAULT_PRODUCT_ATTRIBUTES;
+    const updated = current.map((attr) => (attr.id === id ? { ...attr, ...updates } : attr));
+    updateSettings({ productAttributes: updated });
+  };
+
+  const deleteProductAttribute = (id: string) => {
+    const current = settings.productAttributes && settings.productAttributes.length > 0
+      ? settings.productAttributes
+      : DEFAULT_PRODUCT_ATTRIBUTES;
+    const updated = current.filter((attr) => attr.id !== id);
+    updateSettings({ productAttributes: updated });
+  };
+
+  const toggleFabricOptional = (isOptional?: boolean) => {
+    const nextVal = isOptional !== undefined ? isOptional : !settings.isFabricOptional;
+    updateSettings({ isFabricOptional: nextVal });
+  };
+
   const checkSkuUniqueInRegistry = (code: string, currentEditingId?: string) => {
     const clean = code.trim().toUpperCase();
     if (!clean) return { isUnique: true };
@@ -2962,9 +3120,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setSelectedCategory,
         customerActiveTab,
         setCustomerActiveTab,
-        wishlist,
+        wishlist: activeWishlist,
         toggleWishlist,
         isInWishlist,
+        customerOrdersCount,
+        customerOrders,
+        recordCustomerOrder,
+        productAttributes,
+        addProductAttribute,
+        updateProductAttribute,
+        deleteProductAttribute,
+        toggleFabricOptional,
         activeProductModal,
         setActiveProductModal,
         isCartOpen,

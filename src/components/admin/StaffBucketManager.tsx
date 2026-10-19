@@ -92,6 +92,16 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
   const [bucketSearchQuery, setBucketSearchQuery] = useState('');
   const [selectedDetailOrder, setSelectedDetailOrder] = useState<Order | null>(null);
 
+  // Instant real-time synchronization of selected detail order with store updates (assignment logs, status changes)
+  useEffect(() => {
+    if (selectedDetailOrder) {
+      const freshOrder = orders.find((o) => o.id === selectedDetailOrder.id);
+      if (freshOrder) {
+        setSelectedDetailOrder(freshOrder);
+      }
+    }
+  }, [orders]);
+
   // Assignment Modal for staff or reassign
   const [assignModalOrder, setAssignModalOrder] = useState<Order | null>(null);
   const [targetStaffId, setTargetStaffId] = useState('');
@@ -316,13 +326,12 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
     const trackNum = trackingNumber.trim().toUpperCase();
     const notes = shippingNotes.trim();
 
+    // Specifically for Shipped stage: updateOrderShipping records the dispatch log and sets status to 'Shipped' only after courier details submitted
     updateOrderShipping(shippingModalOrder.id, {
       courierName: courier,
       trackingNumber: trackNum,
       notes,
     });
-
-    updateOrderStatus(shippingModalOrder.id, 'Shipped');
 
     if (selectedDetailOrder?.id === shippingModalOrder.id) {
       setSelectedDetailOrder((prev) =>
@@ -1425,9 +1434,14 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
               {/* Stage Switcher */}
               <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <span className="font-bold text-neutral-700 text-xs block">Current Order Stage:</span>
-                  <p className="text-[11px] text-neutral-500">
-                    Select a stage to transition the saree order and notify customer.
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-neutral-800 text-xs block">Current Order Stage:</span>
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      ✓ Instant Live Logging
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                    Stage clicks register to live assignment logs immediately without needing to click Done. (Shipped requires courier details first).
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -1436,11 +1450,12 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                       key={st}
                       type="button"
                       onClick={() => handleStageChange(selectedDetailOrder, st)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                         selectedDetailOrder.status === st
                           ? 'bg-neutral-900 text-white shadow-xs font-bold'
                           : 'bg-white hover:bg-neutral-200 border border-neutral-300 text-neutral-700'
                       }`}
+                      title={st === 'Shipped' ? 'Requires courier & consignment details first' : `Immediately switch stage to ${st} and register log`}
                     >
                       {st}
                     </button>
@@ -1704,7 +1719,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                     onClick={() => setSelectedDetailOrder(null)}
                     className="px-4 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold transition cursor-pointer"
                   >
-                    Done
+                    Close
                   </button>
                 </div>
               </div>

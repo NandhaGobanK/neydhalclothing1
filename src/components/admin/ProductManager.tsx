@@ -26,6 +26,8 @@ import {
   ArrowLeft,
   ArrowRight,
   FolderPlus,
+  SlidersHorizontal,
+  Settings2,
 } from 'lucide-react';
 
 export const ProductManager: React.FC = () => {
@@ -41,6 +43,12 @@ export const ProductManager: React.FC = () => {
     addCategory,
     deleteCategory,
     checkSkuUniqueInRegistry,
+    productAttributes,
+    addProductAttribute,
+    updateProductAttribute,
+    deleteProductAttribute,
+    toggleFabricOptional,
+    settings,
   } = useStore();
 
   const [activeCategoryView, setActiveCategoryView] = useState<SareeCategory | null>(null);
@@ -55,6 +63,17 @@ export const ProductManager: React.FC = () => {
   const [selectedInventoryProduct, setSelectedInventoryProduct] = useState<Product | null>(null);
   const [tableSearchQuery, setTableSearchQuery] = useState('');
   const [copiedSku, setCopiedSku] = useState<string | null>(null);
+
+  // Dynamic Specifications / Custom Attributes Manager State
+  const [customAttributesValues, setCustomAttributesValues] = useState<Record<string, string>>({});
+  const [isAttributesManagerOpen, setIsAttributesManagerOpen] = useState(false);
+  const [newAttrName, setNewAttrName] = useState('');
+  const [newAttrPlaceholder, setNewAttrPlaceholder] = useState('');
+  const [newAttrIsOptional, setNewAttrIsOptional] = useState(true);
+  const [editingAttrId, setEditingAttrId] = useState<string | null>(null);
+  const [editingAttrName, setEditingAttrName] = useState('');
+  const [editingAttrPlaceholder, setEditingAttrPlaceholder] = useState('');
+  const [editingAttrIsOptional, setEditingAttrIsOptional] = useState(true);
 
   // Orders linked to the clicked saree inventory (User Request 6)
   const matchingInventoryOrders = useMemo(() => {
@@ -296,6 +315,13 @@ export const ProductManager: React.FC = () => {
     setBlousePieceIncluded(true);
     setLengthMeters(6.3);
     setOccasion('Wedding & Reception');
+
+    // Initialize dynamic custom specification attributes
+    const initialAttrs: Record<string, string> = {};
+    (productAttributes || []).forEach((attr) => {
+      initialAttrs[attr.id] = '';
+    });
+    setCustomAttributesValues(initialAttrs);
     setIsEditingModalOpen(true);
   };
 
@@ -390,6 +416,17 @@ export const ProductManager: React.FC = () => {
     setBlousePieceIncluded(prod.blousePieceIncluded);
     setLengthMeters(prod.lengthMeters || 6.3);
     setOccasion(prod.occasion || 'Festive');
+
+    // Populate dynamic specifications from customAttributes & legacy fields
+    const initialAttrs: Record<string, string> = { ...(prod.customAttributes || {}) };
+    if (prod.weaveDetails && !initialAttrs['attr-weave']) initialAttrs['attr-weave'] = prod.weaveDetails;
+    if (prod.borderType && !initialAttrs['attr-border']) initialAttrs['attr-border'] = prod.borderType;
+    if (prod.occasion && !initialAttrs['attr-occasion']) initialAttrs['attr-occasion'] = prod.occasion;
+    if (prod.lengthMeters && !initialAttrs['attr-length']) initialAttrs['attr-length'] = String(prod.lengthMeters);
+    if (prod.blousePieceIncluded !== undefined && !initialAttrs['attr-blouse']) {
+      initialAttrs['attr-blouse'] = prod.blousePieceIncluded ? 'Included (0.8m Running Silk)' : 'Not Included';
+    }
+    setCustomAttributesValues(initialAttrs);
     setIsEditingModalOpen(true);
   };
 
@@ -461,9 +498,28 @@ export const ProductManager: React.FC = () => {
       return;
     }
 
-    const finalFabric = fabric === 'Other'
-      ? (customFabric.trim() || 'Other Handloom')
-      : fabric;
+    let finalFabric: string | undefined = undefined;
+    if (fabric === 'Other') {
+      finalFabric = customFabric.trim() || undefined;
+    } else if (fabric && fabric !== 'None') {
+      finalFabric = fabric;
+    }
+
+    if (!settings.isFabricOptional && !finalFabric) {
+      setSkuError('Please select or specify a Fabric Type for this product.');
+      return;
+    }
+
+    // Check required dynamic custom attributes
+    for (const attr of productAttributes) {
+      if (!attr.isOptional) {
+        const val = customAttributesValues[attr.id] || customAttributesValues[attr.name];
+        if (!val || !val.trim()) {
+          setSkuError(`Please enter required specification field: "${attr.name}"`);
+          return;
+        }
+      }
+    }
 
     const finalColor = selectedColorOption === 'Other'
       ? (customColor.trim() || 'Custom Colour')
@@ -477,13 +533,19 @@ export const ProductManager: React.FC = () => {
         ? 'limited'
         : 'in_stock';
 
+    const finalWeave = customAttributesValues['attr-weave'] || customAttributesValues['Weave Technique'] || weaveDetails;
+    const finalBorder = customAttributesValues['attr-border'] || customAttributesValues['Border & Pallu Detail'] || borderType;
+    const finalOccasion = customAttributesValues['attr-occasion'] || customAttributesValues['Recommended Occasion'] || customAttributesValues['Occasion'] || occasion;
+    const rawLength = customAttributesValues['attr-length'] || customAttributesValues['Total Length'] || customAttributesValues['Length (Meters)'] || lengthMeters;
+    const finalLength = Number(rawLength);
+
     const payload: any = {
       productCode: finalSku,
       category: category.trim() || 'Poontamil sarees',
       title: title.trim(),
       subtitle: subtitle.trim(),
       description: description.trim(),
-      fabric: finalFabric as SareeFabric,
+      fabric: finalFabric as SareeFabric | undefined,
       color: finalColor as SareeColor,
       price: Number(price),
       originalPrice: Number(originalPrice) || undefined,
@@ -493,11 +555,12 @@ export const ProductManager: React.FC = () => {
       images: images.length > 0 ? images : ['/src/assets/images/hero_saree_atelier_1791651761357.jpg'],
       videoUrl: videoUrl.trim() || undefined,
       instagramShortsUrl: instagramShortsUrl.trim() || undefined,
-      weaveDetails: weaveDetails.trim(),
-      borderType: borderType.trim(),
+      weaveDetails: finalWeave ? finalWeave.trim() : undefined,
+      borderType: finalBorder ? finalBorder.trim() : undefined,
       blousePieceIncluded,
-      lengthMeters: Number(lengthMeters),
-      occasion: occasion.trim(),
+      lengthMeters: !isNaN(finalLength) ? finalLength : undefined,
+      occasion: finalOccasion ? finalOccasion.trim() : undefined,
+      customAttributes: customAttributesValues,
     };
 
     if (editingProduct) {
@@ -1483,15 +1546,22 @@ export const ProductManager: React.FC = () => {
 
 
                 <div>
-                  <label className="block font-semibold text-neutral-700 mb-1">Fabric Type *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-neutral-700">
+                      Fabric Type {settings.isFabricOptional ? <span className="text-neutral-400 font-normal">(Optional)</span> : <span className="text-rose-600 font-bold">*</span>}
+                    </label>
+                  </div>
                   <select
-                    value={fabric}
+                    value={fabric || ''}
                     onChange={(e) => {
                       const newFab = e.target.value as SareeFabric;
                       setFabric(newFab);
                     }}
                     className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-medium"
                   >
+                    {settings.isFabricOptional && (
+                      <option value="">-- No Fabric Specified (Optional) --</option>
+                    )}
                     {fabrics.map((f) => (
                       <option key={f} value={f}>
                         {f === 'Other' ? '+ Other (Custom Fabric)' : f}
@@ -1503,7 +1573,7 @@ export const ProductManager: React.FC = () => {
                     <div className="mt-2 animate-in fade-in slide-in-from-top-1">
                       <input
                         type="text"
-                        required
+                        required={!settings.isFabricOptional}
                         value={customFabric}
                         onChange={(e) => setCustomFabric(e.target.value)}
                         placeholder="Type custom fabric name (e.g. Jamdani Cotton, Baluchari Silk, Linen)"

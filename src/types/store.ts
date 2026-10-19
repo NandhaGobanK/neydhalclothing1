@@ -27,13 +27,20 @@ export interface DeliverySettings {
   freeDeliveryThreshold: number; // Limit fixed by admin (e.g. ₹20000)
 }
 
+export interface ProductAttributeDefinition {
+  id: string; // Unique attribute ID (e.g. attr-weave, attr-length, or custom id)
+  name: string; // Column/Specification title (e.g. "Weave Technique", "Sleeve Cut", "Length (Meters)")
+  placeholder?: string;
+  isOptional?: boolean; // True if this field is optional
+}
+
 export interface Product {
   id: string;
   productCode: string; // Unique SKU code per product and color (e.g. KAN-CRIM-101)
   title: string;
   subtitle: string;
   description: string;
-  fabric: SareeFabric;
+  fabric?: SareeFabric; // Optional fabric type
   color: SareeColor;
   price: number;
   originalPrice?: number;
@@ -43,11 +50,12 @@ export interface Product {
   images: string[];
   videoUrl?: string; // YouTube, Instagram reel, or MP4
   instagramShortsUrl?: string; // Dedicated Instagram Shorts / Reel URL
-  weaveDetails: string;
-  borderType: string;
-  blousePieceIncluded: boolean;
-  lengthMeters: number;
-  occasion: string;
+  weaveDetails?: string;
+  borderType?: string;
+  blousePieceIncluded?: boolean;
+  lengthMeters?: number;
+  occasion?: string;
+  customAttributes?: Record<string, string>; // Dynamic specification key-value pairs
   isFeatured?: boolean;
   createdAt: string;
   skuEditCount?: number; // Count of SKU modifications (maximum 1 allowed)
@@ -387,6 +395,8 @@ export interface StoreSettings {
   defaultStaffPermissions?: StaffSectionPermissions;
   staffIdleAlert?: StaffIdleAlertSettings;
   sareeCategories?: SareeCategory[]; // Configured saree and apparel categories
+  productAttributes?: ProductAttributeDefinition[]; // Flexible custom specifications / attributes
+  isFabricOptional?: boolean; // Admin preference: whether Fabric Type is optional
   isFreshBrandNew?: boolean; // True when reset to clean fresh state
   lastResetAt?: string; // Timestamp of latest fresh reset
 }

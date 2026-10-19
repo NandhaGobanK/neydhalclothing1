@@ -5,6 +5,7 @@ import {
   OrderStatusChatTemplates,
   StaffSectionPermissions,
   SareeCategory,
+  ProductAttributeDefinition,
 } from '../types/store';
 
 export const DEFAULT_CHAT_TEMPLATES: OrderStatusChatTemplates = {
@@ -160,10 +161,45 @@ export const DEFAULT_SAREE_CATEGORIES: SareeCategory[] = [
   },
 ];
 
+export const DEFAULT_PRODUCT_ATTRIBUTES: ProductAttributeDefinition[] = [
+  {
+    id: 'attr-weave',
+    name: 'Weave Technique',
+    placeholder: 'e.g. Traditional Jacquard Korvai Handloom',
+    isOptional: false,
+  },
+  {
+    id: 'attr-border',
+    name: 'Border & Pallu Detail',
+    placeholder: 'e.g. Contrast Zari Mayil & Temple Borders',
+    isOptional: false,
+  },
+  {
+    id: 'attr-blouse',
+    name: 'Blouse Piece',
+    placeholder: 'e.g. Included (0.8m Running Silk)',
+    isOptional: true,
+  },
+  {
+    id: 'attr-length',
+    name: 'Total Length',
+    placeholder: 'e.g. 6.3 Meters',
+    isOptional: true,
+  },
+  {
+    id: 'attr-occasion',
+    name: 'Recommended Occasion',
+    placeholder: 'e.g. Bridal, Festive & Temple Occasions',
+    isOptional: true,
+  },
+];
+
 export const INITIAL_SETTINGS: StoreSettings = {
   boutiqueName: 'Neydhal',
   logoUrl: '/logo.png',
   sareeCategories: DEFAULT_SAREE_CATEGORIES,
+  productAttributes: DEFAULT_PRODUCT_ATTRIBUTES,
+  isFabricOptional: true,
   tagline: 'Pure Handloom Silk & Heirloom Sarees',
   contactPhone: '+91 98765 43210',
   contactEmail: 'nandhagoban21@gmail.com',

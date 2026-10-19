@@ -13,6 +13,8 @@ import {
   ArrowRight,
   Grid,
   X,
+  ArrowUpDown,
+  ChevronDown,
 } from 'lucide-react';
 import { formatPrice } from '../../utils/upi';
 
@@ -22,6 +24,23 @@ interface CategoryBrowserProps {
   onSelectCategory?: (categoryName: string) => void;
   onBackToHome?: () => void;
 }
+
+export type CategorySortOption =
+  | 'featured'
+  | 'price_low'
+  | 'price_high'
+  | 'newest'
+  | 'name_asc'
+  | 'name_desc';
+
+const SORT_OPTIONS: { id: CategorySortOption; label: string }[] = [
+  { id: 'featured', label: 'Featured First' },
+  { id: 'price_low', label: 'Price: Low to High' },
+  { id: 'price_high', label: 'Price: High to Low' },
+  { id: 'newest', label: 'Newest Arrivals' },
+  { id: 'name_asc', label: 'Name: A to Z' },
+  { id: 'name_desc', label: 'Name: Z to A' },
+];
 
 export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
   onOpenDetails,
@@ -53,7 +72,22 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
 
   const [searchFilter, setSearchFilter] = useState('');
   const [inStockOnly, setInStockOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<'featured' | 'price_low' | 'price_high'>('featured');
+  const [sortBy, setSortBy] = useState<CategorySortOption>('featured');
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  const sortRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+        setIsSortOpen(false);
+      }
+    };
+    if (isSortOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isSortOpen]);
+
   const [selectedFabric, setSelectedFabric] = useState<string>('all');
   const [addedProductId, setAddedProductId] = useState<string | null>(null);
 
@@ -133,11 +167,21 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
       return true;
     });
 
-    // Sorting
-    if (sortBy === 'price_low') {
+    // Sorting matching exact reference options
+    if (sortBy === 'featured') {
+      list = [...list].sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+    } else if (sortBy === 'price_low') {
       list = [...list].sort((a, b) => a.price - b.price);
     } else if (sortBy === 'price_high') {
       list = [...list].sort((a, b) => b.price - a.price);
+    } else if (sortBy === 'newest') {
+      list = [...list].sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+    } else if (sortBy === 'name_asc') {
+      list = [...list].sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sortBy === 'name_desc') {
+      list = [...list].sort((a, b) => b.title.localeCompare(a.title));
     }
 
     return list;
@@ -287,18 +331,51 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                 </div>
               )}
 
-              {/* Price / Featured Sorting */}
-              <div className="flex items-center gap-1 ml-auto">
-                <span className="text-[11px] text-neutral-400">Sort:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="p-1 px-2 rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-800 text-xs font-medium cursor-pointer"
+              {/* Featured First Sorting Dropdown matching reference image */}
+              <div className="relative inline-block text-left ml-auto" ref={sortRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsSortOpen((v) => !v)}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-900 text-xs sm:text-sm font-semibold shadow-2xs transition cursor-pointer"
+                  aria-expanded={isSortOpen}
+                  aria-haspopup="true"
                 >
-                  <option value="featured">Featured</option>
-                  <option value="price_low">Price: Low to High</option>
-                  <option value="price_high">Price: High to Low</option>
-                </select>
+                  <ArrowUpDown className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>
+                    {SORT_OPTIONS.find((o) => o.id === sortBy)?.label || 'Featured First'}
+                  </span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-neutral-700 transition-transform duration-200 ${
+                      isSortOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {/* Dropdown Menu directly matching structure in image.png */}
+                {isSortOpen && (
+                  <div className="absolute right-0 bottom-full mb-1 sm:bottom-auto sm:top-full sm:mt-1 z-50 w-56 bg-white rounded-xl shadow-2xl border border-neutral-200 overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-150">
+                    {SORT_OPTIONS.map((opt) => {
+                      const isSelected = sortBy === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            setSortBy(opt.id);
+                            setIsSortOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-xs sm:text-sm transition cursor-pointer flex items-center justify-between ${
+                            isSelected
+                              ? 'bg-blue-600 text-white font-medium shadow-xs'
+                              : 'text-neutral-900 hover:bg-neutral-100 font-normal'
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {(searchFilter || inStockOnly || selectedFabric !== 'all' || sortBy !== 'featured') && (

@@ -36,7 +36,7 @@ interface TrackOrderModalProps {
 }
 
 export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => {
-  const { orders, requestOrderCancellation, reportCustomerDeliveryIssue, settings, lastPlacedOrder } = useStore();
+  const { orders, requestOrderCancellation, reportCustomerDeliveryIssue, settings, lastPlacedOrder, recordCustomerOrder } = useStore();
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -235,6 +235,17 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
     if (localMatchedOrders.length > 0) return localMatchedOrders;
     return firestoreOrders;
   }, [localMatchedOrders, firestoreOrders]);
+
+  // Synchronize found orders with customer live orders counter
+  useEffect(() => {
+    if (matchedOrders.length > 0) {
+      matchedOrders.forEach((ord) => {
+        if (ord.orderNumber) {
+          recordCustomerOrder(ord.orderNumber, ord.customer?.phone);
+        }
+      });
+    }
+  }, [matchedOrders, recordCustomerOrder]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

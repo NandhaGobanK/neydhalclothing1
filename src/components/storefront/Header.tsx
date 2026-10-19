@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen } from 'lucide-react';
+import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen, Heart } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 import { getThemeColors } from '../../utils/theme';
 
@@ -8,6 +8,7 @@ interface HeaderProps {
   onOpenAdmin: () => void;
   onOpenInstructions?: () => void;
   onSelectCategory?: (category: string) => void;
+  onSelectWishlist?: () => void;
   selectedCategory?: string;
 }
 
@@ -15,9 +16,10 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdmin,
   onOpenInstructions,
   onSelectCategory,
+  onSelectWishlist,
   selectedCategory = 'all',
 }) => {
-  const { settings, cartCount, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen, publicProducts, categories: boutiqueCategories } = useStore();
+  const { settings, cartCount, wishlist, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen, publicProducts, categories: boutiqueCategories } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoError, setLogoError] = React.useState(false);
 
@@ -149,6 +151,23 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <PWAInstallButton variant="header" onClickGuide={onOpenInstructions} />
+
+          {/* Customer Wishlist Button */}
+          {onSelectWishlist && (
+            <button
+              onClick={onSelectWishlist}
+              className="relative p-2.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-amber-200 transition-colors flex items-center justify-center cursor-pointer"
+              aria-label="View Saved Wishlist"
+              title="Saved Sarees Wishlist"
+            >
+              <Heart className="w-5 h-5" />
+              {wishlist.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center shadow-md animate-in zoom-in-75 duration-150">
+                  {wishlist.length}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* Cart Bag Button */}
           <button

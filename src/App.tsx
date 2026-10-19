@@ -194,6 +194,7 @@ function MainAppContent() {
               setSelectedCategory(cat);
               setCustomerActiveTab('categories');
             }}
+            onSelectWishlist={() => setCustomerActiveTab('wishlist')}
           />
 
           {/* Tabbed Storefront Views */}
