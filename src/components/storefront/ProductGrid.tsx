@@ -70,7 +70,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
           const q = searchQuery.toLowerCase();
           const match =
             p.title.toLowerCase().includes(q) ||
-            p.fabric.toLowerCase().includes(q) ||
+            (p.fabric && p.fabric.toLowerCase().includes(q)) ||
             p.color.toLowerCase().includes(q) ||
             p.description.toLowerCase().includes(q);
           if (!match) return false;

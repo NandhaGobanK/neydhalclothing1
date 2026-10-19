@@ -390,12 +390,12 @@ export const ProductManager: React.FC = () => {
       'Cotton Silk',
     ];
 
-    if (standardFabricsList.includes(prod.fabric)) {
+    if (prod.fabric && standardFabricsList.includes(prod.fabric)) {
       setFabric(prod.fabric);
       setCustomFabric('');
     } else {
       setFabric('Other');
-      setCustomFabric(prod.fabric);
+      setCustomFabric(prod.fabric || '');
     }
 
     setProductCode(prod.productCode);
@@ -413,7 +413,7 @@ export const ProductManager: React.FC = () => {
     setInstagramShortsUrl(prod.instagramShortsUrl || '');
     setWeaveDetails(prod.weaveDetails || '');
     setBorderType(prod.borderType || '');
-    setBlousePieceIncluded(prod.blousePieceIncluded);
+    setBlousePieceIncluded(prod.blousePieceIncluded ?? true);
     setLengthMeters(prod.lengthMeters || 6.3);
     setOccasion(prod.occasion || 'Festive');
 
@@ -633,7 +633,7 @@ export const ProductManager: React.FC = () => {
       (p) =>
         p.productCode.toLowerCase().includes(q) ||
         p.title.toLowerCase().includes(q) ||
-        p.fabric.toLowerCase().includes(q) ||
+        (p.fabric && p.fabric.toLowerCase().includes(q)) ||
         p.color.toLowerCase().includes(q) ||
         (p.category && p.category.toLowerCase().includes(q))
     );
