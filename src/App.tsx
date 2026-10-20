@@ -274,7 +274,7 @@ function MainAppContent() {
                           title={`View ${cat.name} Collection`}
                         >
                           <img
-                            src={cat.imageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                            src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                             alt={cat.name}
                             className="absolute inset-0 w-full h-full object-cover group-hover:scale-108 transition-transform duration-500 opacity-80 group-hover:opacity-90"
                             loading="lazy"

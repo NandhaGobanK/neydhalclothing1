@@ -43,7 +43,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
       {/* Product Image Area */}
       <div className="relative aspect-4/5 bg-neutral-100 overflow-hidden">
         <img
-          src={product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+          src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
           alt={product.title}
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out"

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useStore } from '../../context/StoreContext';
+import { useStore, getBoutiqueOrderPrefix } from '../../context/StoreContext';
 import { Order, OrderStatus } from '../../types/store';
 import { formatPrice, openWhatsApp, formatWhatsAppStageUpdateMessage } from '../../utils/upi';
 import { syncStaffLedgerToGoogleSheet } from '../../utils/googleSheets';
@@ -40,6 +40,7 @@ import {
   Mail,
   Copy,
   Check,
+  Globe,
 } from 'lucide-react';
 import { StaffPerformanceBoard } from './StaffPerformanceBoard';
 
@@ -139,6 +140,10 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
   const [cancellationReasonCustom, setCancellationReasonCustom] = useState('');
   const [refundUtr, setRefundUtr] = useState('');
   const [refundNotes, setRefundNotes] = useState('');
+  const [refundModalOrder, setRefundModalOrder] = useState<Order | null>(null);
+  const [refundTool, setRefundTool] = useState('PhonePe');
+  const [refundUtrError, setRefundUtrError] = useState<string | null>(null);
+  const [globalOrderSearch, setGlobalOrderSearch] = useState('');
 
   // Google Sheets sync & CSV export for staff bucket (User Request)
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
@@ -206,6 +211,25 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
       return matchStatus && matchQuery;
     });
   }, [bucketOrders, bucketViewMode, selectedStatusFilter, bucketSearchQuery, showOnlyDisputes]);
+
+  // Requirement 7: Global Cross-Bucket Search across all orders
+  const globalSearchResults = useMemo(() => {
+    if (!globalOrderSearch.trim()) return [];
+    const q = globalOrderSearch.trim().toLowerCase();
+    const cleanNum = q.replace(/^[#\s]+/, '').trim();
+    return orders.filter((o) => {
+      const oNum = o.orderNumber.toLowerCase().replace(/^[#\s]+/, '').trim();
+      return (
+        oNum === cleanNum ||
+        oNum.includes(cleanNum) ||
+        o.orderNumber.toLowerCase().includes(q) ||
+        o.customer.name.toLowerCase().includes(q) ||
+        o.customer.phone.includes(q) ||
+        o.upiTransactionId.toLowerCase().includes(q) ||
+        (o.assignedStaffName && o.assignedStaffName.toLowerCase().includes(q))
+      );
+    });
+  }, [orders, globalOrderSearch]);
 
   // Metrics for active bucket
   const bucketMetrics = useMemo(() => {
@@ -368,29 +392,64 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
       cancellationReason: finalReason,
     });
 
-    if (refundUtr.trim()) {
-      markRefundProcessed(order.id, refundUtr.trim(), refundNotes.trim());
-    }
+    const updatedOrder: Order = {
+      ...order,
+      status: targetStatus,
+      cancellationReason: finalReason,
+      refundDetails: {
+        ...order.refundDetails,
+        refundStatus: 'pending',
+      },
+    };
 
     if (selectedDetailOrder?.id === order.id) {
+      setSelectedDetailOrder(updatedOrder);
+    }
+
+    setCancellationModalOrder(null);
+
+    // Requirement 3: Prompt for refund details immediately with 12-digit UTR validation & transaction tool
+    setRefundModalOrder(updatedOrder);
+    setRefundUtr('');
+    setRefundTool('PhonePe');
+    setRefundUtrError(null);
+    setRefundNotes('');
+  };
+
+  const handleSaveRefund = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refundModalOrder) return;
+
+    const cleanUtr = refundUtr.trim();
+    if (!/^\d{12}$/.test(cleanUtr)) {
+      setRefundUtrError('Bank UTR Number must be exactly 12 numeric digits (e.g. 402819283741)');
+      return;
+    }
+    setRefundUtrError(null);
+
+    markRefundProcessed(refundModalOrder.id, cleanUtr, refundTool, refundNotes.trim());
+
+    if (selectedDetailOrder?.id === refundModalOrder.id) {
       setSelectedDetailOrder((prev) =>
         prev
           ? {
               ...prev,
-              status: targetStatus,
-              cancellationReason: finalReason,
+              status: 'Refunded',
               refundDetails: {
                 ...prev.refundDetails,
-                refundStatus: refundUtr.trim() ? 'processed' : 'pending',
-                refundUtr: refundUtr.trim() || prev.refundDetails?.refundUtr,
-                notes: refundNotes.trim() || prev.refundDetails?.notes,
+                refundStatus: 'processed',
+                refundUtr: cleanUtr,
+                refundTool,
+                refundAmount: prev.totalAmount,
+                processedAt: new Date().toISOString(),
+                notes: refundNotes.trim(),
               },
             }
           : null
       );
     }
 
-    setCancellationModalOrder(null);
+    setRefundModalOrder(null);
   };
 
   // Quick 1-Click "Assign to Me" handler (User Request 4)
@@ -1491,7 +1550,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                         className="flex items-center gap-2.5 p-2 rounded-xl bg-white border border-neutral-200"
                       >
                         <img
-                          src={item.product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                          src={item.product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                           alt={item.product.title}
                           className="w-10 h-12 object-cover rounded-md bg-neutral-100 shrink-0"
                         />
@@ -2055,19 +2114,117 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                 />
               </div>
 
+              <div className="p-3 bg-neutral-100 rounded-xl text-[11px] text-neutral-600">
+                Notice: Marking as <strong>{cancellationModalOrder.targetStatus}</strong> will immediately open the refund details prompt to record the bank UTR and transaction tool.
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCancellationModalOrder(null)}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-50 transition"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-bold transition shadow-xs"
+                >
+                  Mark {cancellationModalOrder.targetStatus} & Proceed to Refund
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Details Modal with 12-digit UTR & Transaction Tool validation (Requirement 3) */}
+      {refundModalOrder && (
+        <div className="fixed inset-0 z-75 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto">
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-950 via-neutral-900 to-emerald-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-serif text-base font-bold">
+                  Process Refund for #{refundModalOrder.orderNumber}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRefundModalOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRefund} className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950 space-y-1">
+                <p className="font-bold">Refund Target Coordinates:</p>
+                <p>Customer: <strong>{refundModalOrder.customer.name}</strong> ({refundModalOrder.customer.phone})</p>
+                <p>Refund UPI ID: <strong>{refundModalOrder.refundDetails?.refundUpiId || refundModalOrder.customer.phone}</strong></p>
+                <p>Total to Refund: <strong className="text-emerald-900 font-serif text-sm">{formatPrice(refundModalOrder.totalAmount)}</strong></p>
+              </div>
+
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">
-                  Bank Refund Transaction ID (UTR Number)
+                  Transaction Tool Used *
                 </label>
+                <select
+                  value={refundTool}
+                  onChange={(e) => setRefundTool(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-medium"
+                >
+                  <option value="PhonePe">PhonePe</option>
+                  <option value="Paytm">Paytm</option>
+                  <option value="Google Pay (GPay)">Google Pay (GPay)</option>
+                  <option value="BHIM UPI">BHIM UPI</option>
+                  <option value="NetBanking / NEFT / IMPS">NetBanking / NEFT / IMPS</option>
+                  <option value="Other Banking App">Other Banking App</option>
+                </select>
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  Select payment application used to transfer the refund amount.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="font-bold text-neutral-800">
+                    Bank Refund UTR Number * (12 Digits)
+                  </label>
+                  <span className={`text-[10px] font-mono font-bold ${
+                    refundUtr.length === 12 ? 'text-emerald-600' : 'text-neutral-400'
+                  }`}>
+                    {refundUtr.length}/12 digits
+                  </span>
+                </div>
                 <input
                   type="text"
+                  required
+                  maxLength={12}
                   value={refundUtr}
-                  onChange={(e) => setRefundUtr(e.target.value)}
-                  placeholder="e.g. UTR928103847291 (if already processed)"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 uppercase"
+                  onChange={(e) => {
+                    const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 12);
+                    setRefundUtr(digitsOnly);
+                    if (digitsOnly.length === 12) {
+                      setRefundUtrError(null);
+                    }
+                  }}
+                  placeholder="e.g. 402819283741"
+                  className={`w-full p-2.5 rounded-xl border font-mono text-sm tracking-wider text-neutral-900 uppercase font-bold focus:outline-hidden focus:ring-2 ${
+                    refundUtrError
+                      ? 'border-rose-400 focus:ring-rose-400/40 bg-rose-50/20'
+                      : 'border-neutral-300 focus:ring-emerald-500/40'
+                  }`}
                 />
+                {refundUtrError && (
+                  <p className="text-rose-600 text-[11px] font-semibold mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{refundUtrError}</span>
+                  </p>
+                )}
                 <p className="text-[11px] text-neutral-500 mt-1">
-                  If entered, the order refund status will be marked as processed and sent to the client.
+                  Enter the 12-digit numeric reference generated by your banking app upon completing transfer.
                 </p>
               </div>
 
@@ -2079,24 +2236,29 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                   type="text"
                   value={refundNotes}
                   onChange={(e) => setRefundNotes(e.target.value)}
-                  placeholder="e.g. Processed via boutique business account"
+                  placeholder={`e.g. Refunded to customer UPI via ${refundTool}`}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                 />
+              </div>
+
+              <div className="p-2.5 bg-neutral-100 rounded-xl text-[11px] text-neutral-600 leading-relaxed">
+                Submitting will mark the order as <strong>Refunded</strong> and automatically resolve any open customer refund dispute with these attached transaction details.
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setCancellationModalOrder(null)}
+                  onClick={() => setRefundModalOrder(null)}
                   className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-50 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-bold transition shadow-xs"
+                  disabled={refundUtr.length !== 12}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold transition shadow-xs"
                 >
-                  Save & Mark {cancellationModalOrder.targetStatus}
+                  Confirm & Mark as Refunded
                 </button>
               </div>
             </form>

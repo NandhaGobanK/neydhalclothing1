@@ -727,7 +727,7 @@ export const SettingsManager: React.FC = () => {
                 {/* Hero Banner Live Preview */}
                 <div className="relative h-24 rounded-xl overflow-hidden bg-neutral-950 border border-neutral-800">
                   <img
-                    src={heroBannerImageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                    src={heroBannerImageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                     alt="Hero Banner Preview"
                     className="w-full h-full object-cover opacity-60"
                   />

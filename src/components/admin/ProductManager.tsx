@@ -1003,7 +1003,7 @@ export const ProductManager: React.FC = () => {
                   >
                     <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-100">
                       <img
-                        src={cat.imageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                        src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={cat.name}
                         className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500"
                         loading="lazy"
@@ -1264,7 +1264,7 @@ export const ProductManager: React.FC = () => {
             >
               <div className="flex gap-3">
                 <img
-                  src={product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                  src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                   alt={product.title}
                   className="w-16 h-20 sm:w-20 sm:h-24 object-cover rounded-xl bg-neutral-100 border border-neutral-200 shrink-0"
                 />
@@ -1406,7 +1406,7 @@ export const ProductManager: React.FC = () => {
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <img
-                        src={product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                        src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={product.title}
                         className="w-10 h-12 object-cover rounded-lg bg-neutral-100 border border-neutral-200 shrink-0 group-hover:scale-102 transition"
                       />
@@ -2181,7 +2181,7 @@ export const ProductManager: React.FC = () => {
             <div className="p-5 space-y-4 text-xs">
               <div className="flex items-center gap-3 p-3 bg-neutral-50 rounded-2xl border border-neutral-200">
                 <img
-                  src={productToDelete.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                  src={productToDelete.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                   alt={productToDelete.title}
                   className="w-14 h-16 object-cover rounded-xl bg-neutral-200 shrink-0 border border-neutral-300"
                 />
@@ -2615,7 +2615,7 @@ export const ProductManager: React.FC = () => {
             <div className="p-5 space-y-4 text-xs">
               <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex items-center gap-3">
                 <img
-                  src={categoryToDelete.imageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                  src={categoryToDelete.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                   alt={categoryToDelete.name}
                   className="w-12 h-12 rounded-lg object-cover bg-neutral-200"
                 />

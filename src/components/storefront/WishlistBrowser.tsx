@@ -93,7 +93,7 @@ export const WishlistBrowser: React.FC<WishlistBrowserProps> = ({
                 >
                   <div className="relative aspect-3/4 overflow-hidden bg-neutral-100">
                     <img
-                      src={product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                      src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                       alt={product.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />

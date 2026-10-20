@@ -79,7 +79,7 @@ export const CartDrawer: React.FC = () => {
               {cart.map((item) => (
                 <div key={item.product.id} className="pt-4 first:pt-0 flex gap-3.5">
                   <img
-                    src={item.product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                    src={item.product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                     alt={item.product.title}
                     referrerPolicy="no-referrer"
                     className="w-20 h-24 object-cover rounded-xl bg-neutral-100 border border-neutral-200/60 shrink-0"

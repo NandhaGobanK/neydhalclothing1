@@ -434,7 +434,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                     {/* Top image container with wishlist heart & discount badge */}
                     <div className="relative aspect-3/4 overflow-hidden bg-neutral-100">
                       <img
-                        src={product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                        src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={product.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
@@ -591,7 +591,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                 {/* Visual Category Preview Image */}
                 <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-100">
                   <img
-                    src={category.imageUrl || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                    src={category.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                     alt={category.name}
                     className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500"
                     loading="lazy"

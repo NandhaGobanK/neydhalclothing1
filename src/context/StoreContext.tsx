@@ -489,12 +489,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const stored = loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', []);
     return stored.filter((c) => {
       const name = (c.name || '').toLowerCase().trim();
-      return (
-        !c.id.startsWith('cat-poontamil') &&
-        !c.id.startsWith('cat-foil') &&
-        name !== 'poontamil sarees' &&
-        name !== 'foil print sarees'
-      );
+      const isDemo =
+        c.id.startsWith('cat-poontamil') ||
+        c.id.startsWith('cat-foil') ||
+        c.id.startsWith('cat-demo') ||
+        name === 'poontamil sarees' ||
+        name === 'foil print sarees' ||
+        name === 'soft menna work saree' ||
+        name === 'tissue dhoti set' ||
+        name === 'couple combo / silk dhoti shirt' ||
+        name === 'cotton kids dhoti set' ||
+        name.includes('demo') ||
+        (c as any).isDemo === true;
+      return !isDemo;
     });
   });
 
@@ -906,8 +913,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const isDemo =
               d.id.startsWith('cat-poontamil') ||
               d.id.startsWith('cat-foil') ||
+              d.id.startsWith('cat-demo') ||
               catName === 'poontamil sarees' ||
-              catName === 'foil print sarees';
+              catName === 'foil print sarees' ||
+              catName === 'soft menna work saree' ||
+              catName === 'tissue dhoti set' ||
+              catName === 'couple combo / silk dhoti shirt' ||
+              catName === 'cotton kids dhoti set' ||
+              catName.includes('demo') ||
+              (data as any).isDemo === true;
             if (isDemo) {
               deleteDoc(doc(db, 'categories', d.id)).catch(() => {});
               return;

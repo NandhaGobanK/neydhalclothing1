@@ -5,9 +5,9 @@
  */
 export async function compressImage(
   file: File,
-  maxWidth: number = 900,
-  maxHeight: number = 900,
-  quality: number = 0.78
+  maxWidth: number = 800,
+  maxHeight: number = 800,
+  quality: number = 0.72
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     // If it's a vector SVG, keep as is
@@ -62,7 +62,30 @@ export async function compressImage(
         }
 
         ctx.drawImage(img, 0, 0, width, height);
-        const compressedDataUrl = canvas.toDataURL(outputMime, quality);
+
+        let currentQuality = quality;
+        let compressedDataUrl = canvas.toDataURL(outputMime, currentQuality);
+
+        // Adaptive optimization: if data URL is greater than 250KB, progressively reduce quality and size
+        if (compressedDataUrl.length > 250000 && outputMime === 'image/jpeg') {
+          currentQuality = 0.6;
+          compressedDataUrl = canvas.toDataURL(outputMime, currentQuality);
+        }
+
+        if (compressedDataUrl.length > 250000) {
+          const smallCanvas = document.createElement('canvas');
+          const sWidth = Math.round(width * 0.75);
+          const sHeight = Math.round(height * 0.75);
+          smallCanvas.width = sWidth;
+          smallCanvas.height = sHeight;
+          const sCtx = smallCanvas.getContext('2d');
+          if (sCtx) {
+            sCtx.fillStyle = '#ffffff';
+            sCtx.fillRect(0, 0, sWidth, sHeight);
+            sCtx.drawImage(canvas, 0, 0, sWidth, sHeight);
+            compressedDataUrl = smallCanvas.toDataURL('image/jpeg', 0.58);
+          }
+        }
 
         resolve(compressedDataUrl);
       };

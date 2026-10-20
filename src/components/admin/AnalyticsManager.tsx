@@ -438,7 +438,7 @@ export const AnalyticsManager: React.FC = () => {
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2.5">
                       <img
-                        src={item.product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                        src={item.product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={item.product.title}
                         className="w-9 h-11 object-cover rounded-md bg-neutral-100 border border-neutral-200 shrink-0"
                       />

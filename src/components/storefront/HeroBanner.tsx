@@ -36,7 +36,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
         {/* Full-Visibility Hero Image (No dark scrim or heavy gradient shading) */}
         <div className="absolute inset-0 z-0">
           <img
-            src={(!bannerError && display.heroBannerImageUrl) ? display.heroBannerImageUrl : '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+            src={(!bannerError && display.heroBannerImageUrl) ? display.heroBannerImageUrl : '/assets/images/hero_saree_atelier_1791651761357.jpg'}
             alt="Luxury Saree Boutique Showroom"
             onError={() => setBannerError(true)}
             referrerPolicy="no-referrer"

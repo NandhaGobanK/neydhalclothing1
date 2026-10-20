@@ -16,9 +16,9 @@ export function compressImageFile(
   options: CompressOptions = {}
 ): Promise<string> {
   const {
-    maxWidth = 1600,
-    maxHeight = 1200,
-    quality = 0.8,
+    maxWidth = 1000,
+    maxHeight = 1000,
+    quality = 0.75,
     mimeType = 'image/jpeg',
   } = options;
 
@@ -70,7 +70,26 @@ export function compressImageFile(
         }
 
         ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL(mimeType, quality);
+
+        let dataUrl = canvas.toDataURL(mimeType, quality);
+        if (dataUrl.length > 250000 && mimeType === 'image/jpeg') {
+          dataUrl = canvas.toDataURL(mimeType, 0.6);
+        }
+        if (dataUrl.length > 250000) {
+          const smallCanvas = document.createElement('canvas');
+          const sWidth = Math.round(width * 0.75);
+          const sHeight = Math.round(height * 0.75);
+          smallCanvas.width = sWidth;
+          smallCanvas.height = sHeight;
+          const sCtx = smallCanvas.getContext('2d');
+          if (sCtx) {
+            sCtx.fillStyle = '#ffffff';
+            sCtx.fillRect(0, 0, sWidth, sHeight);
+            sCtx.drawImage(canvas, 0, 0, sWidth, sHeight);
+            dataUrl = smallCanvas.toDataURL('image/jpeg', 0.58);
+          }
+        }
+
         resolve(dataUrl);
       };
 

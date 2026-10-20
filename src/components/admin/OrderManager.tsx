@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useStore } from '../../context/StoreContext';
+import { useStore, getBoutiqueOrderPrefix } from '../../context/StoreContext';
 import { Order, OrderStatus } from '../../types/store';
 import { syncOrdersToGoogleSheet } from '../../utils/googleSheets';
 import { getAccessToken } from '../../utils/firebaseAuth';
@@ -45,6 +45,7 @@ import {
   ChevronsUpDown,
   Maximize2,
   Minimize2,
+  Globe,
 } from 'lucide-react';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 
@@ -764,6 +765,126 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
           </div>
         </div>
       )}
+
+      {/* Requirement 7: Global Order Search Bar across all buckets */}
+      <div className="bg-white rounded-2xl border-2 border-amber-300 p-4 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+              <Globe className="w-4 h-4 text-amber-600" />
+              <span>Global Boutique Order Search</span>
+            </h3>
+            <p className="text-[11px] text-neutral-500">
+              Search by full order number across all staff buckets, unassigned queue, and admin ledger.
+            </p>
+          </div>
+          {globalOrderSearch && (
+            <span className="text-[11px] font-semibold text-neutral-600 self-start sm:self-auto">
+              Found: <strong className="text-amber-900">{globalSearchResults.length}</strong> matching orders
+            </span>
+          )}
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+          <input
+            type="text"
+            value={globalOrderSearch}
+            onChange={(e) => setGlobalOrderSearch(e.target.value)}
+            placeholder={`Search full order number (e.g. #${getBoutiqueOrderPrefix(settings.boutiqueName)}-2481), customer name, phone, or UTR...`}
+            className="w-full pl-10 pr-20 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 bg-neutral-50/50 focus:bg-white"
+          />
+          {globalOrderSearch && (
+            <button
+              type="button"
+              onClick={() => setGlobalOrderSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg text-xs font-medium text-neutral-500 hover:text-neutral-800 bg-neutral-200/70 hover:bg-neutral-200 transition"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Real-time Clickable Cross-Bucket Search Results List */}
+        {globalOrderSearch.trim() && (
+          <div className="mt-2 max-h-80 overflow-y-auto divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-white shadow-xs">
+            {globalSearchResults.length === 0 ? (
+              <div className="p-6 text-center text-xs text-neutral-500">
+                No orders match "{globalOrderSearch}". Please verify the order reference or contact number.
+              </div>
+            ) : (
+              globalSearchResults.map((ord) => {
+                const isUnassigned = !ord.assignedStaffId || ord.assignedStaffId === 'unassigned';
+                const bucketLabel = isUnassigned
+                  ? 'Unassigned Intake'
+                  : ord.assignedStaffId === 'admin'
+                  ? 'Admin Bucket'
+                  : `Staff: ${ord.assignedStaffName || 'Specialist'}`;
+
+                return (
+                  <div
+                    key={ord.id}
+                    onClick={() => {
+                      setSelectedDetailOrder(ord);
+                    }}
+                    className="p-3 hover:bg-amber-50/70 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-bold text-rose-950 bg-rose-50 px-2 py-1 rounded-md border border-rose-200 group-hover:bg-rose-100 transition">
+                        #{ord.orderNumber}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-neutral-900">{ord.customer.name}</span>
+                          <span className="text-neutral-500">({ord.customer.phone})</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-500">
+                          {ord.items.length} {ord.items.length === 1 ? 'item' : 'items'} · {formatPrice(ord.totalAmount)} · UTR: {ord.upiTransactionId}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        isUnassigned
+                          ? 'bg-neutral-100 text-neutral-700 border border-neutral-300'
+                          : 'bg-blue-50 text-blue-800 border border-blue-200'
+                      }`}>
+                        {bucketLabel}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        ord.status === 'Refunded'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : ord.status === 'Cancelled'
+                          ? 'bg-rose-100 text-rose-800'
+                          : ord.status === 'Confirmed'
+                          ? 'bg-purple-100 text-purple-800'
+                          : ord.status === 'Shipped'
+                          ? 'bg-blue-100 text-blue-800'
+                          : ord.status === 'Delivered'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {ord.status}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedDetailOrder(ord);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-[11px] transition shadow-2xs"
+                      >
+                        Open Details →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Refund Automation Banner if any orders need refund */}
       {pendingRefundOrders.length > 0 && (
@@ -1487,7 +1608,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                       {order.items.map((item) => (
                         <div key={item.product.id} className="flex items-center gap-2.5 p-2 rounded-xl bg-neutral-50 border border-neutral-100">
                           <img
-                            src={item.product.images[0] || '/src/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                            src={item.product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                             alt={item.product.title}
                             className="w-11 h-13 object-cover rounded-md bg-neutral-200 shrink-0"
                           />
@@ -2681,6 +2802,206 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                 mode="admin"
                 title={`Order #${liveChatOrder.orderNumber} Live Chat`}
               />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Selected Order Details Modal (Cross-Bucket Clickable Results) */}
+      {selectedDetailOrder && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-neutral-900 to-neutral-800 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="font-mono font-bold text-sm text-amber-200 bg-neutral-800/80 px-2.5 py-1 rounded-lg border border-neutral-700">
+                  #{selectedDetailOrder.orderNumber}
+                </span>
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-white flex items-center gap-2">
+                    <span>Order Details</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                      selectedDetailOrder.status === 'Refunded'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : selectedDetailOrder.status === 'Cancelled'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                        : selectedDetailOrder.status === 'Confirmed'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                        : selectedDetailOrder.status === 'Shipped'
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                        : selectedDetailOrder.status === 'Delivered'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    }`}>
+                      {selectedDetailOrder.status}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Placed: {new Date(selectedDetailOrder.createdAt).toLocaleString('en-IN')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDetailOrder(null)}
+                className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-5 space-y-4 overflow-y-auto text-xs text-neutral-700">
+              {/* Handling Concierge / Bucket Info */}
+              <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-between flex-wrap gap-2">
+                <span className="font-semibold text-neutral-600">Handling Bucket:</span>
+                <span className="font-bold text-neutral-900 bg-white px-2.5 py-1 rounded-lg border border-neutral-200">
+                  {!selectedDetailOrder.assignedStaffId || selectedDetailOrder.assignedStaffId === 'unassigned'
+                    ? 'Unassigned Intake Queue'
+                    : selectedDetailOrder.assignedStaffId === 'admin'
+                    ? 'Store Owner / Admin Bucket'
+                    : `Staff Bucket: ${selectedDetailOrder.assignedStaffName || 'Specialist'}`}
+                </span>
+              </div>
+
+              {/* Customer Profile & Address */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block">
+                    Customer Profile
+                  </span>
+                  <p className="font-bold text-neutral-900 text-sm">{selectedDetailOrder.customer.name}</p>
+                  <p className="font-mono text-neutral-700">{selectedDetailOrder.customer.phone}</p>
+                  {selectedDetailOrder.customer.email && (
+                    <p className="text-neutral-500 truncate">{selectedDetailOrder.customer.email}</p>
+                  )}
+                </div>
+
+                <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block">
+                    Shipping Address
+                  </span>
+                  <p className="text-neutral-800 leading-relaxed font-medium">
+                    {selectedDetailOrder.customer.address}, {selectedDetailOrder.customer.city},{' '}
+                    {selectedDetailOrder.customer.state} - {selectedDetailOrder.customer.pincode}
+                  </p>
+                </div>
+              </div>
+
+              {/* Items Ordered */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block">
+                  Items Ordered ({selectedDetailOrder.items.length})
+                </span>
+                <div className="divide-y divide-neutral-100 rounded-2xl border border-neutral-200 overflow-hidden bg-white">
+                  {selectedDetailOrder.items.map((item, idx) => (
+                    <div key={idx} className="p-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={item.product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                          alt={item.product.title}
+                          className="w-12 h-12 rounded-xl object-cover border border-neutral-200 shrink-0"
+                        />
+                        <div>
+                          <p className="font-bold text-neutral-900">{item.product.title}</p>
+                          <p className="text-[11px] text-neutral-500 font-mono">
+                            SKU: {item.product.productCode || item.product.id} · Qty: {item.quantity}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-serif font-bold text-sm text-neutral-900">
+                          {formatPrice(item.product.price * item.quantity)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Financials & Payment UTR */}
+              <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-200 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-neutral-600">Subtotal:</span>
+                  <span className="font-semibold text-neutral-900">{formatPrice(selectedDetailOrder.subtotal)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-neutral-600">Shipping:</span>
+                  <span className="font-semibold text-neutral-900">
+                    {selectedDetailOrder.shippingFee === 0 ? 'FREE' : formatPrice(selectedDetailOrder.shippingFee)}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-amber-200 flex justify-between items-center text-sm">
+                  <span className="font-bold text-neutral-900">Total Paid:</span>
+                  <span className="font-serif font-bold text-base text-neutral-950">
+                    {formatPrice(selectedDetailOrder.totalAmount)}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-amber-200 flex items-center justify-between text-xs">
+                  <span className="text-neutral-600">Prepaid Payment UTR:</span>
+                  <code className="font-mono font-bold text-neutral-900 bg-white px-2 py-0.5 rounded border border-amber-200">
+                    {selectedDetailOrder.upiTransactionId}
+                  </code>
+                </div>
+              </div>
+
+              {/* Courier Tracking if Shipped */}
+              {selectedDetailOrder.shippingDetails?.trackingNumber && (
+                <div className="p-3.5 bg-blue-50 rounded-2xl border border-blue-200 space-y-1">
+                  <span className="font-bold text-blue-950 text-xs block">Consignment Tracking Details</span>
+                  <p className="text-blue-900">
+                    Courier: <strong>{selectedDetailOrder.shippingDetails.courierName}</strong> · Consignment #:{' '}
+                    <strong className="font-mono">{selectedDetailOrder.shippingDetails.trackingNumber}</strong>
+                  </p>
+                </div>
+              )}
+
+              {/* Refund Info if processed */}
+              {selectedDetailOrder.refundDetails?.refundUtr && (
+                <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-1">
+                  <span className="font-bold text-emerald-950 text-xs block">Refund Record</span>
+                  <p className="text-emerald-900">
+                    Bank Refund UTR: <strong className="font-mono">{selectedDetailOrder.refundDetails.refundUtr}</strong> · Tool:{' '}
+                    <strong>{selectedDetailOrder.refundDetails.refundTool || 'UPI'}</strong>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-4 bg-neutral-50 border-t border-neutral-100 flex items-center justify-between gap-2 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  const text = `Order #${selectedDetailOrder.orderNumber} - ${selectedDetailOrder.customer.name} (${selectedDetailOrder.customer.phone}) - Amount: ${formatPrice(selectedDetailOrder.totalAmount)} - Status: ${selectedDetailOrder.status}`;
+                  navigator.clipboard.writeText(text);
+                }}
+                className="px-3 py-2 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-700 font-semibold text-xs flex items-center gap-1.5 transition"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy Summary</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cleanPhone = selectedDetailOrder.customer.phone.replace(/[^0-9]/g, '');
+                    const msg = `Namaste ${selectedDetailOrder.customer.name}! 🪔✨\n\nRegarding your order #${selectedDetailOrder.orderNumber} at *${settings.boutiqueName}*.\nCurrent Status: *${selectedDetailOrder.status}*.\n\nPlease let us know if you have any questions!`;
+                    openWhatsApp(cleanPhone, msg);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-xs"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>WhatsApp Customer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDetailOrder(null)}
+                  className="px-4 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
