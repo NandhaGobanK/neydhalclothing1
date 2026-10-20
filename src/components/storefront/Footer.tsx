@@ -196,6 +196,11 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions 
                 </button>
               </li>
 
+              <li className="pt-1 text-amber-200/90 font-medium text-[11px] flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>No cancellation once the order is confirmed.</span>
+              </li>
+
               {settings.storefrontDisplay?.footerPolicies && settings.storefrontDisplay.footerPolicies.length > 0 && (
                 settings.storefrontDisplay.footerPolicies.map((pol, idx) => (
                   <li key={idx} className="text-neutral-400 pt-1 text-[11px]">{pol}</li>

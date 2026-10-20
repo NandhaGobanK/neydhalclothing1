@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
-import { CheckCircle2, Copy, Check, ArrowRight, Truck } from 'lucide-react';
+import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle } from 'lucide-react';
 
 interface OrderSuccessModalProps {
   onClose: () => void;
@@ -125,6 +125,14 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
               {lastPlacedOrder.customer.address}, {lastPlacedOrder.customer.city}, {lastPlacedOrder.customer.state} - {lastPlacedOrder.customer.pincode}
             </p>
             <p className="text-neutral-500 text-[11px] mt-0.5">Contact: {lastPlacedOrder.customer.phone}</p>
+          </div>
+
+          {/* Storefront Order Cancellation Policy Notice (Mandatory Requirement) */}
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-300 text-amber-950 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+            <p className="leading-tight font-medium">
+              <strong>Boutique Policy Notice:</strong> No cancellation once the order is confirmed.
+            </p>
           </div>
         </div>
 

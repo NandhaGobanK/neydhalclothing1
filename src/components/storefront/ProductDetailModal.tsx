@@ -537,8 +537,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
                   <span>Important Order & Refund Notice</span>
                 </div>
-                <p className="text-[11px] text-amber-900/90 leading-relaxed">
-                  No cancellation once order is placed. If you have paid and have any queries or negotiations regarding refunds, please contact our assigned boutique admin or concierge staff directly with your order reference.
+                <p className="text-xs text-amber-950 font-bold leading-relaxed">
+                  No cancellation once the order is confirmed.
                 </p>
               </div>
 

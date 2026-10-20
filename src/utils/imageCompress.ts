@@ -5,9 +5,9 @@
  */
 export async function compressImage(
   file: File,
-  maxWidth: number = 1400,
-  maxHeight: number = 800,
-  quality: number = 0.85
+  maxWidth: number = 900,
+  maxHeight: number = 900,
+  quality: number = 0.78
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     // If it's a vector SVG, keep as is
@@ -51,11 +51,17 @@ export async function compressImage(
         // Apply smooth bilinear interpolation
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, width, height);
 
         // Compress to JPEG for photos or PNG for transparent logos if small
         const isPng = file.type === 'image/png' && width <= 400;
         const outputMime = isPng ? 'image/png' : 'image/jpeg';
+
+        if (outputMime === 'image/jpeg') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
         const compressedDataUrl = canvas.toDataURL(outputMime, quality);
 
         resolve(compressedDataUrl);

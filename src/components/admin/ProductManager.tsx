@@ -42,6 +42,7 @@ export const ProductManager: React.FC = () => {
     currentPermissions,
     categories,
     addCategory,
+    updateCategory,
     deleteCategory,
     checkSkuUniqueInRegistry,
     toggleFabricOptional,
@@ -51,6 +52,11 @@ export const ProductManager: React.FC = () => {
   const [activeCategoryView, setActiveCategoryView] = useState<SareeCategory | null>(null);
   const [showAllSareesFlat, setShowAllSareesFlat] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<SareeCategory | null>(null);
+  const [categoryToEdit, setCategoryToEdit] = useState<SareeCategory | null>(null);
+  const [editCatName, setEditCatName] = useState('');
+  const [editCatDesc, setEditCatDesc] = useState('');
+  const [editCatImg, setEditCatImg] = useState('');
+  const [isEditCatImgUploading, setIsEditCatImgUploading] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [catActionError, setCatActionError] = useState<string | null>(null);
 
@@ -117,13 +123,64 @@ export const ProductManager: React.FC = () => {
     setIsCatImgUploading(true);
     setCatActionError(null);
     try {
-      const compressed = await compressImage(file, 1000, 1000, 0.75);
+      const compressed = await compressImage(file, 900, 900, 0.78);
       setNewCatImg(compressed);
     } catch (err) {
       console.error('Failed to compress category image:', err);
       setCatActionError('Failed to process image file. Please try another image.');
     } finally {
       setIsCatImgUploading(false);
+    }
+  };
+
+  const handleEditCatImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsEditCatImgUploading(true);
+    setCatActionError(null);
+    try {
+      const compressed = await compressImage(file, 900, 900, 0.78);
+      setEditCatImg(compressed);
+    } catch (err) {
+      console.error('Failed to compress category image:', err);
+      setCatActionError('Failed to process image file. Please try another image.');
+    } finally {
+      setIsEditCatImgUploading(false);
+    }
+  };
+
+  const openEditCategoryModal = (cat: SareeCategory) => {
+    setCategoryToEdit(cat);
+    setEditCatName(cat.name);
+    setEditCatDesc(cat.description || '');
+    setEditCatImg(cat.imageUrl || '');
+    setCatActionError(null);
+  };
+
+  const handleSaveEditCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryToEdit || !editCatName.trim()) {
+      setCatActionError('Please enter a category name');
+      return;
+    }
+    setCatActionError(null);
+    try {
+      await updateCategory(categoryToEdit.id, {
+        name: editCatName.trim(),
+        description: editCatDesc.trim() || undefined,
+        imageUrl: editCatImg.trim() || categoryToEdit.imageUrl,
+      });
+      if (activeCategoryView?.id === categoryToEdit.id) {
+        setActiveCategoryView({
+          ...categoryToEdit,
+          name: editCatName.trim(),
+          description: editCatDesc.trim() || undefined,
+          imageUrl: editCatImg.trim() || categoryToEdit.imageUrl,
+        });
+      }
+      setCategoryToEdit(null);
+    } catch (err: any) {
+      setCatActionError(err?.message || 'Failed to update category');
     }
   };
 
@@ -146,9 +203,7 @@ export const ProductManager: React.FC = () => {
   const [stockStatus, setStockStatus] = useState<'in_stock' | 'out_of_stock' | 'limited'>('in_stock');
   const [stockCount, setStockCount] = useState<number>(5);
   const [isVisible, setIsVisible] = useState(true);
-  const [images, setImages] = useState<string[]>([
-    '/src/assets/images/saree_kanjivaram_crimson_1791651781402.jpg',
-  ]);
+  const [images, setImages] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [instagramShortsUrl, setInstagramShortsUrl] = useState('');
@@ -312,7 +367,7 @@ export const ProductManager: React.FC = () => {
     setStockStatus('in_stock');
     setStockCount(3);
     setIsVisible(true);
-    setImages(['/src/assets/images/saree_kanjivaram_crimson_1791651781402.jpg']);
+    setImages([]);
     setImageUrlInput('');
     setVideoUrl('https://www.youtube.com/watch?v=0hW73jL76bY');
     setInstagramShortsUrl('');
@@ -403,7 +458,7 @@ export const ProductManager: React.FC = () => {
       const created = await addCategory({
         name: newCatName.trim(),
         description: newCatDesc.trim() || undefined,
-        imageUrl: newCatImg.trim() || '/src/assets/images/hero_saree_atelier_1791651761357.jpg',
+        imageUrl: newCatImg.trim() || '/assets/images/hero_saree_atelier_1791651761357.jpg',
       });
       setNewCatName('');
       setNewCatDesc('');
@@ -660,7 +715,7 @@ export const ProductManager: React.FC = () => {
       stockStatus: finalStatus,
       stockCount: finalCount,
       isVisible,
-      images: images.length > 0 ? images : ['/src/assets/images/hero_saree_atelier_1791651761357.jpg'],
+      images: images.length > 0 ? images : ['/assets/images/hero_saree_atelier_1791651761357.jpg'],
       videoUrl: videoUrl.trim() || undefined,
       instagramShortsUrl: instagramShortsUrl.trim() || undefined,
       weaveDetails: finalWeave ? finalWeave.trim() : undefined,
@@ -960,17 +1015,30 @@ export const ProductManager: React.FC = () => {
                           {count} {count === 1 ? 'Saree' : 'Sarees'}
                         </span>
                         {canEditProducts && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCategoryToDelete(cat);
-                            }}
-                            className="p-1 rounded-full bg-black/60 hover:bg-rose-600 text-white transition cursor-pointer"
-                            title="Remove category"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditCategoryModal(cat);
+                              }}
+                              className="p-1 rounded-full bg-black/60 hover:bg-amber-600 text-white transition cursor-pointer"
+                              title="Edit category details & photo"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCategoryToDelete(cat);
+                              }}
+                              className="p-1 rounded-full bg-black/60 hover:bg-rose-600 text-white transition cursor-pointer"
+                              title="Remove category"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -2589,6 +2657,152 @@ export const ProductManager: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Category Modal */}
+      {categoryToEdit && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto">
+            <div className="p-4 sm:p-5 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <Edit2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Edit Category: {categoryToEdit.name}
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Update category title, description & permanent cover image
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCategoryToEdit(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditCategory} className="p-5 space-y-4 text-xs">
+              {catActionError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{catActionError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Category Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editCatName}
+                  onChange={(e) => setEditCatName(e.target.value)}
+                  placeholder="e.g. Kanjivaram Bridal Silks"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1">
+                  Short Description (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editCatDesc}
+                  onChange={(e) => setEditCatDesc(e.target.value)}
+                  placeholder="e.g. Pure mulberry silk handwoven drapes with tested zari"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1">
+                  Category Preview Image (Upload or URL)
+                </label>
+
+                {editCatImg ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-100 aspect-16/9 max-h-44 mb-2 group">
+                    <img
+                      src={editCatImg}
+                      alt="Category preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditCatImg('')}
+                        className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs flex items-center gap-1 shadow-md hover:bg-rose-700 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Change Photo</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-2">
+                    <label className="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-dashed border-amber-300 hover:border-amber-500 bg-amber-50/50 hover:bg-amber-50 transition cursor-pointer text-center">
+                      <Upload className="w-6 h-6 text-amber-700 mb-1" />
+                      <span className="font-bold text-neutral-800 text-xs">
+                        {isEditCatImgUploading ? 'Optimizing photo...' : 'Upload New Category Cover'}
+                      </span>
+                      <span className="text-[10px] text-neutral-500 mt-0.5">
+                        High-res photo compressed permanently into database
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleEditCatImageFileChange}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="url"
+                    value={editCatImg}
+                    onChange={(e) => setEditCatImg(e.target.value)}
+                    placeholder="Or paste image URL (https://...)"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 text-xs"
+                  />
+                  {editCatImg && (
+                    <button
+                      type="button"
+                      onClick={() => setEditCatImg('')}
+                      className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 border border-neutral-300 shrink-0 cursor-pointer"
+                      title="Clear image"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCategoryToEdit(null)}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold transition shadow-xs cursor-pointer"
+                >
+                  Save Category Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

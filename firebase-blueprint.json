@@ -57,7 +57,7 @@
         "id": { "type": "string", "maxLength": 128 },
         "name": { "type": "string", "maxLength": 100 },
         "description": { "type": "string", "maxLength": 500 },
-        "imageUrl": { "type": "string", "maxLength": 500 },
+        "imageUrl": { "type": "string", "maxLength": 1000000 },
         "displayOrder": { "type": "number" },
         "createdAt": { "type": "string" }
       },

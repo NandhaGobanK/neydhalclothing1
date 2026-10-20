@@ -297,8 +297,23 @@ export function getBoutiqueOrderPrefix(boutiqueName?: string): string {
 function saveToStorage<T>(key: string, data: T) {
   try {
     localStorage.setItem(key, JSON.stringify(data));
-  } catch (err) {
-    console.error(`Error saving key ${key} to storage:`, err);
+  } catch (err: any) {
+    console.warn(`Storage save warning for ${key}:`, err?.message || err);
+    // If quota exceeded, clean up old non-essential items and retry
+    if (err?.name === 'QuotaExceededError' || err?.code === 22) {
+      try {
+        const keysToClean = ['aara_temp_', 'search_cache', 'preview_'];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && keysToClean.some((prefix) => k.startsWith(prefix))) {
+            localStorage.removeItem(k);
+          }
+        }
+        localStorage.setItem(key, JSON.stringify(data));
+      } catch {
+        // Safe fallback - Firestore database retains all source of truth
+      }
+    }
   }
 }
 
@@ -2575,19 +2590,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const addCategory = async (catInput: Omit<SareeCategory, 'id'>): Promise<SareeCategory> => {
+    const fallbackImg = '/assets/images/hero_saree_atelier_1791651761357.jpg';
     const newCat: SareeCategory = {
       id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name: catInput.name.trim(),
       description: catInput.description?.trim() || '',
-      imageUrl: catInput.imageUrl?.trim() || '/src/assets/images/hero_saree_atelier_1791651761357.jpg',
+      imageUrl: catInput.imageUrl?.trim() || fallbackImg,
       displayOrder: catInput.displayOrder ?? (categories.length + 1),
     };
     const updated = [...categories, newCat];
     setCategories(updated);
     saveToStorage('aara_boutique_categories_v3', updated);
-    updateSettings({ sareeCategories: updated });
 
-    setDoc(doc(db, 'categories', newCat.id), sanitizeForFirestore(newCat)).catch((err) =>
+    // Persist directly to Firestore /categories/{id}
+    await setDoc(doc(db, 'categories', newCat.id), sanitizeForFirestore(newCat)).catch((err) =>
       handleFirestoreError(err, OperationType.CREATE, `categories/${newCat.id}`)
     );
     return newCat;
@@ -2597,9 +2613,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const updated = categories.map((c) => (c.id === id ? { ...c, ...updates } : c));
     setCategories(updated);
     saveToStorage('aara_boutique_categories_v3', updated);
-    updateSettings({ sareeCategories: updated });
 
-    setDoc(doc(db, 'categories', id), sanitizeForFirestore(updates), { merge: true }).catch((err) =>
+    // Persist directly to Firestore /categories/{id}
+    await setDoc(doc(db, 'categories', id), sanitizeForFirestore(updates), { merge: true }).catch((err) =>
       handleFirestoreError(err, OperationType.UPDATE, `categories/${id}`)
     );
   };
@@ -2608,9 +2624,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const updated = categories.filter((c) => c.id !== id);
     setCategories(updated);
     saveToStorage('aara_boutique_categories_v3', updated);
-    updateSettings({ sareeCategories: updated });
 
-    deleteDoc(doc(db, 'categories', id)).catch((err) =>
+    // Remove directly from Firestore /categories/{id}
+    await deleteDoc(doc(db, 'categories', id)).catch((err) =>
       handleFirestoreError(err, OperationType.DELETE, `categories/${id}`)
     );
   };

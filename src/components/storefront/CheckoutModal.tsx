@@ -708,17 +708,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                   </div>
                 </div>
               </>
-            ) : (
-              <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-950 text-xs space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                  <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>Important Cancellation & Refund Policy</span>
-                </div>
-                <p className="text-[11px] text-amber-900/90 leading-relaxed">
-                  No cancellation once orders are placed. If you have paid and have any queries or requests related to refunds, please contact our boutique administrators or concierge staff assigned to your order for negotiations.
-                </p>
+            ) : null}
+
+            {/* Storefront Order Cancellation Policy Notice (Mandatory Requirement) */}
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>Order Cancellation Policy</span>
               </div>
-            )}
+              <p className="text-xs text-amber-950 font-bold leading-relaxed">
+                No cancellation once the order is confirmed.
+              </p>
+            </div>
           </div>
         </div>
 
