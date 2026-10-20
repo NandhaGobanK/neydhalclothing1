@@ -183,6 +183,19 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         </div>
       </div>
 
+      {/* Storefront Order Cancellation Policy Notice (Mandatory Requirement) */}
+      <div className="mb-6 p-3 px-4 rounded-xl bg-amber-50 border border-amber-200/90 flex items-center justify-between gap-3 text-xs text-amber-950 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse shrink-0" />
+          <span>
+            <strong>Boutique Order Cancellation Policy:</strong> No cancellation once the order is confirmed.
+          </span>
+        </div>
+        <span className="text-[11px] text-amber-800 font-medium">
+          Verified artisan drapes with instant UPI & direct concierge
+        </span>
+      </div>
+
       {/* Filter Bar (Segmented button tabs) */}
       <div className={`space-y-4 mb-8 ${showMobileFilters ? 'block' : 'hidden md:block'}`}>
         {/* Fabric Filter - Only published fabrics */}

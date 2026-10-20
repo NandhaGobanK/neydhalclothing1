@@ -281,7 +281,7 @@ function loadFromStorage<T>(key: string, fallback: T): T {
 }
 
 export function getBoutiqueOrderPrefix(boutiqueName?: string): string {
-  if (!boutiqueName || !boutiqueName.trim()) return 'BOUTIQUE';
+  if (!boutiqueName || !boutiqueName.trim()) return 'NC';
   const clean = boutiqueName.trim();
   const words = clean.split(/\s+/).filter(Boolean);
   if (words.length > 1) {
@@ -290,8 +290,11 @@ export function getBoutiqueOrderPrefix(boutiqueName?: string): string {
       return initials;
     }
   }
+  if (clean.toLowerCase().includes('neydhal')) {
+    return 'NC';
+  }
   const slug = clean.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return slug.length > 0 ? slug.slice(0, 8) : 'BOUTIQUE';
+  return slug.length >= 2 ? slug.slice(0, 3) : (slug || 'NC');
 }
 
 function saveToStorage<T>(key: string, data: T) {
@@ -389,9 +392,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return Array.isArray(stored) ? stored.map(normalizeProductStock) : [];
     }
     const deletedIds = getDeletedProductIds();
-    const stored = loadFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
-    const source = stored && Array.isArray(stored) ? stored : INITIAL_PRODUCTS;
-    return source.filter((p) => !deletedIds.has(p.id)).map(normalizeProductStock);
+    const stored = loadFromStorage<Product[] | null>(STORAGE_KEYS.PRODUCTS, null);
+    if (stored !== null && Array.isArray(stored)) {
+      return stored.filter((p) => !deletedIds.has(p.id)).map(normalizeProductStock);
+    }
+    return INITIAL_PRODUCTS.filter((p) => !deletedIds.has(p.id)).map(normalizeProductStock);
   });
 
   const [orders, setOrders] = useState<Order[]>(() => {

@@ -1,6 +1,13 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore, doc, getDocFromServer } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  getFirestore,
+  Firestore,
+  doc,
+  getDocFromServer,
+  setLogLevel,
+} from 'firebase/firestore';
 import defaultConfig from '../../firebase-applet-config.json';
 
 // Build-time / deployment environment variables (e.g. on Netlify / Vercel / Cloudflare)
@@ -20,7 +27,27 @@ export const isFirebaseConfigured = Boolean(
 
 export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Configure Firestore log level to prevent unhandled connection warning in console
+try {
+  setLogLevel('error');
+} catch {}
+
+// Use initializeFirestore with forced long-polling to prevent WebSocket negotiation drop in cloud proxy environments
+export const db: Firestore = (() => {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        ignoreUndefinedProperties: true,
+        experimentalForceLongPolling: true,
+      },
+      firebaseConfig.firestoreDatabaseId
+    );
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+})();
 
 /**
  * Strips undefined properties recursively to comply with Firestore document restrictions
@@ -74,9 +101,23 @@ export function handleFirestoreError(
   error: unknown,
   operationType: OperationType,
   path: string | null
-): never {
+): void {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const errCode = (error as any)?.code;
+
+  // If transient unavailable or offline, log warning and allow Firestore to use offline cache without crashing
+  if (
+    errCode === 'unavailable' ||
+    errMsg.includes('the client is offline') ||
+    errMsg.includes('Could not reach Cloud Firestore backend') ||
+    errMsg.includes('offline mode')
+  ) {
+    console.warn(`Firestore [${operationType}] at ${path} is in offline/cached mode:`, errMsg);
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -105,8 +146,12 @@ export async function testFirestoreConnection(): Promise<{ success: boolean; mes
     await getDocFromServer(doc(db, 'settings', 'store_config'));
     return { success: true, message: 'Firestore real-time connection verified successfully.' };
   } catch (error: any) {
-    if (error?.message?.includes('the client is offline') || error?.code === 'unavailable') {
-      return { success: false, message: 'Client offline or unable to reach Firestore servers.' };
+    if (
+      error?.message?.includes('the client is offline') ||
+      error?.message?.includes('Could not reach Cloud Firestore') ||
+      error?.code === 'unavailable'
+    ) {
+      return { success: false, message: 'Client offline or unable to reach Firestore servers. Operating in offline cache mode.' };
     }
     // If document just doesn't exist, connection itself succeeded!
     return { success: true, message: 'Connected to Firestore instance.' };

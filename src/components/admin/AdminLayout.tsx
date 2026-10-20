@@ -435,8 +435,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
         </div>
       </header>
 
-      {/* Instant New Order Arrival Banner with Sound Trigger (User Request) */}
-      {incomingOrderAlert && (
+      {/* Instant New Order Arrival Banner with Sound Trigger (Only displays on Orders page or redirects there) */}
+      {incomingOrderAlert && activeTab !== 'orders' && (
         <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-rose-600 text-neutral-950 px-4 py-3 shadow-md animate-in slide-in-from-top duration-300">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2.5">
@@ -483,8 +483,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
         </div>
       )}
 
-      {/* Instant Delivery Dispute Arrival Alert Banner (User Request) */}
-      {incomingDisputeAlert && (
+      {/* Customer Issue Alert Banner (Strictly displays on Customers Issue page only) */}
+      {incomingDisputeAlert && activeTab === 'customers_issue' && (
         <div className="bg-gradient-to-r from-rose-700 via-rose-600 to-amber-600 text-white px-4 py-3 shadow-md animate-in slide-in-from-top duration-300">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2.5">
@@ -503,20 +503,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => {
-                  setActiveTab('customers_issue');
-                  setIncomingDisputeAlert(null);
-                }}
+                onClick={() => setIncomingDisputeAlert(null)}
                 className="px-3.5 py-1.5 rounded-xl bg-white text-rose-950 font-bold text-xs transition shadow-sm hover:bg-neutral-100 cursor-pointer"
               >
-                Open in Customers Issue Section &rarr;
-              </button>
-              <button
-                onClick={() => setIncomingDisputeAlert(null)}
-                className="p-1 rounded-lg text-white/80 hover:text-white cursor-pointer"
-                title="Dismiss"
-              >
-                <X className="w-4 h-4" />
+                Dismiss Alert
               </button>
             </div>
           </div>

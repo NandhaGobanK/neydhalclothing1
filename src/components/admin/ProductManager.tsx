@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useStore } from '../../context/StoreContext';
+import { useStore, getBoutiqueOrderPrefix } from '../../context/StoreContext';
 import { Product, SareeFabric, SareeColor, SareeCategory, ProductAttributeDefinition } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
 import { compressImage } from '../../utils/imageCompress';
@@ -184,7 +184,22 @@ export const ProductManager: React.FC = () => {
     }
   };
 
-  // Requirement 6: Standardized SKU Generation Formula: "Category - ProductName - Colour"
+  // Requirement 6: Standardized SKU Generation Formula: "Store name - Category - ProductName - Colour"
+  const formatSkuKeyword = (text: string, defaultCode = 'GEN'): string => {
+    if (!text || !text.trim()) return defaultCode;
+    const clean = text.trim().replace(/[^a-zA-Z0-9\s]/g, '');
+    const lower = clean.toLowerCase();
+
+    // Specific apparel keyword mapping from standardized formula requirements
+    if (lower.startsWith('blouse')) return 'BLU';
+    if (lower.startsWith('silk')) return 'SIL';
+    if (lower.startsWith('pink')) return 'PIN';
+
+    const firstWord = clean.split(/\s+/)[0] || clean;
+    const letters = firstWord.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return letters.length >= 3 ? letters.slice(0, 3) : letters.padEnd(3, 'X');
+  };
+
   const effectiveColor = useMemo(() => {
     return selectedColorOption === 'Other'
       ? (customColor.trim() || 'Custom')
@@ -192,11 +207,12 @@ export const ProductManager: React.FC = () => {
   }, [selectedColorOption, customColor]);
 
   const autoSkuPrefix = useMemo(() => {
-    const cat = (category || categories[0]?.name || 'Category').trim();
-    const prodName = (title || 'Saree').trim();
-    const col = effectiveColor.trim();
-    return `${cat} - ${prodName} - ${col}`;
-  }, [category, categories, title, effectiveColor]);
+    const storeKeyword = getBoutiqueOrderPrefix(settings.boutiqueName);
+    const catCode = formatSkuKeyword(category || categories[0]?.name || 'Category', 'CAT');
+    const prodCode = formatSkuKeyword(title || 'Product', 'PRO');
+    const colCode = formatSkuKeyword(effectiveColor || 'Colour', 'COL');
+    return `${storeKeyword}-${catCode}-${prodCode}-${colCode}`;
+  }, [settings.boutiqueName, category, categories, title, effectiveColor]);
 
   const [price, setPrice] = useState<number>(25000);
   const [originalPrice, setOriginalPrice] = useState<number>(30000);
@@ -338,7 +354,7 @@ export const ProductManager: React.FC = () => {
 
   const handleSkuSuffixChange = (typedSuffix: string) => {
     setSkuCodeSuffix(typedSuffix);
-    const candidate = `${autoSkuPrefix} - ${typedSuffix.trim()}`.toUpperCase();
+    const candidate = `${autoSkuPrefix}-${typedSuffix.trim()}`.toUpperCase();
     setProductCode(candidate);
     const err = checkSkuInDatabase(candidate, editingProduct?.id);
     setSkuError(err);
@@ -634,7 +650,7 @@ export const ProductManager: React.FC = () => {
       editingProduct && (editingProduct.isSkuLocked || (editingProduct.skuEditCount || 0) >= 1)
     );
 
-    const generatedSku = `${autoSkuPrefix} - ${(skuCodeSuffix || '101').trim()}`.toUpperCase();
+    const generatedSku = `${autoSkuPrefix}-${(skuCodeSuffix || '101').trim()}`.toUpperCase();
     const finalSku = editingProduct
       ? (isSkuPermanentlyLocked ? editingProduct.productCode : (productCode.trim().toUpperCase() || generatedSku))
       : generatedSku;
@@ -1676,11 +1692,11 @@ export const ProductManager: React.FC = () => {
                   ) : (
                     <div className="space-y-2">
                       <div className="flex flex-col sm:flex-row items-stretch gap-2">
-                        {/* Auto-Generated Prefix (Category - ProductName - Colour) Locked */}
+                        {/* Auto-Generated Prefix (Store name - Category - ProductName - Colour) Locked */}
                         <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-700 text-neutral-300 font-mono text-xs select-all overflow-x-auto shadow-inner">
                           <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                           <span className="text-amber-300 font-bold whitespace-nowrap">
-                            {autoSkuPrefix} -
+                            {autoSkuPrefix}-
                           </span>
                         </div>
 
@@ -1708,7 +1724,7 @@ export const ProductManager: React.FC = () => {
                       <div className="p-2.5 rounded-xl bg-neutral-900/80 border border-neutral-800 flex items-center justify-between text-[11px] flex-wrap gap-2">
                         <span className="text-neutral-400">Standardized Full SKU:</span>
                         <span className="font-mono font-bold text-amber-300">
-                          {autoSkuPrefix} - {skuCodeSuffix.trim()}
+                          {autoSkuPrefix}-{skuCodeSuffix.trim()}
                         </span>
                       </div>
 

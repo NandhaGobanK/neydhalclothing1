@@ -70,9 +70,6 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
   } = useStore();
   const isAdmin = currentUser?.type === 'admin';
   const canEditOrders = isAdmin || currentPermissions?.orders?.canEdit !== false;
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [selectedStaffFilter, setSelectedStaffFilter] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Clickable / expandable order cards (User Request: each Item ordered display is too lengthy, make orders in clickable format)
@@ -233,92 +230,63 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // Orders that need refund attention (Cancelled or Rejected and not marked processed)
-  const pendingRefundOrders = useMemo(() => {
-    return orders.filter(
-      (o) =>
-        (o.status === 'Cancelled' || o.status === 'Rejected') &&
-        o.refundDetails?.refundStatus === 'pending'
-    );
-  }, [orders]);
-
   const unassignedOrders = useMemo(() => {
     return orders.filter((o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned');
   }, [orders]);
 
-  // Interactive Metric Counts alongside Pending, Confirmed, Shipped, Delivered, and Customers Issue
-  const orderMetrics = useMemo(() => {
-    const pending = unassignedOrders.filter((o) => o.status === 'Pending').length;
-    const confirmed = unassignedOrders.filter((o) => o.status === 'Confirmed').length;
-    const shipped = unassignedOrders.filter((o) => o.status === 'Shipped').length;
-    const delivered = unassignedOrders.filter((o) => o.status === 'Delivered').length;
-    const customerIssues = orders.filter(
-      (o) => o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved'
-    ).length;
-    const refunded = orders.filter(
-      (o) =>
-        o.refundDetails?.refundStatus === 'processed' ||
-        (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund')
-    ).length;
-    return {
-      total: unassignedOrders.length,
-      pending,
-      confirmed,
-      shipped,
-      delivered,
-      customerIssues,
-      refunded,
-    };
-  }, [unassignedOrders, orders]);
-
-  const filteredOrders = useMemo(() => {
-    return unassignedOrders.filter((o) => {
-      if (selectedStatus === 'needs_refund') {
-        if (!((o.status === 'Cancelled' || o.status === 'Rejected') && o.refundDetails?.refundStatus === 'pending')) {
-          return false;
-        }
-      } else if (selectedStatus === 'customers_issue') {
-        if (!o.deliveryIssue?.reported) return false;
-      } else if (selectedStatus === 'Refunded') {
-        const isRefunded =
-          o.refundDetails?.refundStatus === 'processed' ||
-          (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund');
-        if (!isRefunded) {
-          return false;
-        }
-      } else if (selectedStatus !== 'all' && o.status !== selectedStatus) {
-        return false;
-      }
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        return (
-          o.orderNumber.toLowerCase().includes(q) ||
-          o.customer.name.toLowerCase().includes(q) ||
-          o.customer.phone.includes(q) ||
-          o.upiTransactionId.toLowerCase().includes(q) ||
-          (o.refundDetails?.refundUpiId && o.refundDetails.refundUpiId.toLowerCase().includes(q))
-        );
-      }
-      return true;
-    });
-  }, [unassignedOrders, selectedStatus, searchQuery]);
-
-  // Requirement 7: Global Cross-Bucket Search across all orders
-  const globalSearchResults = useMemo(() => {
-    if (!globalOrderSearch.trim()) return [];
-    const q = globalOrderSearch.trim().toLowerCase();
+  // Streamlined Multi-Parameter Global Order Search (Requirement 5)
+  // Parameters supported:
+  // 1. Order Number (e.g., #NC-2481, NC-2481, 2481)
+  // 2. Customer Name (e.g., Ananya, Priya)
+  // 3. Mobile Number (e.g., 9876543210, partial digits)
+  // 4. UTR Number (Prepaid Transaction UTR or Refund Bank UTR)
+  const displayOrders = useMemo(() => {
+    if (!globalOrderSearch.trim()) {
+      return orders;
+    }
+    const raw = globalOrderSearch.trim();
+    const q = raw.toLowerCase();
     const cleanNum = q.replace(/^[#\s]+/, '').trim();
+    const searchDigits = raw.replace(/\D/g, '');
+
     return orders.filter((o) => {
+      // 1. Order Number matching
       const oNum = o.orderNumber.toLowerCase().replace(/^[#\s]+/, '').trim();
-      return (
+      const matchesOrderNumber =
         oNum === cleanNum ||
         oNum.includes(cleanNum) ||
         o.orderNumber.toLowerCase().includes(q) ||
-        o.customer.name.toLowerCase().includes(q) ||
-        o.customer.phone.includes(q) ||
-        o.upiTransactionId.toLowerCase().includes(q) ||
-        (o.assignedStaffName && o.assignedStaffName.toLowerCase().includes(q))
+        (`#${o.orderNumber.toLowerCase()}`).includes(q);
+
+      // 2. Customer Name matching
+      const matchesCustomerName = o.customer.name.toLowerCase().includes(q);
+
+      // 3. Mobile Number matching
+      const phoneDigits = o.customer.phone.replace(/\D/g, '');
+      const matchesMobile =
+        o.customer.phone.toLowerCase().includes(q) ||
+        (searchDigits.length >= 3 && phoneDigits.includes(searchDigits));
+
+      // 4. UTR Number matching (payment UTR & refund UTR)
+      const matchesPaymentUtr = Boolean(
+        o.upiTransactionId && (
+          o.upiTransactionId.toLowerCase().includes(cleanNum) ||
+          o.upiTransactionId.toLowerCase().includes(q)
+        )
+      );
+      const matchesRefundUtr = Boolean(
+        o.refundDetails?.refundUtr && (
+          o.refundDetails.refundUtr.toLowerCase().includes(cleanNum) ||
+          o.refundDetails.refundUtr.toLowerCase().includes(q)
+        )
+      );
+
+      return (
+        matchesOrderNumber ||
+        matchesCustomerName ||
+        matchesMobile ||
+        matchesPaymentUtr ||
+        matchesRefundUtr
       );
     });
   }, [orders, globalOrderSearch]);
@@ -615,26 +583,24 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
 
   return (
     <div className="space-y-6">
-      {/* Top Header & Export */}
+      {/* Top Header: Minimal layout with Sound Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 flex items-center gap-2">
-            <span>Orders Intake & Triage</span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-sans font-semibold border border-amber-300">
-              Unassigned Queue
-            </span>
+            <span>Orders</span>
           </h2>
           <p className="text-xs text-neutral-500 mt-0.5">
-            {unassignedOrders.length} unassigned incoming {unassignedOrders.length === 1 ? 'order' : 'orders'} · Assign to staff or admin to move into their dedicated bucket
+            Search orders across all buckets. Click any order to directly inspect its complete status.
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Audio Notification Toggle and Test Button (User Request) */}
+          {/* Audio Notification Toggle and Test Button */}
           <div className="inline-flex items-center gap-1 p-1 bg-neutral-100 rounded-xl border border-neutral-200">
             <button
+              type="button"
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
                 soundEnabled
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-neutral-200 text-neutral-600'
@@ -645,45 +611,18 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
               <span>{soundEnabled ? 'Sound On' : 'Muted'}</span>
             </button>
             <button
+              type="button"
               onClick={() => playOrderNotificationSound()}
-              className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200 text-xs font-medium transition"
+              className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200 text-xs font-medium transition cursor-pointer"
               title="Test Order Chime"
             >
               <Bell className="w-3.5 h-3.5" />
             </button>
           </div>
-
-          {/* Sync & Open Google Sheets (User Request 2) */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              type="button"
-              onClick={handleAuthorizeAndSync}
-              disabled={isSyncingSheets}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-semibold shadow-xs transition cursor-pointer disabled:opacity-50"
-              title="Sync unassigned orders to Google Sheets"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-              <span>{isSyncingSheets ? 'Syncing...' : 'Sync Sheets'}</span>
-            </button>
-
-            {(settings.ordersSpreadsheetUrl || settings.analyticsSpreadsheetUrl) && (
-              <a
-                href={settings.ordersSpreadsheetUrl || settings.analyticsSpreadsheetUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-900 text-xs font-semibold shadow-xs transition"
-                title="Open Master Google Sheets Ledger in new browser tab"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Open Sheets</span>
-                <ExternalLink className="w-3 h-3 text-emerald-600" />
-              </a>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Incoming Order Real-Time Sound & Alert Banner (User Request) */}
+      {/* Order Alert Banner (Only Order alerts display here) */}
       {newOrderAlert && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-neutral-950 shadow-lg border border-amber-400 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in slide-in-from-top-4">
           <div className="flex items-center gap-3">
@@ -699,17 +638,20 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
           </div>
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
             <button
+              type="button"
               onClick={() => {
-                setSearchQuery(newOrderAlert.orderNumber);
+                setSelectedDetailOrder(newOrderAlert);
+                setGlobalOrderSearch(newOrderAlert.orderNumber);
                 setNewOrderAlert(null);
               }}
-              className="px-3.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-bold transition shadow-xs"
+              className="px-3.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-bold transition shadow-xs cursor-pointer"
             >
-              View Order #{newOrderAlert.orderNumber}
+              Inspect Order #{newOrderAlert.orderNumber}
             </button>
             <button
+              type="button"
               onClick={() => setNewOrderAlert(null)}
-              className="p-1.5 rounded-lg text-neutral-950 hover:bg-amber-400 transition"
+              className="p-1.5 rounded-lg text-neutral-950 hover:bg-amber-400 transition cursor-pointer"
               title="Dismiss notification"
             >
               <X className="w-4 h-4" />
@@ -718,532 +660,89 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
         </div>
       )}
 
-      {/* Google Sheets Sync Alert Notifications */}
-      {sheetSyncSuccess && (
-        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>
-              Successfully synchronized <strong>{sheetSyncSuccess.count} orders</strong> to your Google Sheets document!
-            </span>
-          </div>
-          <a
-            href={sheetSyncSuccess.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 font-bold text-emerald-700 underline hover:text-emerald-900"
-          >
-            <span>Open Sheet</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-      )}
-
-      {sheetSyncError && (
-        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{sheetSyncError}</span>
-          </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-            {(sheetSyncError.toLowerCase().includes('scope') ||
-              sheetSyncError.toLowerCase().includes('authentication') ||
-              sheetSyncError.toLowerCase().includes('permission')) && (
-              <button
-                onClick={handleAuthorizeAndSync}
-                className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition"
-              >
-                Grant Google Permissions
-              </button>
-            )}
-            <button
-              onClick={() => setSheetSyncError(null)}
-              className="text-rose-700 font-bold hover:underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Requirement 7: Global Order Search Bar across all buckets */}
-      <div className="bg-white rounded-2xl border-2 border-amber-300 p-4 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
-              <Globe className="w-4 h-4 text-amber-600" />
-              <span>Global Boutique Order Search</span>
-            </h3>
-            <p className="text-[11px] text-neutral-500">
-              Search by full order number across all staff buckets, unassigned queue, and admin ledger.
-            </p>
-          </div>
-          {globalOrderSearch && (
-            <span className="text-[11px] font-semibold text-neutral-600 self-start sm:self-auto">
-              Found: <strong className="text-amber-900">{globalSearchResults.length}</strong> matching orders
-            </span>
-          )}
-        </div>
-
+      {/* Multi-Parameter Global Search Bar */}
+      <div className="bg-white rounded-2xl border border-neutral-300 p-3 sm:p-4 shadow-xs space-y-2.5">
         <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
           <input
             type="text"
             value={globalOrderSearch}
             onChange={(e) => setGlobalOrderSearch(e.target.value)}
-            placeholder={`Search full order number (e.g. #${getBoutiqueOrderPrefix(settings.boutiqueName)}-2481), customer name, phone, or UTR...`}
-            className="w-full pl-10 pr-20 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 bg-neutral-50/50 focus:bg-white"
+            placeholder={`Search by Order Number (e.g. #${getBoutiqueOrderPrefix(settings.boutiqueName)}-2481), Customer Name, Mobile Number, or UTR...`}
+            className="w-full pl-10 pr-24 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/70 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 transition"
           />
           {globalOrderSearch && (
             <button
               type="button"
               onClick={() => setGlobalOrderSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg text-xs font-medium text-neutral-500 hover:text-neutral-800 bg-neutral-200/70 hover:bg-neutral-200 transition"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg text-xs font-medium text-neutral-500 hover:text-neutral-800 bg-neutral-200/70 hover:bg-neutral-200 transition cursor-pointer"
             >
               Clear
             </button>
           )}
         </div>
 
-        {/* Real-time Clickable Cross-Bucket Search Results List */}
-        {globalOrderSearch.trim() && (
-          <div className="mt-2 max-h-80 overflow-y-auto divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-white shadow-xs">
-            {globalSearchResults.length === 0 ? (
-              <div className="p-6 text-center text-xs text-neutral-500">
-                No orders match "{globalOrderSearch}". Please verify the order reference or contact number.
-              </div>
+        {/* Multi-Parameter Search Tags & Count */}
+        <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-500 flex-wrap pt-0.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-semibold text-neutral-600">Search parameters:</span>
+            <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 font-mono">Order #</span>
+            <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700">Customer Name</span>
+            <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 font-mono">Mobile Number</span>
+            <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 font-mono">UTR Number</span>
+          </div>
+
+          <div className="text-right">
+            {globalOrderSearch.trim() ? (
+              <span className="font-semibold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                Found <strong>{displayOrders.length}</strong> matching {displayOrders.length === 1 ? 'order' : 'orders'}
+              </span>
             ) : (
-              globalSearchResults.map((ord) => {
-                const isUnassigned = !ord.assignedStaffId || ord.assignedStaffId === 'unassigned';
-                const bucketLabel = isUnassigned
-                  ? 'Unassigned Intake'
-                  : ord.assignedStaffId === 'admin'
-                  ? 'Admin Bucket'
-                  : `Staff: ${ord.assignedStaffName || 'Specialist'}`;
-
-                return (
-                  <div
-                    key={ord.id}
-                    onClick={() => {
-                      setSelectedDetailOrder(ord);
-                    }}
-                    className="p-3 hover:bg-amber-50/70 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono font-bold text-rose-950 bg-rose-50 px-2 py-1 rounded-md border border-rose-200 group-hover:bg-rose-100 transition">
-                        #{ord.orderNumber}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-neutral-900">{ord.customer.name}</span>
-                          <span className="text-neutral-500">({ord.customer.phone})</span>
-                        </div>
-                        <p className="text-[11px] text-neutral-500">
-                          {ord.items.length} {ord.items.length === 1 ? 'item' : 'items'} · {formatPrice(ord.totalAmount)} · UTR: {ord.upiTransactionId}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        isUnassigned
-                          ? 'bg-neutral-100 text-neutral-700 border border-neutral-300'
-                          : 'bg-blue-50 text-blue-800 border border-blue-200'
-                      }`}>
-                        {bucketLabel}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        ord.status === 'Refunded'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : ord.status === 'Cancelled'
-                          ? 'bg-rose-100 text-rose-800'
-                          : ord.status === 'Confirmed'
-                          ? 'bg-purple-100 text-purple-800'
-                          : ord.status === 'Shipped'
-                          ? 'bg-blue-100 text-blue-800'
-                          : ord.status === 'Delivered'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {ord.status}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedDetailOrder(ord);
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-[11px] transition shadow-2xs"
-                      >
-                        Open Details →
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+              <span className="text-neutral-400">
+                Showing all <strong>{displayOrders.length}</strong> orders (newest first)
+              </span>
             )}
-          </div>
-        )}
-      </div>
-
-      {/* Refund Automation Banner if any orders need refund */}
-      {pendingRefundOrders.length > 0 && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 text-neutral-900">
-          <div className="flex items-start justify-between gap-4 flex-col sm:flex-row">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-amber-500 text-neutral-950 shrink-0">
-                <RotateCcw className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-serif text-base font-bold text-amber-950 flex items-center gap-2">
-                  <span>Refund Action Queue ({pendingRefundOrders.length} Pending)</span>
-                </h3>
-                <p className="text-xs text-amber-900/80 mt-0.5 leading-relaxed">
-                  Cancelled or Rejected orders require manual banking transfer. Input your bank's <strong className="text-neutral-950 font-bold">Refund UTR ID</strong> to update the customer and send WhatsApp confirmation.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setSelectedStatus('needs_refund')}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold whitespace-nowrap shadow-xs transition shrink-0"
-            >
-              View Refund Queue
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Interactive Metric Cards Row alongside Pending, Confirmed, Shipped, Delivered, Customers Issue, and Refunded (User Request 1) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-        {/* 1. All Unassigned */}
-        <button
-          type="button"
-          onClick={() => setSelectedStatus('all')}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatus === 'all'
-              ? 'bg-neutral-900 text-white border-neutral-900 ring-2 ring-neutral-900 shadow-sm'
-              : 'bg-white hover:bg-neutral-50/80 border-neutral-200/90 text-neutral-900 hover:border-neutral-300'
-          }`}
-          title="Click to view all unassigned incoming orders"
-        >
-          <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatus === 'all' ? 'text-neutral-400' : 'text-neutral-500'
-            }`}
-          >
-            All Unassigned
-          </span>
-          <p
-            className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatus === 'all' ? 'text-amber-300' : 'text-neutral-950'
-            }`}
-          >
-            {orderMetrics.total}
-          </p>
-          <span
-            className={`text-[10px] ${
-              selectedStatus === 'all' ? 'text-neutral-300' : 'text-neutral-500'
-            }`}
-          >
-            Intake queue
-          </span>
-        </button>
-
-        {/* 2. Pending */}
-        <button
-          type="button"
-          onClick={() => setSelectedStatus('Pending')}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatus === 'Pending'
-              ? 'bg-amber-500 text-neutral-950 border-amber-500 ring-2 ring-amber-400 font-bold shadow-sm'
-              : 'bg-white hover:bg-amber-50/40 border-amber-200 bg-amber-50/20 text-neutral-900 hover:border-amber-300'
-          }`}
-          title="Click to filter Pending orders"
-        >
-          <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatus === 'Pending' ? 'text-neutral-950 font-extrabold' : 'text-amber-800'
-            }`}
-          >
-            Pending
-          </span>
-          <p
-            className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatus === 'Pending' ? 'text-neutral-950' : 'text-amber-700'
-            }`}
-          >
-            {orderMetrics.pending}
-          </p>
-          <span
-            className={`text-[10px] ${
-              selectedStatus === 'Pending' ? 'text-neutral-950/80' : 'text-neutral-500'
-            }`}
-          >
-            Payment review
-          </span>
-        </button>
-
-        {/* 3. Confirmed */}
-        <button
-          type="button"
-          onClick={() => setSelectedStatus('Confirmed')}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatus === 'Confirmed'
-              ? 'bg-purple-600 text-white border-purple-600 ring-2 ring-purple-400 font-bold shadow-sm'
-              : 'bg-white hover:bg-purple-50/40 border-purple-200 bg-purple-50/20 text-neutral-900 hover:border-purple-300'
-          }`}
-          title="Click to filter Confirmed orders"
-        >
-          <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatus === 'Confirmed' ? 'text-purple-200' : 'text-purple-800'
-            }`}
-          >
-            Confirmed
-          </span>
-          <p
-            className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatus === 'Confirmed' ? 'text-white' : 'text-purple-700'
-            }`}
-          >
-            {orderMetrics.confirmed}
-          </p>
-          <span
-            className={`text-[10px] ${
-              selectedStatus === 'Confirmed' ? 'text-purple-200' : 'text-neutral-500'
-            }`}
-          >
-            Loom reserving
-          </span>
-        </button>
-
-        {/* 4. Shipped */}
-        <button
-          type="button"
-          onClick={() => setSelectedStatus('Shipped')}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatus === 'Shipped'
-              ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-400 font-bold shadow-sm'
-              : 'bg-white hover:bg-blue-50/40 border-blue-200 bg-blue-50/20 text-neutral-900 hover:border-blue-300'
-          }`}
-          title="Click to filter Shipped orders"
-        >
-          <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatus === 'Shipped' ? 'text-blue-200' : 'text-blue-800'
-            }`}
-          >
-            Shipped
-          </span>
-          <p
-            className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatus === 'Shipped' ? 'text-white' : 'text-blue-700'
-            }`}
-          >
-            {orderMetrics.shipped}
-          </p>
-          <span
-            className={`text-[10px] ${
-              selectedStatus === 'Shipped' ? 'text-blue-200' : 'text-neutral-500'
-            }`}
-          >
-            In courier transit
-          </span>
-        </button>
-
-        {/* 5. Delivered */}
-        <button
-          type="button"
-          onClick={() => setSelectedStatus('Delivered')}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatus === 'Delivered'
-              ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-400 font-bold shadow-sm'
-              : 'bg-white hover:bg-emerald-50/40 border-emerald-200 bg-emerald-50/20 text-neutral-900 hover:border-emerald-300'
-          }`}
-          title="Click to filter Delivered orders"
-        >
-          <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatus === 'Delivered' ? 'text-emerald-200' : 'text-emerald-800'
-            }`}
-          >
-            Delivered
-          </span>
-          <p
-            className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatus === 'Delivered' ? 'text-white' : 'text-emerald-700'
-            }`}
-          >
-            {orderMetrics.delivered}
-          </p>
-          <span
-            className={`text-[10px] ${
-              selectedStatus === 'Delivered' ? 'text-emerald-200' : 'text-neutral-500'
-            }`}
-          >
-            Completed orders
-          </span>
-        </button>
-
-        {/* 6. Customers Issue (Interactive Metric Card alongside Pending, Confirmed, Shipped, Delivered) */}
-        <button
-          type="button"
-          onClick={() => {
-            if (onNavigateToTab) {
-              onNavigateToTab('customers_issue');
-            } else {
-              setSelectedStatus('customers_issue');
-            }
-          }}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatus === 'customers_issue'
-              ? 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-400 font-bold shadow-sm'
-              : 'bg-white hover:bg-rose-50/40 border-rose-200 bg-rose-50/20 text-neutral-900 hover:border-rose-300'
-          }`}
-          title="Click to route directly to Customers Issue section"
-        >
-          <div className="flex items-center justify-between">
-            <span
-              className={`text-[10px] font-bold uppercase tracking-wider block ${
-                selectedStatus === 'customers_issue' ? 'text-rose-200' : 'text-rose-800'
-              }`}
-            >
-              Customers Issue
-            </span>
-            {orderMetrics.customerIssues > 0 && (
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-            )}
-          </div>
-          <p
-            className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatus === 'customers_issue' ? 'text-white' : 'text-rose-700'
-            }`}
-          >
-            {orderMetrics.customerIssues}
-          </p>
-          <span
-            className={`text-[10px] ${
-              selectedStatus === 'customers_issue' ? 'text-rose-200' : 'text-neutral-500'
-            }`}
-          >
-            Delivery disputes {orderMetrics.customerIssues > 0 ? '· Action needed' : '· Clear'}
-          </span>
-        </button>
-
-        {/* 7. Refunded Orders (Separate Clickable Box - User Request 1) */}
-        <button
-          type="button"
-          onClick={() => setSelectedStatus('Refunded')}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatus === 'Refunded'
-              ? 'bg-amber-600 text-white border-amber-600 ring-2 ring-amber-400 font-bold shadow-sm'
-              : 'bg-white hover:bg-amber-50/40 border-amber-200 bg-amber-50/20 text-neutral-900 hover:border-amber-300'
-          }`}
-          title="Click to view Refunded Orders"
-        >
-          <div className="flex items-center justify-between">
-            <span
-              className={`text-[10px] font-bold uppercase tracking-wider block ${
-                selectedStatus === 'Refunded' ? 'text-amber-200' : 'text-amber-800'
-              }`}
-            >
-              Refunded
-            </span>
-            {orderMetrics.refunded > 0 && (
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-            )}
-          </div>
-          <p
-            className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatus === 'Refunded' ? 'text-white' : 'text-amber-700'
-            }`}
-          >
-            {orderMetrics.refunded}
-          </p>
-          <span
-            className={`text-[10px] ${
-              selectedStatus === 'Refunded' ? 'text-amber-200' : 'text-neutral-500'
-            }`}
-          >
-            Refund settlements
-          </span>
-        </button>
-      </div>
-
-      {/* Filter Tabs, Staff Filter & Search Controls */}
-      <div className="flex flex-col lg:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-neutral-200 shadow-xs">
-        <div className="flex items-center gap-1 overflow-x-auto w-full lg:w-auto pb-1 lg:pb-0">
-          {[
-            { id: 'all', label: `All Unassigned (${unassignedOrders.length})` },
-            { id: 'Pending', label: 'Pending' },
-            { id: 'Confirmed', label: 'Confirmed' },
-            { id: 'Shipped', label: 'Shipped' },
-            { id: 'Delivered', label: 'Delivered' },
-            { id: 'Refunded', label: `Refunded (${orderMetrics.refunded})` },
-            { id: 'Cancelled', label: 'Cancelled' },
-            { id: 'Rejected', label: 'Rejected' },
-            { id: 'needs_refund', label: `Needs Refund (${pendingRefundOrders.length})` },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSelectedStatus(tab.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition ${
-                selectedStatus === tab.id
-                  ? 'bg-neutral-900 text-white shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2 w-full lg:w-auto">
-          {/* Unassigned Intake Indicator */}
-          <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold">
-            <Clock className="w-3.5 h-3.5 text-amber-600" />
-            <span>Unassigned ({unassignedOrders.length})</span>
-          </div>
-
-          <div className="relative flex-1 sm:w-56">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search order #, customer, UTR, SKU..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-neutral-300 bg-neutral-50/50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
-            />
           </div>
         </div>
       </div>
 
       {/* Orders List */}
-      {filteredOrders.length === 0 ? (
+      {displayOrders.length === 0 ? (
         <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center">
-          <p className="font-serif text-lg font-bold text-neutral-800">No Orders in this view</p>
-          <p className="text-xs text-neutral-500 mt-1">Try switching status filters or clear search.</p>
+          <p className="font-serif text-lg font-bold text-neutral-800">
+            {globalOrderSearch.trim() ? `No orders match "${globalOrderSearch}"` : 'No orders in system'}
+          </p>
+          <p className="text-xs text-neutral-500 mt-1">
+            {globalOrderSearch.trim()
+              ? 'Check the order number (#NC-...), customer name, 10-digit mobile, or 12-digit UTR.'
+              : 'Customer orders will appear here in real-time as they are placed.'}
+          </p>
+          {globalOrderSearch.trim() && (
+            <button
+              onClick={() => setGlobalOrderSearch('')}
+              className="mt-3 px-3.5 py-1.5 rounded-xl bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 transition cursor-pointer"
+            >
+              Clear Search
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Clickable Orders Control Bar (User Request) */}
+          {/* Direct Access Bar */}
           <div className="flex items-center justify-between gap-3 text-xs text-neutral-600 px-1 py-1">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-neutral-800">
-                {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
+              <span className="font-bold text-neutral-900">
+                {displayOrders.length} {displayOrders.length === 1 ? 'Order' : 'Orders'}
               </span>
               <span className="text-neutral-400">·</span>
               <span className="text-neutral-500 text-[11px]">
-                {expandedOrderIds.size === 0
-                  ? 'Click any order to view details'
-                  : `${expandedOrderIds.size} of ${filteredOrders.length} expanded`}
+                Click any order or 'Inspect Status' to view complete details
               </span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setExpandedOrderIds(new Set(filteredOrders.map((o) => o.id)))}
+                onClick={() => setExpandedOrderIds(new Set(displayOrders.map((o) => o.id)))}
                 className="px-2.5 py-1 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-medium text-[11px] transition flex items-center gap-1 cursor-pointer"
                 title="Expand all orders"
               >
@@ -1262,7 +761,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
             </div>
           </div>
 
-          {filteredOrders.map((order) => {
+          {displayOrders.map((order) => {
             const isCancelledOrRejected = order.status === 'Cancelled' || order.status === 'Rejected';
             const refundPending = isCancelledOrRejected && order.refundDetails?.refundStatus === 'pending';
             const isExpanded = expandedOrderIds.has(order.id);
@@ -1344,8 +843,20 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                       {order.status}
                     </span>
 
-                    <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                      {isExpanded ? 'Hide ▲' : 'View Details ▼'}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDetailOrder(order);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-[11px] transition shadow-2xs cursor-pointer flex items-center gap-1"
+                      title="Direct Access: Inspect complete status, customer profile, UTR, and items"
+                    >
+                      <span>Inspect Status</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                    <span className="text-[11px] font-semibold text-neutral-600 bg-neutral-100 px-2 py-1 rounded-md">
+                      {isExpanded ? 'Hide ▲' : 'Inline ▼'}
                     </span>
                   </div>
                 </div>

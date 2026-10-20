@@ -66,16 +66,16 @@ export async function compressImage(
         let currentQuality = quality;
         let compressedDataUrl = canvas.toDataURL(outputMime, currentQuality);
 
-        // Adaptive optimization: if data URL is greater than 250KB, progressively reduce quality and size
-        if (compressedDataUrl.length > 250000 && outputMime === 'image/jpeg') {
-          currentQuality = 0.6;
+        // Adaptive optimization: keep compressed image well under 80KB so it never exceeds Firestore document limit or browser quota
+        if (compressedDataUrl.length > 80000 && outputMime === 'image/jpeg') {
+          currentQuality = 0.65;
           compressedDataUrl = canvas.toDataURL(outputMime, currentQuality);
         }
 
-        if (compressedDataUrl.length > 250000) {
+        if (compressedDataUrl.length > 80000) {
           const smallCanvas = document.createElement('canvas');
-          const sWidth = Math.round(width * 0.75);
-          const sHeight = Math.round(height * 0.75);
+          const sWidth = Math.round(width * 0.7);
+          const sHeight = Math.round(height * 0.7);
           smallCanvas.width = sWidth;
           smallCanvas.height = sHeight;
           const sCtx = smallCanvas.getContext('2d');
@@ -83,7 +83,7 @@ export async function compressImage(
             sCtx.fillStyle = '#ffffff';
             sCtx.fillRect(0, 0, sWidth, sHeight);
             sCtx.drawImage(canvas, 0, 0, sWidth, sHeight);
-            compressedDataUrl = smallCanvas.toDataURL('image/jpeg', 0.58);
+            compressedDataUrl = smallCanvas.toDataURL('image/jpeg', 0.60);
           }
         }
 
