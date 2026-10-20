@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
-import { X, Trash2, Plus, Minus, ArrowRight, ShoppingBag, ShieldCheck, Truck, Sparkles } from 'lucide-react';
+import { X, Trash2, Plus, Minus, ArrowRight, ShoppingBag, ShieldCheck, Truck, Sparkles, AlertCircle } from 'lucide-react';
 
 export const CartDrawer: React.FC = () => {
   const {
@@ -191,9 +191,9 @@ export const CartDrawer: React.FC = () => {
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 bg-white p-2 rounded-lg border border-neutral-200">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>Prepaid UPI verification with instant refund safeguard</span>
+              <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                <span>Notice: No cancellation once the order is confirmed.</span>
               </div>
 
               <div className="flex gap-2 pt-1">

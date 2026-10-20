@@ -422,6 +422,14 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               ))}
             </div>
           )}
+
+          {/* Storefront Cancellation Policy Notice */}
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 flex items-center gap-2 text-xs mt-3">
+            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+            <p className="leading-tight">
+              <strong>Boutique Policy Notice:</strong> No cancellation once the order is confirmed.
+            </p>
+          </div>
         </div>
 
         {/* Results Area */}
@@ -456,7 +464,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
             <div className="space-y-6">
               {matchedOrders.map((order) => {
                 const currentStep = getStatusStepIndex(order.status);
-                const isCancelled = order.status === 'Cancelled' || order.status === 'Rejected';
+                const isCancelled = order.status === 'Cancelled' || order.status === 'Rejected' || order.status === 'Refunded';
                 const isPendingOrConfirmed = order.status === 'Pending' || order.status === 'Confirmed';
                 const isPublicCancellationEnabled = settings.storefrontDisplay?.allowPublicCancellation !== false;
                 const canRequestCancel =
@@ -486,7 +494,9 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           {/* Live Status Pill */}
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                              order.status === 'Shipped'
+                              order.status === 'Refunded'
+                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                : order.status === 'Shipped'
                                 ? 'bg-blue-100 text-blue-900 border border-blue-300'
                                 : order.status === 'Delivered'
                                 ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
@@ -681,20 +691,119 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                         </div>
                       </div>
                     ) : (
-                      /* Cancelled or Rejected Banner */
-                      <div className="p-3.5 bg-rose-50 rounded-xl border border-rose-200 text-rose-900 space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                          <h4 className="font-bold text-sm">Order {order.status}</h4>
+                      /* Cancellation & Refund Progression (Requirement 1) */
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide">
+                            Cancellation & Refund Progression
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            order.status === 'Refunded'
+                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                              : 'bg-rose-100 text-rose-900 border border-rose-300'
+                          }`}>
+                            {order.status === 'Refunded' ? 'Stage: Refund Completed ✓' : 'Stage: Order Cancelled'}
+                          </span>
                         </div>
-                        {order.cancellationReason && (
-                          <p className="text-xs text-rose-950 font-medium">
-                            <strong>Reason:</strong> {order.cancellationReason}
-                          </p>
+
+                        {/* Progression Stepper: Placed -> Confirmed -> Cancelled -> Refunded */}
+                        <div className="grid grid-cols-4 gap-2 pt-1">
+                          {[
+                            { name: 'Placed', isDone: true, isCurrent: false, icon: Clock },
+                            { name: 'Confirmed', isDone: true, isCurrent: false, icon: CheckCircle },
+                            {
+                              name: 'Cancelled',
+                              isDone: true,
+                              isCurrent: order.status === 'Cancelled' || order.status === 'Rejected',
+                              icon: XCircle,
+                            },
+                            {
+                              name: 'Refunded',
+                              isDone: order.status === 'Refunded' || order.refundDetails?.refundStatus === 'processed',
+                              isCurrent: order.status === 'Refunded',
+                              icon: RotateCcw,
+                            },
+                          ].map((step) => {
+                            const Icon = step.icon;
+                            return (
+                              <div key={step.name} className="flex flex-col items-center text-center">
+                                <div
+                                  className={`w-8 h-8 rounded-full flex items-center justify-center transition ${
+                                    step.name === 'Refunded' && step.isDone
+                                      ? 'bg-emerald-600 text-white ring-4 ring-emerald-100'
+                                      : step.name === 'Cancelled' && step.isCurrent
+                                      ? 'bg-rose-600 text-white ring-4 ring-rose-100'
+                                      : step.isDone
+                                      ? 'bg-neutral-800 text-white'
+                                      : 'bg-neutral-100 text-neutral-400'
+                                  }`}
+                                >
+                                  <Icon className="w-4 h-4" />
+                                </div>
+                                <span
+                                  className={`text-[11px] mt-1.5 font-semibold ${
+                                    step.isCurrent
+                                      ? 'text-neutral-900 font-bold'
+                                      : step.isDone
+                                      ? 'text-neutral-700'
+                                      : 'text-neutral-400'
+                                  }`}
+                                >
+                                  {step.name}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {order.status === 'Refunded' ? (
+                          <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-300 text-emerald-950 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                                <h4 className="font-bold text-sm">Refund Completed</h4>
+                              </div>
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-200 text-emerald-900 font-bold text-[10px] uppercase">
+                                Settled ✓
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-white p-2.5 rounded-lg border border-emerald-200">
+                              <div>
+                                <span className="text-neutral-500 text-[10px] font-semibold uppercase">Bank Refund UTR:</span>
+                                <p className="font-mono font-bold text-neutral-950 text-xs mt-0.5">{order.refundDetails?.refundUtr || 'N/A'}</p>
+                              </div>
+                              <div>
+                                <span className="text-neutral-500 text-[10px] font-semibold uppercase">Transaction Tool:</span>
+                                <p className="font-bold text-neutral-950 text-xs mt-0.5">{order.refundDetails?.refundTool || 'UPI Banking'}</p>
+                              </div>
+                              <div>
+                                <span className="text-neutral-500 text-[10px] font-semibold uppercase">Refund Amount:</span>
+                                <p className="font-bold text-emerald-700 text-xs mt-0.5">{formatPrice(order.refundDetails?.refundAmount || order.totalAmount)}</p>
+                              </div>
+                              <div>
+                                <span className="text-neutral-500 text-[10px] font-semibold uppercase">Processed At:</span>
+                                <p className="font-medium text-neutral-800 text-xs mt-0.5">
+                                  {order.refundDetails?.processedAt ? new Date(order.refundDetails.processedAt).toLocaleString('en-IN') : 'Completed'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3.5 bg-rose-50 rounded-xl border border-rose-200 text-rose-900 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                              <h4 className="font-bold text-sm">Order {order.status}</h4>
+                            </div>
+                            {order.cancellationReason && (
+                              <p className="text-xs text-rose-950 font-medium">
+                                <strong>Reason:</strong> {order.cancellationReason}
+                              </p>
+                            )}
+                            <p className="text-[11px] text-rose-800 leading-relaxed">
+                              This order has been officially marked as <strong>Cancelled</strong>. Refund processing is underway. The status will immediately transition to <strong>Refunded</strong> once verified with our bank UTR.
+                            </p>
+                          </div>
                         )}
-                        <p className="text-[11px] text-rose-800 leading-relaxed">
-                          This order has been cancelled. Please review refund transaction record below.
-                        </p>
                       </div>
                     )}
 

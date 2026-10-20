@@ -654,6 +654,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
             </div>
           </div>
 
+          {/* Cancellation Policy Notice to Customers */}
+          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex items-center gap-2.5 text-xs shadow-xs">
+            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+            <p className="font-medium leading-relaxed">
+              <strong className="font-bold text-amber-950">Cancellation Policy:</strong> No cancellation once the order is confirmed.
+            </p>
+          </div>
+
           {/* Section 4: Refund Details / Notice (Controlled by Refund toggle option) */}
           <div className="pt-4 border-t border-neutral-200">
             {settings.storefrontDisplay?.allowPublicRefunds !== false ? (

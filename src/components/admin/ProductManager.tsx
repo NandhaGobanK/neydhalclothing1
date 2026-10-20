@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Product, SareeFabric, SareeColor, SareeCategory, ProductAttributeDefinition } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
+import { compressImage } from '../../utils/imageCompress';
 import {
   Plus,
   Eye,
@@ -90,6 +91,7 @@ export const ProductManager: React.FC = () => {
 
   // Form Fields
   const [productCode, setProductCode] = useState('');
+  const [skuCodeSuffix, setSkuCodeSuffix] = useState('101');
   const [skuError, setSkuError] = useState<string | null>(null);
   const [isEditingSku, setIsEditingSku] = useState(false);
   const [title, setTitle] = useState('');
@@ -100,30 +102,44 @@ export const ProductManager: React.FC = () => {
   const [selectedColorOption, setSelectedColorOption] = useState<string>('Crimson Red');
   const [customColor, setCustomColor] = useState('');
   // Category state & category management modal
-  const [category, setCategory] = useState<string>('Poontamil sarees');
+  const [category, setCategory] = useState<string>('Heirloom Sarees');
   const [newCatName, setNewCatName] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
   const [newCatImg, setNewCatImg] = useState('');
   const [isCatImgUploading, setIsCatImgUploading] = useState(false);
+  const [isProductImgUploading, setIsProductImgUploading] = useState(false);
 
-  const handleCatImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Requirement 4: Category & Product Image Persistence Bug Fix
+  // Uses client-side canvas compression so high-res phone camera uploads fit strictly within Firestore document limits
+  const handleCatImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsCatImgUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setNewCatImg(result);
-      }
+    setCatActionError(null);
+    try {
+      const compressed = await compressImage(file, 1000, 1000, 0.75);
+      setNewCatImg(compressed);
+    } catch (err) {
+      console.error('Failed to compress category image:', err);
+      setCatActionError('Failed to process image file. Please try another image.');
+    } finally {
       setIsCatImgUploading(false);
-    };
-    reader.onerror = () => {
-      setIsCatImgUploading(false);
-      setCatActionError('Failed to read image file. Please try another image.');
-    };
-    reader.readAsDataURL(file);
+    }
   };
+
+  // Requirement 6: Standardized SKU Generation Formula: "Category - ProductName - Colour"
+  const effectiveColor = useMemo(() => {
+    return selectedColorOption === 'Other'
+      ? (customColor.trim() || 'Custom')
+      : (selectedColorOption || 'Colour');
+  }, [selectedColorOption, customColor]);
+
+  const autoSkuPrefix = useMemo(() => {
+    const cat = (category || categories[0]?.name || 'Category').trim();
+    const prodName = (title || 'Saree').trim();
+    const col = effectiveColor.trim();
+    return `${cat} - ${prodName} - ${col}`;
+  }, [category, categories, title, effectiveColor]);
 
   const [price, setPrice] = useState<number>(25000);
   const [originalPrice, setOriginalPrice] = useState<number>(30000);
@@ -141,25 +157,6 @@ export const ProductManager: React.FC = () => {
   const [blousePieceIncluded, setBlousePieceIncluded] = useState(true);
   const [lengthMeters, setLengthMeters] = useState(6.3);
   const [occasion, setOccasion] = useState('Bridal & Wedding');
-
-  // Guaranteed Unique SKU Generator
-  const generateGuaranteedUniqueSku = (fab: string, col: string) => {
-    const cleanFab = fab.replace(/[^a-zA-Z]/g, '');
-    const cleanCol = col.replace(/[^a-zA-Z]/g, '');
-    const prefix = (cleanFab.substring(0, 3) || 'SAR').toUpperCase();
-    const colPrefix = (cleanCol.substring(0, 4) || 'COL').toUpperCase();
-    let candidate = '';
-    let attempts = 0;
-    do {
-      const randomCode = Math.floor(100 + Math.random() * 900);
-      candidate = `AARA-${prefix}-${colPrefix}-${randomCode}`;
-      attempts++;
-    } while (
-      products.some((p) => p.productCode.toUpperCase() === candidate && p.id !== editingProduct?.id) &&
-      attempts < 50
-    );
-    return candidate;
-  };
 
   const autoFillSareeDetails = (fab: SareeFabric, col: string) => {
     const colorDesc = col || 'Festive';
@@ -284,6 +281,14 @@ export const ProductManager: React.FC = () => {
     setSkuError(err);
   };
 
+  const handleSkuSuffixChange = (typedSuffix: string) => {
+    setSkuCodeSuffix(typedSuffix);
+    const candidate = `${autoSkuPrefix} - ${typedSuffix.trim()}`.toUpperCase();
+    setProductCode(candidate);
+    const err = checkSkuInDatabase(candidate, editingProduct?.id);
+    setSkuError(err);
+  };
+
   const openAddModal = (presetCategory?: string) => {
     setEditingProduct(null);
     setIsEditingSku(true);
@@ -292,10 +297,12 @@ export const ProductManager: React.FC = () => {
     setSkuError(null);
     const initialFabric: SareeFabric = 'Kanjivaram Silk';
     const initialColor = 'Crimson Red';
+    const initialSuffix = String(Math.floor(100 + Math.random() * 900));
+    setSkuCodeSuffix(initialSuffix);
     setProductCode('');
     const targetCat =
       presetCategory ||
-      (activeCategoryView ? activeCategoryView.name : categories[0]?.name || 'Poontamil sarees');
+      (activeCategoryView ? activeCategoryView.name : categories[0]?.name || 'Heirloom Sarees');
     setCategory(targetCat);
     setFabric(initialFabric);
     setCustomFabric('');
@@ -428,7 +435,7 @@ export const ProductManager: React.FC = () => {
     setAutoGenerateEnabled(false);
     setIsColorConfirmed(true);
     setSkuError(null);
-    setCategory(prod.category || categories[0]?.name || 'Poontamil sarees');
+    setCategory(prod.category || categories[0]?.name || 'Heirloom Sarees');
 
     const isStandardColor = standardColors.includes(prod.color as any);
     if (isStandardColor) {
@@ -461,6 +468,12 @@ export const ProductManager: React.FC = () => {
     }
 
     setProductCode(prod.productCode);
+    const skuParts = (prod.productCode || '').split(' - ');
+    if (skuParts.length > 1) {
+      setSkuCodeSuffix(skuParts[skuParts.length - 1]);
+    } else {
+      setSkuCodeSuffix((prod.productCode || '').slice(-4) || '101');
+    }
     setTitle(prod.title);
     setSubtitle(prod.subtitle || '');
     setDescription(prod.description);
@@ -542,16 +555,18 @@ export const ProductManager: React.FC = () => {
     setImages(images.filter((_, i) => i !== index));
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setImages([...images, reader.result]);
-        }
-      };
-      reader.readAsDataURL(file);
+      setIsProductImgUploading(true);
+      try {
+        const compressed = await compressImage(file, 1200, 1200, 0.75);
+        setImages((prev) => [...prev, compressed]);
+      } catch (err) {
+        console.error('Failed to compress product image:', err);
+      } finally {
+        setIsProductImgUploading(false);
+      }
     }
   };
 
@@ -559,7 +574,15 @@ export const ProductManager: React.FC = () => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    const finalSku = productCode.trim().toUpperCase() || (editingProduct ? editingProduct.productCode : '');
+    // Requirement 6: Standardized SKU Formula "Category - ProductName - Colour - Code"
+    const isSkuPermanentlyLocked = Boolean(
+      editingProduct && (editingProduct.isSkuLocked || (editingProduct.skuEditCount || 0) >= 1)
+    );
+
+    const generatedSku = `${autoSkuPrefix} - ${(skuCodeSuffix || '101').trim()}`.toUpperCase();
+    const finalSku = editingProduct
+      ? (isSkuPermanentlyLocked ? editingProduct.productCode : (productCode.trim().toUpperCase() || generatedSku))
+      : generatedSku;
 
     if (!finalSku) {
       setSkuError('Please enter a unique product code (SKU) for this saree.');
@@ -576,9 +599,6 @@ export const ProductManager: React.FC = () => {
     // Check one-time edit lock
     const isSkuChanged = Boolean(
       editingProduct && editingProduct.productCode.trim().toUpperCase() !== finalSku
-    );
-    const isSkuPermanentlyLocked = Boolean(
-      editingProduct && (editingProduct.isSkuLocked || (editingProduct.skuEditCount || 0) >= 1)
     );
 
     if (editingProduct && isSkuChanged && isSkuPermanentlyLocked) {
@@ -629,7 +649,7 @@ export const ProductManager: React.FC = () => {
 
     const payload: any = {
       productCode: finalSku,
-      category: category.trim() || 'Poontamil sarees',
+      category: category.trim() || categories[0]?.name || 'Heirloom Sarees',
       title: title.trim(),
       subtitle: subtitle.trim(),
       description: description.trim(),
@@ -1586,20 +1606,42 @@ export const ProductManager: React.FC = () => {
                       </span>
                     </div>
                   ) : (
-                    <div>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          required
-                          value={productCode}
-                          onChange={(e) => handleProductCodeChange(e.target.value)}
-                          placeholder="Type unique product code (e.g. AARA-KAN-CRIM-101)"
-                          className={`w-full p-2.5 rounded-xl font-mono text-sm uppercase tracking-wider bg-neutral-800 text-amber-200 placeholder-neutral-500 border focus:outline-hidden transition ${
-                            skuError
-                              ? 'border-rose-500 focus:ring-2 focus:ring-rose-500/50'
-                              : 'border-neutral-700 focus:ring-2 focus:ring-amber-500/50'
-                          }`}
-                        />
+                    <div className="space-y-2">
+                      <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                        {/* Auto-Generated Prefix (Category - ProductName - Colour) Locked */}
+                        <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-700 text-neutral-300 font-mono text-xs select-all overflow-x-auto shadow-inner">
+                          <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="text-amber-300 font-bold whitespace-nowrap">
+                            {autoSkuPrefix} -
+                          </span>
+                        </div>
+
+                        {/* Editable Code Suffix */}
+                        <div className="w-full sm:w-44 relative">
+                          <input
+                            type="text"
+                            required
+                            value={skuCodeSuffix}
+                            onChange={(e) => handleSkuSuffixChange(e.target.value)}
+                            placeholder="Code (e.g. 101)"
+                            className={`w-full pl-3 pr-14 py-2.5 rounded-xl font-mono text-xs uppercase font-bold tracking-wider bg-neutral-800 text-amber-200 placeholder-neutral-500 border focus:outline-hidden transition ${
+                              skuError
+                                ? 'border-rose-500 focus:ring-2 focus:ring-rose-500/50'
+                                : 'border-neutral-700 focus:ring-2 focus:ring-amber-500/50'
+                            }`}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-400/80 uppercase pointer-events-none">
+                            Code
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Complete SKU Preview */}
+                      <div className="p-2.5 rounded-xl bg-neutral-900/80 border border-neutral-800 flex items-center justify-between text-[11px] flex-wrap gap-2">
+                        <span className="text-neutral-400">Standardized Full SKU:</span>
+                        <span className="font-mono font-bold text-amber-300">
+                          {autoSkuPrefix} - {skuCodeSuffix.trim()}
+                        </span>
                       </div>
 
                       {/* Real-time duplicate SKU warning */}
@@ -1906,9 +1948,9 @@ export const ProductManager: React.FC = () => {
                       Add URL
                     </button>
                     <label className="px-3 py-2 rounded-xl bg-neutral-100 border border-neutral-300 text-neutral-700 font-medium hover:bg-neutral-200 cursor-pointer flex items-center gap-1">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload</span>
-                      <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                      <Upload className={`w-3.5 h-3.5 ${isProductImgUploading ? 'animate-bounce text-amber-600' : ''}`} />
+                      <span>{isProductImgUploading ? 'Compressing...' : 'Upload Photo'}</span>
+                      <input type="file" accept="image/*" onChange={handleFileUpload} disabled={isProductImgUploading} className="hidden" />
                     </label>
                   </div>
                 </div>
