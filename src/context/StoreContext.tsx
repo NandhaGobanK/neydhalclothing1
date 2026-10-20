@@ -18,6 +18,8 @@ import {
   SareeCategory,
   SkuRecord,
   ProductAttributeDefinition,
+  OrderStatusHistory,
+  InvestigationComment,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -895,7 +897,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               deleteDoc(doc(db, 'categories', d.id)).catch(() => {});
               return;
             }
-            list.push({ id: d.id, ...data } as SareeCategory);
+            list.push({ ...data, id: d.id } as SareeCategory);
           });
           list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
           setCategories(list);

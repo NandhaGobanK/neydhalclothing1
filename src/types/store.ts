@@ -148,6 +148,13 @@ export interface CancellationRequest {
   adminDecisionNotes?: string;
 }
 
+export interface OrderStatusHistory {
+  status: OrderStatus;
+  timestamp: string;
+  updatedBy?: string;
+  note?: string;
+}
+
 export interface InvestigationComment {
   id: string;
   timestamp: string;
@@ -278,6 +285,7 @@ export interface Order {
   refundDetails: RefundDetails;
   shippingDetails?: ShippingDetails;
   status: OrderStatus;
+  statusHistory?: OrderStatusHistory[];
   checkoutMethod: 'submit_order' | 'whatsapp';
   notes?: string;
   cancellationReason?: string; // Explanation when cancelled or rejected
