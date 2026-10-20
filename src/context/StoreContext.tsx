@@ -1523,9 +1523,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (ord.id !== orderId) return ord;
 
         const isNowCancelled = status === 'Cancelled' || status === 'Rejected';
+        const isNowRefunded = status === 'Refunded';
+
+        const nextShippingDetails = extra?.shippingDetails || ord.shippingDetails;
+        const nextRefundUtr = extra?.refundUtr || ord.refundDetails?.refundUtr;
 
         let nextRefundStatus = ord.refundDetails?.refundStatus || 'not_required';
-        if (isNowCancelled) {
+        if (isNowRefunded || ((isNowCancelled) && Boolean(nextRefundUtr && nextRefundUtr.trim()))) {
+          nextRefundStatus = 'processed';
+        } else if (isNowCancelled) {
           if (nextRefundStatus === 'not_required') {
             nextRefundStatus = 'pending';
           }
@@ -1534,10 +1540,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           nextRefundStatus = 'not_required';
         }
 
-        const nextShippingDetails = extra?.shippingDetails || ord.shippingDetails;
-        const nextRefundUtr = extra?.refundUtr || ord.refundDetails?.refundUtr;
-        const nextReason = isNowCancelled
-          ? extra?.cancellationReason || ord.cancellationReason || 'Cancelled by boutique concierge'
+        const nextReason = (isNowCancelled || isNowRefunded)
+          ? extra?.cancellationReason || ord.cancellationReason || (isNowRefunded ? 'Refund processed for cancelled order' : 'Cancelled by boutique concierge')
           : undefined;
 
         // If resuming an order that had pending cancellation request, mark resolved
@@ -1572,10 +1576,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         const updatedHistory = [...(ord.assignmentHistory || []), stageLog];
 
+        const statusHistoryEntry: OrderStatusHistory = {
+          status,
+          timestamp: new Date().toISOString(),
+          updatedBy: actorName,
+          note: nextReason || `Order status updated to ${status}`,
+        };
+        const updatedStatusHistory = [...(ord.statusHistory || []), statusHistoryEntry];
+
+        let updatedDeliveryIssue = ord.deliveryIssue;
+        if ((isNowCancelled || isNowRefunded) && ord.deliveryIssue?.issueType === 'cancellation' && ord.deliveryIssue.status !== 'resolved') {
+          updatedDeliveryIssue = {
+            ...ord.deliveryIssue,
+            status: 'resolved',
+            resolvedAt: new Date().toISOString(),
+            resolvedBy: actorName,
+            resolutionNotes: nextReason || `Cancellation resolved via status transition to ${status}`,
+          };
+        }
+
         const isNowDelivered = status === 'Delivered';
         const updated: Order = {
           ...ord,
           status,
+          statusHistory: updatedStatusHistory,
+          deliveryIssue: updatedDeliveryIssue,
           deliveredAt: isNowDelivered ? (ord.deliveredAt || new Date().toISOString()) : ord.deliveredAt,
           completedAt: isNowDelivered ? (ord.completedAt || new Date().toISOString()) : ord.completedAt,
           shippingDetails: nextShippingDetails,
@@ -1586,8 +1611,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           refundDetails: {
             ...ord.refundDetails,
             refundStatus: nextRefundStatus,
-            refundUtr: isNowCancelled ? nextRefundUtr : undefined,
-            processedAt: isNowCancelled && nextRefundUtr ? new Date().toISOString() : ord.refundDetails?.processedAt,
+            refundUtr: (isNowCancelled || isNowRefunded) ? nextRefundUtr : undefined,
+            refundTool: ord.refundDetails?.refundTool || 'UPI Banking',
+            processedAt: (isNowCancelled || isNowRefunded) && nextRefundUtr ? (ord.refundDetails?.processedAt || new Date().toISOString()) : ord.refundDetails?.processedAt,
           },
         };
 

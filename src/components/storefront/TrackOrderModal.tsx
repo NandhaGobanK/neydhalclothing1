@@ -957,13 +957,17 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                       </div>
                     </div>
 
-                    {/* Customer Delivery Dispute Notice if already reported (User Request 5) */}
-                    {order.deliveryIssue?.reported && (
+                    {/* Customer Dispute Notice if already reported and active */}
+                    {order.deliveryIssue?.reported && order.deliveryIssue.issueType !== 'cancellation' && (
                       <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-950 space-y-1.5 text-xs">
                         <div className="flex items-center justify-between">
                           <span className="font-bold flex items-center gap-1.5 text-rose-900">
                             <AlertCircle className="w-4 h-4 text-rose-600" />
-                            <span>Delivery Issue Reported ({order.deliveryIssue.status.toUpperCase()})</span>
+                            <span>
+                              {order.deliveryIssue.issueType === 'refund'
+                                ? `Refund Dispute Ticket (${order.deliveryIssue.status.toUpperCase()})`
+                                : `Delivery Issue Reported (${order.deliveryIssue.status.toUpperCase()})`}
+                            </span>
                           </span>
                           <span className="text-[10px] text-neutral-500 font-medium">
                             {new Date(order.deliveryIssue.reportedAt).toLocaleDateString('en-IN')}
@@ -973,7 +977,9 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           "{order.deliveryIssue.issueDescription}"
                         </p>
                         <p className="text-[11px] text-rose-800 font-medium">
-                          Assigned concierge is actively investigating with {order.shippingDetails?.courierName || 'the courier partner'} local hub. This case is prioritized in our administrative portal.
+                          {order.deliveryIssue.issueType === 'refund'
+                            ? 'Our concierge finance team is actively verifying your refund settlement inquiry with our bank accounts desk.'
+                            : `Assigned concierge is actively investigating with ${order.shippingDetails?.courierName || 'the courier partner'} local hub. This case is prioritized in our administrative portal.`}
                         </p>
                       </div>
                     )}
@@ -1007,8 +1013,16 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
 
                         {/* Conditional Customer Issue Reporting Dropdown (Rule: Delivery only if Delivered; Refund only if Cancelled + Refunded) */}
                         {(() => {
-                          const eligibleRedressals = getOrderEligibleRedressals(order, settings);
-                          const canReportIssueForThisOrder = eligibleRedressals.length > 0 && !order.deliveryIssue?.reported;
+                          const eligibleRedressals = getOrderEligibleRedressals(order, settings).filter((r) => {
+                            // If an active unresolved dispute of this specific category is already in progress, don't show it again
+                            const isAlreadyActiveThisType =
+                              order.deliveryIssue?.reported &&
+                              order.deliveryIssue.status !== 'resolved' &&
+                              order.deliveryIssue.issueType === r.type;
+                            return !isAlreadyActiveThisType;
+                          });
+
+                          const canReportIssueForThisOrder = eligibleRedressals.length > 0;
                           if (!canReportIssueForThisOrder) return null;
 
                           return (
@@ -1016,27 +1030,20 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (eligibleRedressals.length > 1) {
-                                    setOpenIssueDropdownOrderId(
-                                      openIssueDropdownOrderId === order.id ? null : order.id
-                                    );
-                                  } else if (eligibleRedressals.length === 1) {
-                                    const singleOption = eligibleRedressals[0];
-                                    setReportingIssueOrder(order);
-                                    setReportingIssueType(singleOption.type as any);
-                                    setIssueDescription(
-                                      singleOption.defaultNote(order.orderNumber, order.status)
-                                    );
-                                  }
+                                  setOpenIssueDropdownOrderId(
+                                    openIssueDropdownOrderId === order.id ? null : order.id
+                                  );
                                 }}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-semibold text-xs transition cursor-pointer shadow-2xs"
                                 title="Report an issue for this order"
                               >
                                 <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
                                 <span>Report Issue</span>
-                                {eligibleRedressals.length > 1 && (
-                                  <ChevronDown className={`w-3 h-3 text-rose-700 transition-transform ${openIssueDropdownOrderId === order.id ? 'rotate-180' : ''}`} />
-                                )}
+                                <ChevronDown
+                                  className={`w-3 h-3 text-rose-700 transition-transform ${
+                                    openIssueDropdownOrderId === order.id ? 'rotate-180' : ''
+                                  }`}
+                                />
                               </button>
 
                               {/* Click-away backdrop */}
@@ -1048,7 +1055,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                               )}
 
                               {/* Conditional Dropdown Menu containing ONLY eligible options for this order's state */}
-                              {openIssueDropdownOrderId === order.id && eligibleRedressals.length > 1 && (
+                              {openIssueDropdownOrderId === order.id && (
                                 <div className="absolute left-0 bottom-full mb-1.5 sm:bottom-auto sm:top-full sm:mt-1.5 w-72 rounded-2xl bg-white border border-neutral-200 shadow-xl z-30 p-1.5 animate-in fade-in zoom-in-95 duration-150">
                                   <div className="px-2.5 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider border-b border-neutral-100 mb-1">
                                     Select Issue Category
@@ -1341,34 +1348,40 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                 </p>
               </div>
 
-              {/* Dynamic Dispute Category Dropdown in Form */}
-              {activeRedressals.length > 1 && (
-                <div>
-                  <label className="block font-bold text-neutral-800 mb-1">
-                    Dispute Redressal Category *
-                  </label>
-                  <select
-                    value={reportingIssueType}
-                    onChange={(e) => {
-                      const newType = e.target.value as 'delivery' | 'refund';
-                      setReportingIssueType(newType);
-                      const matched = activeRedressals.find((r) => r.type === newType);
-                      if (matched) {
-                        setIssueDescription(
-                          matched.defaultNote(reportingIssueOrder.orderNumber, reportingIssueOrder.status)
-                        );
-                      }
-                    }}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-semibold focus:outline-hidden focus:border-rose-500 cursor-pointer text-xs"
-                  >
-                    {activeRedressals.map((r) => (
-                      <option key={r.id} value={r.type}>
-                        {r.title} ({r.badgeLabel})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {/* Dynamic Dispute Category Dropdown in Form (Filtered to Order Eligible Categories) */}
+              {(() => {
+                const modalEligible = reportingIssueOrder ? getOrderEligibleRedressals(reportingIssueOrder, settings) : [];
+                if (modalEligible.length > 1) {
+                  return (
+                    <div>
+                      <label className="block font-bold text-neutral-800 mb-1">
+                        Dispute Redressal Category *
+                      </label>
+                      <select
+                        value={reportingIssueType}
+                        onChange={(e) => {
+                          const newType = e.target.value as 'delivery' | 'refund';
+                          setReportingIssueType(newType);
+                          const matched = modalEligible.find((r) => r.type === newType);
+                          if (matched && reportingIssueOrder) {
+                            setIssueDescription(
+                              matched.defaultNote(reportingIssueOrder.orderNumber, reportingIssueOrder.status)
+                            );
+                          }
+                        }}
+                        className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-semibold focus:outline-hidden focus:border-rose-500 cursor-pointer text-xs"
+                      >
+                        {modalEligible.map((r) => (
+                          <option key={r.id} value={r.type}>
+                            {r.title} ({r.badgeLabel})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">

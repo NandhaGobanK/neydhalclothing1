@@ -15,6 +15,7 @@ import {
   X,
   ArrowUpDown,
   ChevronDown,
+  ShieldCheck,
 } from 'lucide-react';
 import { formatPrice } from '../../utils/upi';
 
@@ -395,6 +396,16 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
             </div>
           </div>
 
+          {/* Storefront Order Cancellation Policy Notice (Mandatory Requirement) */}
+          <div className="p-3 px-4 rounded-xl bg-amber-50 border border-amber-200/90 flex items-center justify-between gap-3 text-xs text-amber-950 flex-wrap">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                <strong>Boutique Policy Notice:</strong> No cancellation once the order is shipped
+              </span>
+            </div>
+          </div>
+
           {/* Product Listing Grid */}
           {categoryProducts.length === 0 ? (
             <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center space-y-3">
@@ -578,6 +589,16 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* Storefront Order Cancellation Policy Notice (Mandatory Requirement) */}
+        <div className="p-3 px-4 rounded-xl bg-amber-50 border border-amber-200/90 flex items-center justify-between gap-3 text-xs text-amber-950 flex-wrap">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>
+              <strong>Boutique Policy Notice:</strong> No cancellation once the order is shipped
+            </span>
+          </div>
+        </div>
+
         {/* Visual Category Cards Grid (Poontamil sarees, Foil print sarees, Soft menna work saree, Cotton kids dhoti set, Tissue dhoti set, Couple combo / silk dhoti shirt) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {categories.map((category) => {

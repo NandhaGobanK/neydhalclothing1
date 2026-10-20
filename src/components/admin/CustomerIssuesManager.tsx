@@ -105,15 +105,20 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
   };
 
   // Helpers to categorize customer issues
+  const isRefundDisputeReported = (o: Order) =>
+    o.deliveryIssue?.reported === true && o.deliveryIssue?.issueType === 'refund';
+
   const isCancellationCase = (o: Order) =>
-    o.cancellationRequest?.requested === true || o.deliveryIssue?.issueType === 'cancellation';
+    !isRefundDisputeReported(o) &&
+    (o.cancellationRequest?.requested === true || o.deliveryIssue?.issueType === 'cancellation');
 
   const isRefundCase = (o: Order) =>
-    !isCancellationCase(o) &&
-    (o.refundDetails?.refundStatus === 'processed' ||
-      o.refundDetails?.refundStatus === 'pending' ||
-      (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund') ||
-      ((o.status === 'Cancelled' || o.status === 'Rejected') && !!o.refundDetails?.refundStatus));
+    isRefundDisputeReported(o) ||
+    (!isCancellationCase(o) &&
+      (o.status === 'Refunded' ||
+        o.refundDetails?.refundStatus === 'processed' ||
+        o.refundDetails?.refundStatus === 'pending' ||
+        ((o.status === 'Cancelled' || o.status === 'Rejected') && Boolean(o.refundDetails?.refundStatus))));
 
   const isDeliveryCase = (o: Order) =>
     !isCancellationCase(o) &&
