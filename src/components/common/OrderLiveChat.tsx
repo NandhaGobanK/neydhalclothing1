@@ -93,36 +93,15 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
     }
   };
 
-  // Conditional Live Chat Availability rules based on Order & Dispute status
-  const isDelivered = order.status === 'Delivered';
-  const hasActiveDispute = Boolean(
-    order.deliveryIssue &&
-      (order.deliveryIssue.status === 'open' || order.deliveryIssue.status === 'investigating')
-  );
-  const isDisputeResolved = Boolean(
-    order.deliveryIssue && order.deliveryIssue.status === 'resolved'
-  );
+  // Live Chat Availability rules:
+  // Customers and staff can communicate in real time directly on each order.
+  // Chat is only disabled if the order is permanently closed by admin.
   const isOrderClosed = Boolean(order.isClosed);
-
-  // In customer mode, live chat is disabled if:
-  // 1. Order is marked as Delivered and there is no active dispute
-  // 2. Order is closed or dispute has been officially resolved
-  // 3. Order is Cancelled or Rejected without an active dispute
-  const isCustomerChatDisabled =
-    mode === 'customer' &&
-    (isOrderClosed ||
-      isDisputeResolved ||
-      (isDelivered && !hasActiveDispute) ||
-      (order.status === 'Cancelled' && !hasActiveDispute) ||
-      (order.status === 'Rejected' && !hasActiveDispute));
+  const isCustomerChatDisabled = mode === 'customer' && isOrderClosed;
 
   const chatDisabledReason = isOrderClosed
-    ? 'This order has been officially closed. Live chat is now unavailable.'
-    : isDisputeResolved
-    ? 'Your dispute/issue has been officially resolved and closed. Live chat is now unavailable.'
-    : isDelivered && !hasActiveDispute
-    ? 'Order successfully delivered. Live chat is disabled. (If you have any questions or issues, click "Report Issue" to open a dispute and activate concierge support).'
-    : `Order is ${order.status.toLowerCase()}. Live chat is unavailable.`;
+    ? 'This order has been officially closed by the boutique atelier. Live chat is now closed, but previous conversation history is preserved.'
+    : 'Live chat is currently unavailable.';
 
   return (
     <div

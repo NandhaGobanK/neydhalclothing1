@@ -1996,7 +1996,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
     }
 
-    // Update order with cancellation request
+    // Update order with cancellation request & route automatically into Customer Issues bucket
     const cancellationPayload = {
       requested: true,
       requestedAt: new Date().toISOString(),
@@ -2005,20 +2005,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       status: 'pending' as const,
     };
 
+    const cancellationIssuePayload: CustomerDeliveryIssue = {
+      reported: true,
+      reportedAt: new Date().toISOString(),
+      customerPhone: phone.trim(),
+      issueType: 'cancellation',
+      issueDescription: `Order Cancellation Request: ${reason.trim()}`,
+      status: 'open',
+      investigationComments: [
+        {
+          id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          author: 'Customer Storefront',
+          comment: `Customer submitted cancellation request: "${reason.trim()}"`,
+        },
+      ],
+    };
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== targetOrder.id) return ord;
         return {
           ...ord,
           cancellationRequest: cancellationPayload,
+          deliveryIssue: cancellationIssuePayload,
         };
       })
     );
 
     // Persist to Firestore
-    updateDoc(doc(db, 'orders', targetOrder.id), sanitizeForFirestore({ cancellationRequest: cancellationPayload })).catch(
-      (err) => handleFirestoreError(err, OperationType.UPDATE, `orders/${targetOrder.id}`)
-    );
+    updateDoc(
+      doc(db, 'orders', targetOrder.id),
+      sanitizeForFirestore({
+        cancellationRequest: cancellationPayload,
+        deliveryIssue: cancellationIssuePayload,
+      })
+    ).catch((err) => handleFirestoreError(err, OperationType.UPDATE, `orders/${targetOrder.id}`));
 
     return {
       success: true,
@@ -2026,6 +2048,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       order: {
         ...targetOrder,
         cancellationRequest: cancellationPayload,
+        deliveryIssue: cancellationIssuePayload,
       },
     };
   };
@@ -2040,6 +2063,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
+
+        const resolvedIssuePayload: CustomerDeliveryIssue = {
+          ...(ord.deliveryIssue || {
+            reported: true,
+            reportedAt: ord.cancellationRequest?.requestedAt || new Date().toISOString(),
+            customerPhone: ord.customer.phone,
+            issueType: 'cancellation',
+            issueDescription: ord.cancellationRequest?.reason || 'Cancellation request',
+          }),
+          status: 'resolved',
+          resolutionNotes: adminNotes || (action === 'approve' ? 'Cancellation request approved by concierge' : 'Cancellation request declined by concierge'),
+          resolvedAt: new Date().toISOString(),
+          resolvedBy: currentUser?.name || 'Concierge Admin',
+          investigationComments: [
+            ...(ord.deliveryIssue?.investigationComments || []),
+            {
+              id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              timestamp: new Date().toISOString(),
+              author: currentUser?.name || 'Concierge Admin',
+              comment: action === 'approve'
+                ? `Cancellation approved. ${refundUtr ? `Refund UTR: ${refundUtr}. ` : ''}${adminNotes || ''}`
+                : `Cancellation request declined: ${adminNotes || 'No notes'}`,
+            },
+          ],
+        };
 
         if (action === 'approve') {
           const updated: Order = {
@@ -2056,6 +2104,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               status: 'approved',
               adminDecisionNotes: adminNotes,
             },
+            deliveryIssue: resolvedIssuePayload,
             refundDetails: {
               ...ord.refundDetails,
               refundStatus: refundUtr ? 'processed' : 'pending',
@@ -2080,6 +2129,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               status: 'rejected',
               adminDecisionNotes: adminNotes,
             },
+            deliveryIssue: resolvedIssuePayload,
             lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           };
           orderToSync = updated;

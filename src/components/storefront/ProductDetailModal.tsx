@@ -535,10 +535,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
               <div className="mb-6 p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-950 space-y-1">
                 <div className="flex items-center gap-2 font-bold text-amber-900">
                   <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>Important Order & Refund Notice</span>
+                  <span>Important Order Policy Notice</span>
                 </div>
                 <p className="text-xs text-amber-950 font-bold leading-relaxed">
-                  No cancellation once the order is confirmed.
+                  No cancellation once the order is shipped
                 </p>
               </div>
 

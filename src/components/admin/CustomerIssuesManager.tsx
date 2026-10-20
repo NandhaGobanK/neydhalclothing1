@@ -28,6 +28,7 @@ import {
   Eye,
   ShoppingBag,
   Package,
+  Ban,
 } from 'lucide-react';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 
@@ -48,6 +49,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
     staffMembers,
     assignOrderStaff,
     addInvestigationComment,
+    resolveCancellationRequest,
   } = useStore();
 
   const isAdmin = currentUser?.type === 'admin';
@@ -56,7 +58,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'investigating' | 'resolved'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'delivery' | 'refund'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'cancellation' | 'delivery' | 'refund'>('all');
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'unassigned' | 'mine' | 'other'>('all');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [chatModalOrder, setChatModalOrder] = useState<Order | null>(null);
@@ -102,20 +104,30 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // Helper to determine if order is a refund inquiry or was refunded (User Request 1)
+  // Helpers to categorize customer issues
+  const isCancellationCase = (o: Order) =>
+    o.cancellationRequest?.requested === true || o.deliveryIssue?.issueType === 'cancellation';
+
   const isRefundCase = (o: Order) =>
-    o.refundDetails?.refundStatus === 'processed' ||
-    o.refundDetails?.refundStatus === 'pending' ||
-    (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund') ||
-    ((o.status === 'Cancelled' || o.status === 'Rejected') && !!o.refundDetails?.refundStatus);
+    !isCancellationCase(o) &&
+    (o.refundDetails?.refundStatus === 'processed' ||
+      o.refundDetails?.refundStatus === 'pending' ||
+      (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund') ||
+      ((o.status === 'Cancelled' || o.status === 'Rejected') && !!o.refundDetails?.refundStatus));
 
   const isDeliveryCase = (o: Order) =>
-    o.deliveryIssue?.reported === true && o.deliveryIssue?.issueType !== 'refund';
+    !isCancellationCase(o) &&
+    o.deliveryIssue?.reported === true &&
+    o.deliveryIssue?.issueType !== 'refund' &&
+    o.deliveryIssue?.issueType !== 'cancellation';
 
-  // Orders routed to Customers Issue section: Both delivery disputes AND refunded orders (User Request 1)
-  const disputedOrders = orders.filter((o) => o.deliveryIssue?.reported === true || isRefundCase(o));
+  // Orders routed to Customers Issue section: Delivery disputes, refunded orders, and cancellation requests
+  const disputedOrders = orders.filter(
+    (o) => o.deliveryIssue?.reported === true || isRefundCase(o) || isCancellationCase(o)
+  );
 
   // Count breakdowns
+  const cancellationCasesCount = disputedOrders.filter(isCancellationCase).length;
   const deliveryDisputesCount = disputedOrders.filter(isDeliveryCase).length;
   const refundedCasesCount = disputedOrders.filter(isRefundCase).length;
 
@@ -139,7 +151,8 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
 
   // Filtered list based on status, category, ownership, and search query
   const filteredDisputes = disputedOrders.filter((order) => {
-    // 1. Category Filter (Delivery vs Refund)
+    // 1. Category Filter (Cancellation vs Delivery vs Refund)
+    if (categoryFilter === 'cancellation' && !isCancellationCase(order)) return false;
     if (categoryFilter === 'delivery' && !isDeliveryCase(order)) return false;
     if (categoryFilter === 'refund' && !isRefundCase(order)) return false;
 
@@ -443,7 +456,13 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
             Category:
           </span>
           {[
-            { id: 'all', label: `All Issues & Refunds (${disputedOrders.length})` },
+            { id: 'all', label: `All Issues & Disputes (${disputedOrders.length})` },
+            {
+              id: 'cancellation',
+              label: `Cancellations (${cancellationCasesCount})`,
+              icon: Ban,
+              highlight: cancellationCasesCount > 0,
+            },
             {
               id: 'delivery',
               label: `Delivery Disputes (${deliveryDisputesCount})`,
@@ -567,8 +586,15 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                       #{order.orderNumber}
                     </span>
 
-                    {/* Category Identifier (User Request 1) */}
-                    {isRefundCase(order) ? (
+                    {/* Category Identifier (Cancellation vs Refund vs Delivery) */}
+                    {isCancellationCase(order) ? (
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                        <Ban className="w-3 h-3 text-rose-700" />
+                        <span>
+                          Cancellation Request · {order.cancellationRequest?.status === 'pending' ? 'Pending Review' : order.cancellationRequest?.status || 'Active'}
+                        </span>
+                      </span>
+                    ) : isRefundCase(order) ? (
                       <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs">
                         <RotateCcw className="w-3 h-3 text-amber-700" />
                         <span>

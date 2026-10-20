@@ -658,7 +658,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
           <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex items-center gap-2.5 text-xs shadow-xs">
             <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
             <p className="font-medium leading-relaxed">
-              <strong className="font-bold text-amber-950">Cancellation Policy:</strong> No cancellation once the order is confirmed.
+              <strong className="font-bold text-amber-950">Cancellation Policy:</strong> No cancellation once the order is shipped
             </p>
           </div>
 
@@ -717,7 +717,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                 <span>Order Cancellation Policy</span>
               </div>
               <p className="text-xs text-amber-950 font-bold leading-relaxed">
-                No cancellation once the order is confirmed.
+                No cancellation once the order is shipped
               </p>
             </div>
           </div>

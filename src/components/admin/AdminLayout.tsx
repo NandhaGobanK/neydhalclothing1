@@ -176,17 +176,21 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
   ).length;
 
   const customerIssuesCount = orders.filter(
-    (o) => o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved'
+    (o) =>
+      (o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved') ||
+      (o.cancellationRequest?.requested && o.cancellationRequest?.status === 'pending')
   ).length;
 
-  // Sound & banner notification when customer reports delivery dispute (User Request)
+  // Sound & banner notification when customer reports delivery dispute or cancellation request (User Request)
   const prevCustomerIssuesCountRef = useRef(customerIssuesCount);
   const [incomingDisputeAlert, setIncomingDisputeAlert] = useState<any | null>(null);
 
   useEffect(() => {
     if (customerIssuesCount > prevCustomerIssuesCountRef.current) {
       const disputed = orders.find(
-        (o) => o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved'
+        (o) =>
+          (o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved') ||
+          (o.cancellationRequest?.requested && o.cancellationRequest?.status === 'pending')
       );
       if (disputed) {
         setIncomingDisputeAlert(disputed);
@@ -493,10 +497,14 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
               </span>
               <div>
                 <p className="font-bold text-xs sm:text-sm text-white">
-                  ⚠️ New Customer Delivery Dispute Reported: Order #{incomingDisputeAlert.orderNumber}
+                  {incomingDisputeAlert.cancellationRequest?.requested && incomingDisputeAlert.cancellationRequest?.status === 'pending'
+                    ? `⚠️ New Order Cancellation Request: Order #${incomingDisputeAlert.orderNumber}`
+                    : `⚠️ New Customer Delivery Dispute Reported: Order #${incomingDisputeAlert.orderNumber}`}
                 </p>
                 <p className="text-[11px] text-rose-100 font-medium">
-                  {incomingDisputeAlert.customer?.name} ({incomingDisputeAlert.customer?.phone}) reported non-receipt. Routed to 'Customers Issue' section for investigation.
+                  {incomingDisputeAlert.cancellationRequest?.requested && incomingDisputeAlert.cancellationRequest?.status === 'pending'
+                    ? `${incomingDisputeAlert.customer?.name} (${incomingDisputeAlert.customer?.phone}) submitted a cancellation request: "${incomingDisputeAlert.cancellationRequest?.reason}". Routed to Customers Issue.`
+                    : `${incomingDisputeAlert.customer?.name} (${incomingDisputeAlert.customer?.phone}) reported non-receipt. Routed to 'Customers Issue' section for investigation.`}
                 </p>
               </div>
             </div>
@@ -576,7 +584,14 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
       {/* Main Admin View Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'orders' && (
-          <OrderManager onNavigateToTab={(t) => setActiveTab(t as any)} />
+          <OrderManager
+            onNavigateToTab={(t, staffId) => {
+              if (staffId) {
+                setSelectedStaffBucketId(staffId);
+              }
+              setActiveTab(t as any);
+            }}
+          />
         )}
         {activeTab === 'admin_bucket' && (
           <StaffBucketManager

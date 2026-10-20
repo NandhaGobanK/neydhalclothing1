@@ -191,9 +191,9 @@ export const CartDrawer: React.FC = () => {
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200">
                 <AlertCircle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                <span>Notice: No cancellation once the order is confirmed.</span>
+                <span>Notice: No cancellation once the order is shipped</span>
               </div>
 
               <div className="flex gap-2 pt-1">

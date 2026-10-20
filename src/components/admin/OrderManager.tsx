@@ -50,7 +50,7 @@ import {
 import { OrderLiveChat } from '../common/OrderLiveChat';
 
 interface OrderManagerProps {
-  onNavigateToTab?: (tab: string) => void;
+  onNavigateToTab?: (tab: string, staffId?: string) => void;
 }
 
 export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) => {
@@ -230,66 +230,96 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  // Dynamic Queue Filter (All Orders vs Unassigned Queue vs My Bucket)
+  const [activeQueueFilter, setActiveQueueFilter] = useState<'all' | 'unassigned' | 'mine'>('all');
+  const [assignmentToast, setAssignmentToast] = useState<{
+    orderNumber: string;
+    staffName: string;
+    staffId: string;
+  } | null>(null);
+
   const unassignedOrders = useMemo(() => {
     return orders.filter((o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned');
   }, [orders]);
 
-  // Streamlined Multi-Parameter Global Order Search (Requirement 5)
-  // Parameters supported:
+  const myBucketOrders = useMemo(() => {
+    const myId = currentUser?.staffId || (isAdmin ? 'admin' : '');
+    return orders.filter((o) => o.assignedStaffId === myId);
+  }, [orders, currentUser, isAdmin]);
+
+  const adminBucketCount = useMemo(() => {
+    return orders.filter((o) => o.assignedStaffId === 'admin').length;
+  }, [orders]);
+
+  // Streamlined Multi-Parameter Global Order Search
+  // Searches across ALL buckets regardless of queue filter:
   // 1. Order Number (e.g., #NC-2481, NC-2481, 2481)
   // 2. Customer Name (e.g., Ananya, Priya)
   // 3. Mobile Number (e.g., 9876543210, partial digits)
   // 4. UTR Number (Prepaid Transaction UTR or Refund Bank UTR)
   const displayOrders = useMemo(() => {
-    if (!globalOrderSearch.trim()) {
-      return orders;
+    if (globalOrderSearch.trim()) {
+      const raw = globalOrderSearch.trim();
+      const q = raw.toLowerCase();
+      const cleanNum = q.replace(/^[#\s]+/, '').trim();
+      const searchDigits = raw.replace(/\D/g, '');
+
+      return orders.filter((o) => {
+        // 1. Order Number matching
+        const oNum = o.orderNumber.toLowerCase().replace(/^[#\s]+/, '').trim();
+        const matchesOrderNumber =
+          oNum === cleanNum ||
+          oNum.includes(cleanNum) ||
+          o.orderNumber.toLowerCase().includes(q) ||
+          (`#${o.orderNumber.toLowerCase()}`).includes(q);
+
+        // 2. Customer Name matching
+        const matchesCustomerName = o.customer.name.toLowerCase().includes(q);
+
+        // 3. Mobile Number matching
+        const phoneDigits = o.customer.phone.replace(/\D/g, '');
+        const matchesMobile =
+          o.customer.phone.toLowerCase().includes(q) ||
+          (searchDigits.length >= 3 && phoneDigits.includes(searchDigits));
+
+        // 4. UTR Number matching (payment UTR & refund UTR)
+        const matchesPaymentUtr = Boolean(
+          o.upiTransactionId && (
+            o.upiTransactionId.toLowerCase().includes(cleanNum) ||
+            o.upiTransactionId.toLowerCase().includes(q)
+          )
+        );
+        const matchesRefundUtr = Boolean(
+          o.refundDetails?.refundUtr && (
+            o.refundDetails.refundUtr.toLowerCase().includes(cleanNum) ||
+            o.refundDetails.refundUtr.toLowerCase().includes(q)
+          )
+        );
+
+        // 5. SKU matching
+        const matchesSku = o.items.some(
+          (it) => it.product.productCode && it.product.productCode.toLowerCase().includes(cleanNum)
+        );
+
+        return (
+          matchesOrderNumber ||
+          matchesCustomerName ||
+          matchesMobile ||
+          matchesPaymentUtr ||
+          matchesRefundUtr ||
+          matchesSku
+        );
+      });
     }
-    const raw = globalOrderSearch.trim();
-    const q = raw.toLowerCase();
-    const cleanNum = q.replace(/^[#\s]+/, '').trim();
-    const searchDigits = raw.replace(/\D/g, '');
 
-    return orders.filter((o) => {
-      // 1. Order Number matching
-      const oNum = o.orderNumber.toLowerCase().replace(/^[#\s]+/, '').trim();
-      const matchesOrderNumber =
-        oNum === cleanNum ||
-        oNum.includes(cleanNum) ||
-        o.orderNumber.toLowerCase().includes(q) ||
-        (`#${o.orderNumber.toLowerCase()}`).includes(q);
-
-      // 2. Customer Name matching
-      const matchesCustomerName = o.customer.name.toLowerCase().includes(q);
-
-      // 3. Mobile Number matching
-      const phoneDigits = o.customer.phone.replace(/\D/g, '');
-      const matchesMobile =
-        o.customer.phone.toLowerCase().includes(q) ||
-        (searchDigits.length >= 3 && phoneDigits.includes(searchDigits));
-
-      // 4. UTR Number matching (payment UTR & refund UTR)
-      const matchesPaymentUtr = Boolean(
-        o.upiTransactionId && (
-          o.upiTransactionId.toLowerCase().includes(cleanNum) ||
-          o.upiTransactionId.toLowerCase().includes(q)
-        )
-      );
-      const matchesRefundUtr = Boolean(
-        o.refundDetails?.refundUtr && (
-          o.refundDetails.refundUtr.toLowerCase().includes(cleanNum) ||
-          o.refundDetails.refundUtr.toLowerCase().includes(q)
-        )
-      );
-
-      return (
-        matchesOrderNumber ||
-        matchesCustomerName ||
-        matchesMobile ||
-        matchesPaymentUtr ||
-        matchesRefundUtr
-      );
-    });
-  }, [orders, globalOrderSearch]);
+    if (activeQueueFilter === 'unassigned') {
+      return unassignedOrders;
+    }
+    if (activeQueueFilter === 'mine') {
+      return myBucketOrders;
+    }
+    return orders;
+  }, [orders, globalOrderSearch, activeQueueFilter, unassignedOrders, myBucketOrders]);
 
   const handleStatusChange = (order: Order, newStatus: OrderStatus) => {
     // User Requirement 5: Order must be assigned before changing stages and working on it
@@ -330,6 +360,11 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
 
     if (myId) {
       assignOrderStaff(order.id, myId, myName, claimReason);
+      setAssignmentToast({
+        orderNumber: order.orderNumber,
+        staffName: myName,
+        staffId: myId,
+      });
       const updatedOrder: Order = {
         ...order,
         assignedStaffId: myId,
@@ -660,15 +695,148 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
         </div>
       )}
 
-      {/* Multi-Parameter Global Search Bar */}
-      <div className="bg-white rounded-2xl border border-neutral-300 p-3 sm:p-4 shadow-xs space-y-2.5">
+      {/* Assignment Success & Dynamic Bucket Routing Banner */}
+      {assignmentToast && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white text-xs font-medium shadow-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-white/20 text-white shrink-0">
+              <UserCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-bold text-white text-sm">
+                Order #{assignmentToast.orderNumber} Assigned & Dynamically Routed!
+              </p>
+              <p className="text-emerald-100 text-xs">
+                Moved out of unassigned queue and routed directly into <strong>{assignmentToast.staffName}</strong>'s personal bucket/view.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {onNavigateToTab && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (assignmentToast.staffId === 'admin') {
+                    onNavigateToTab('admin_bucket');
+                  } else {
+                    onNavigateToTab('staff_buckets', assignmentToast.staffId);
+                  }
+                  setAssignmentToast(null);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-white text-emerald-950 font-bold hover:bg-emerald-50 transition shadow-xs cursor-pointer text-xs flex items-center gap-1"
+              >
+                <span>View in {assignmentToast.staffName}'s Bucket</span>
+                <ChevronRight className="w-3 h-3 text-emerald-700" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setAssignmentToast(null)}
+              className="text-white/80 hover:text-white font-bold p-1 cursor-pointer"
+              title="Dismiss notification"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Parameter Global Search Bar & Dynamic Queue Routing Tabs */}
+      <div className="bg-white rounded-2xl border border-neutral-300 p-3 sm:p-4 shadow-xs space-y-3">
+        {/* Dynamic Queue Routing Tabs */}
+        <div className="flex items-center justify-between gap-3 flex-wrap border-b border-neutral-100 pb-2.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider mr-1">
+              Order Queue:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveQueueFilter('all');
+                setGlobalOrderSearch('');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                activeQueueFilter === 'all' && !globalOrderSearch
+                  ? 'bg-neutral-950 text-white shadow-xs'
+                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+              }`}
+            >
+              All Orders ({orders.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveQueueFilter('unassigned');
+                setGlobalOrderSearch('');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                activeQueueFilter === 'unassigned' && !globalOrderSearch
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : unassignedOrders.length > 0
+                  ? 'bg-amber-100 text-amber-950 border border-amber-300 font-bold hover:bg-amber-200'
+                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+              }`}
+            >
+              <span>⚠️ Unassigned Queue</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                activeQueueFilter === 'unassigned' && !globalOrderSearch ? 'bg-white text-amber-900' : 'bg-amber-200 text-amber-950'
+              }`}>
+                {unassignedOrders.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveQueueFilter('mine');
+                setGlobalOrderSearch('');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                activeQueueFilter === 'mine' && !globalOrderSearch
+                  ? 'bg-neutral-950 text-white shadow-xs'
+                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+              }`}
+            >
+              <span>👤 My Assigned Bucket</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                activeQueueFilter === 'mine' && !globalOrderSearch ? 'bg-neutral-800 text-white' : 'bg-neutral-200 text-neutral-800'
+              }`}>
+                {myBucketOrders.length}
+              </span>
+            </button>
+          </div>
+
+          {onNavigateToTab && (
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => onNavigateToTab('admin_bucket')}
+                className="text-[11px] font-semibold text-neutral-600 hover:text-neutral-900 hover:underline flex items-center gap-0.5 cursor-pointer"
+              >
+                <span>Admin Bucket ({adminBucketCount})</span>
+                <ChevronRight className="w-3 h-3 text-neutral-400" />
+              </button>
+              <span className="text-neutral-300">·</span>
+              <button
+                type="button"
+                onClick={() => onNavigateToTab('staff_buckets')}
+                className="text-[11px] font-semibold text-neutral-600 hover:text-neutral-900 hover:underline flex items-center gap-0.5 cursor-pointer"
+              >
+                <span>Staff Buckets</span>
+                <ChevronRight className="w-3 h-3 text-neutral-400" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Global Multi-Parameter Search Input */}
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
           <input
             type="text"
             value={globalOrderSearch}
             onChange={(e) => setGlobalOrderSearch(e.target.value)}
-            placeholder={`Search by Order Number (e.g. #${getBoutiqueOrderPrefix(settings.boutiqueName)}-2481), Customer Name, Mobile Number, or UTR...`}
+            placeholder={`Search across ALL staff buckets by Order # (e.g. #${getBoutiqueOrderPrefix(settings.boutiqueName)}-2481), Customer Name, Mobile Number, or UTR...`}
             className="w-full pl-10 pr-24 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/70 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 transition"
           />
           {globalOrderSearch && (
@@ -685,7 +853,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
         {/* Multi-Parameter Search Tags & Count */}
         <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-500 flex-wrap pt-0.5">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-semibold text-neutral-600">Search parameters:</span>
+            <span className="font-semibold text-neutral-600">Global search parameters:</span>
             <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 font-mono">Order #</span>
             <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700">Customer Name</span>
             <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 font-mono">Mobile Number</span>
@@ -695,7 +863,15 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
           <div className="text-right">
             {globalOrderSearch.trim() ? (
               <span className="font-semibold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-                Found <strong>{displayOrders.length}</strong> matching {displayOrders.length === 1 ? 'order' : 'orders'}
+                Found <strong>{displayOrders.length}</strong> {displayOrders.length === 1 ? 'order' : 'orders'} across all buckets
+              </span>
+            ) : activeQueueFilter === 'unassigned' ? (
+              <span className="font-semibold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                Showing <strong>{displayOrders.length}</strong> unassigned {displayOrders.length === 1 ? 'order' : 'orders'} awaiting claim
+              </span>
+            ) : activeQueueFilter === 'mine' ? (
+              <span className="font-semibold text-blue-900 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                Showing <strong>{displayOrders.length}</strong> {displayOrders.length === 1 ? 'order' : 'orders'} in your bucket
               </span>
             ) : (
               <span className="text-neutral-400">
@@ -2102,6 +2278,11 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                       : (selectedStaff?.name || 'Staff Specialist');
                     const finalReason = assignmentReason.trim() || (isAdmin ? 'Assigned by Store Owner' : 'Assigned to staff');
                     assignOrderStaff(assignModalOrder.id, targetStaffId, sName, finalReason);
+                    setAssignmentToast({
+                      orderNumber: assignModalOrder.orderNumber,
+                      staffName: sName,
+                      staffId: targetStaffId,
+                    });
                     setAssignModalOrder(null);
                   }}
                   className="px-5 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold transition shadow-xs flex items-center gap-1.5"
@@ -2493,6 +2674,18 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
               </button>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLiveChatOrder(selectedDetailOrder);
+                    setSelectedDetailOrder(null);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  title="Open live chat with customer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 fill-white" />
+                  <span>Live Chat {selectedDetailOrder.chatMessages?.length ? `(${selectedDetailOrder.chatMessages.length})` : ''}</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {

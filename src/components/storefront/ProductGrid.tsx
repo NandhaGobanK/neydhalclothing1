@@ -188,7 +188,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse shrink-0" />
           <span>
-            <strong>Boutique Order Cancellation Policy:</strong> No cancellation once the order is confirmed.
+            <strong>Boutique Order Policy:</strong> No cancellation once the order is shipped
           </span>
         </div>
         <span className="text-[11px] text-amber-800 font-medium">

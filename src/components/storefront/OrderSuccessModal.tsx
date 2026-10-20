@@ -131,7 +131,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
           <div className="p-3 bg-amber-50 rounded-xl border border-amber-300 text-amber-950 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
             <p className="leading-tight font-medium">
-              <strong>Boutique Policy Notice:</strong> No cancellation once the order is confirmed.
+              <strong>Order Policy:</strong> No cancellation once the order is shipped
             </p>
           </div>
         </div>

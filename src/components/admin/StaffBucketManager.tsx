@@ -43,6 +43,7 @@ import {
   Globe,
 } from 'lucide-react';
 import { StaffPerformanceBoard } from './StaffPerformanceBoard';
+import { OrderLiveChat } from '../common/OrderLiveChat';
 
 export type BucketStageCardFilter =
   | 'total'
@@ -152,8 +153,13 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
   const [refundNotes, setRefundNotes] = useState('');
   const [refundModalOrder, setRefundModalOrder] = useState<Order | null>(null);
   const [refundTool, setRefundTool] = useState('PhonePe');
-  const [refundUtrError, setRefundUtrError] = useState<string | null>(null);
   const [globalOrderSearch, setGlobalOrderSearch] = useState('');
+  const [liveChatOrder, setLiveChatOrder] = useState<Order | null>(null);
+  const [routingToast, setRoutingToast] = useState<{
+    orderNumber: string;
+    staffName: string;
+    staffId: string;
+  } | null>(null);
 
   // Google Sheets sync & CSV export for staff bucket (User Request)
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
@@ -218,7 +224,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
           break;
         }
         case 'Customer Issue':
-          if (!o.deliveryIssue?.reported) return false;
+          if (!o.deliveryIssue?.reported && !o.cancellationRequest?.requested) return false;
           break;
         case 'Closed':
           if (!o.isClosed) return false;
@@ -301,7 +307,9 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         o.refundDetails?.refundStatus === 'processed' ||
         (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund')
     ).length;
-    const customerIssues = bucketOrders.filter((o) => Boolean(o.deliveryIssue?.reported)).length;
+    const customerIssues = bucketOrders.filter(
+      (o) => Boolean(o.deliveryIssue?.reported) || Boolean(o.cancellationRequest?.requested)
+    ).length;
     const closed = bucketOrders.filter((o) => Boolean(o.isClosed)).length;
     const totalValue = bucketOrders.reduce((sum, o) => sum + o.totalAmount, 0);
     return {
@@ -532,6 +540,11 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
       : `Claimed by staff concierge (${myName})`;
 
     assignOrderStaff(order.id, myId, myName, claimReason);
+    setRoutingToast({
+      orderNumber: order.orderNumber,
+      staffName: myName,
+      staffId: myId,
+    });
     if (selectedDetailOrder?.id === order.id) {
       setSelectedDetailOrder((prev) =>
         prev ? { ...prev, assignedStaffId: myId, assignedStaffName: myName } : null
@@ -551,6 +564,11 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
 
     if (myId) {
       assignOrderStaff(order.id, myId, myName, claimReason);
+      setRoutingToast({
+        orderNumber: order.orderNumber,
+        staffName: myName,
+        staffId: myId,
+      });
       const updatedOrder: Order = {
         ...order,
         assignedStaffId: myId,
@@ -592,6 +610,11 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
       assignmentReason.trim() || (isAdmin ? 'Assigned by Store Owner' : 'Assigned to staff');
 
     assignOrderStaff(assignModalOrder.id, targetStaffId, targetName, finalReason);
+    setRoutingToast({
+      orderNumber: assignModalOrder.orderNumber,
+      staffName: targetName,
+      staffId: targetStaffId,
+    });
 
     if (selectedDetailOrder?.id === assignModalOrder.id) {
       setSelectedDetailOrder((prev) =>
@@ -885,6 +908,46 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
           })}
         </div>
       </div>
+
+      {/* Dynamic Bucket Routing Success Alert Banner */}
+      {routingToast && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white text-xs font-medium shadow-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-white/20 text-white shrink-0">
+              <UserCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-bold text-white text-sm">
+                Order #{routingToast.orderNumber} Assigned & Dynamically Routed!
+              </p>
+              <p className="text-emerald-100 text-xs">
+                Moved out of unassigned queue and routed directly into <strong>{routingToast.staffName}</strong>'s personal bucket/view.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveBucketStaffId(routingToast.staffId);
+                setRoutingToast(null);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white text-emerald-950 font-bold hover:bg-emerald-50 transition shadow-xs cursor-pointer flex items-center gap-1"
+            >
+              <span>View in {routingToast.staffName}'s Bucket</span>
+              <ChevronRight className="w-3.5 h-3.5 text-emerald-700" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoutingToast(null)}
+              className="p-1 rounded-lg text-emerald-200 hover:text-white cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Google Sheets Sync Success or Error Banner */}
       {sheetSyncSuccess && (
@@ -1453,15 +1516,33 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
 
                   {/* Actions Row */}
                   <div className="flex items-center justify-between gap-1.5 pt-1 flex-wrap">
-                    {/* View Details Button */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDetailOrder(order)}
-                      className="px-2.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>View Details</span>
-                      <ChevronRight className="w-3 h-3" />
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* View Details Button */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDetailOrder(order)}
+                        className="px-2.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>View Details</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+
+                      {/* Live Customer Chat Button */}
+                      <button
+                        type="button"
+                        onClick={() => setLiveChatOrder(order)}
+                        className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                        title="Chat in real time with customer regarding this order"
+                      >
+                        <MessageSquare className="w-3 h-3 fill-white" />
+                        <span>Chat</span>
+                        {order.chatMessages && order.chatMessages.length > 0 && (
+                          <span className="px-1 py-0.2 rounded-full bg-white text-blue-700 text-[10px] font-bold">
+                            {order.chatMessages.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {/* Assign to Me Button (User Request 4) */}
@@ -1788,22 +1869,36 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-2 flex items-center justify-between gap-3 border-t border-neutral-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const cleanPhone = selectedDetailOrder.customer.phone.replace(/[^0-9]/g, '');
-                    const msg = formatWhatsAppStageUpdateMessage(
-                      selectedDetailOrder,
-                      settings
-                    );
-                    openWhatsApp(cleanPhone, msg);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition flex items-center gap-1.5 shadow-xs"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 fill-white" />
-                  <span>Send WhatsApp Update</span>
-                </button>
+              <div className="pt-2 flex items-center justify-between gap-3 border-t border-neutral-200 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cleanPhone = selectedDetailOrder.customer.phone.replace(/[^0-9]/g, '');
+                      const msg = formatWhatsAppStageUpdateMessage(
+                        selectedDetailOrder,
+                        settings
+                      );
+                      openWhatsApp(cleanPhone, msg);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition flex items-center gap-1.5 shadow-xs"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 fill-white" />
+                    <span>Send WhatsApp Update</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLiveChatOrder(selectedDetailOrder);
+                      setSelectedDetailOrder(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    title="Open live concierge chat with customer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 fill-white" />
+                    <span>Live Chat {selectedDetailOrder.chatMessages?.length ? `(${selectedDetailOrder.chatMessages.length})` : ''}</span>
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
                   {selectedDetailOrder.isClosed ? (
@@ -2517,6 +2612,42 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      {/* Order Live Chat Modal */}
+      {liveChatOrder && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto">
+            <div className="p-4 bg-gradient-to-r from-neutral-900 to-neutral-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  <MessageSquare className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-sm">
+                    Order #{liveChatOrder.orderNumber} Live Concierge Chat
+                  </h3>
+                  <p className="text-[11px] text-neutral-300">
+                    Customer: {liveChatOrder.customer.name} ({liveChatOrder.customer.phone})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLiveChatOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <OrderLiveChat
+                order={orders.find((o) => o.id === liveChatOrder.id) || liveChatOrder}
+                mode="admin"
+                title={`Order #${liveChatOrder.orderNumber} Live Chat`}
+              />
+            </div>
           </div>
         </div>
       )}

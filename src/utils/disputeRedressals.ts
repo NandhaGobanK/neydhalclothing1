@@ -1,9 +1,8 @@
-import { StoreSettings } from '../types/store';
+import { StoreSettings, Order } from '../types/store';
 
 /**
  * DisputeRedressalDefinition defines a single dispute or redressal option.
- * Extensible architecture: Any future redressals (e.g., damaged transit, wrong variant,
- * fabric exchange, weaver defect) can simply be added to DISPUTE_REDRESSALS.
+ * Extensible architecture: Any future redressals can simply be added to DISPUTE_REDRESSALS.
  */
 export interface DisputeRedressalDefinition {
   id: string; // unique identifier
@@ -15,12 +14,16 @@ export interface DisputeRedressalDefinition {
   iconType: 'truck' | 'refund' | 'alert' | 'shield';
   defaultNote: (orderNumber: string, status: string) => string;
   isEnabled: (settings?: StoreSettings) => boolean;
+  /**
+   * Order-Specific Status Gate Rule:
+   * Delivery Dispute: only after order status is 'Delivered'
+   * Refund Dispute: only after order is marked Cancelled/Rejected AND updated with Refunded status
+   */
+  isEligibleForOrder: (order: Order, settings?: StoreSettings) => boolean;
 }
 
 /**
  * Master Registry of dispute redressal mechanisms in the store.
- * Extensible for future redressals: Any new redressal added here automatically participates
- * in dynamic visibility checks, category dropdown menus, and customer issue routing.
  */
 export const DISPUTE_REDRESSALS: DisputeRedressalDefinition[] = [
   {
@@ -34,6 +37,12 @@ export const DISPUTE_REDRESSALS: DisputeRedressalDefinition[] = [
     defaultNote: (orderNumber: string, status: string) =>
       `Courier tracking shows ${status}, but I have not received this parcel at my address for order #${orderNumber}.`,
     isEnabled: (settings) => settings?.storefrontDisplay?.allowCustomerDeliveryDisputes !== false,
+    // Delivery Issue Report option must appear in the "Report Issue" dropdown menu ONLY after order status is Delivered.
+    // If order is not yet marked as delivered, this option must remain hidden.
+    isEligibleForOrder: (order, settings) => {
+      if (settings?.storefrontDisplay?.allowCustomerDeliveryDisputes === false) return false;
+      return order.status === 'Delivered';
+    },
   },
   {
     id: 'refund',
@@ -46,11 +55,25 @@ export const DISPUTE_REDRESSALS: DisputeRedressalDefinition[] = [
     defaultNote: (orderNumber: string) =>
       `I have an inquiry regarding my refund settlement for order #${orderNumber}.`,
     isEnabled: (settings) => {
-      // If the refund option is disabled in settings, Customer Refund Issue Reporting is automatically disabled/toggled off
       if (settings?.storefrontDisplay?.allowPublicRefunds === false) {
         return false;
       }
       return settings?.storefrontDisplay?.allowCustomerRefundDisputes !== false;
+    },
+    // Refund Dispute Report option must appear ONLY after order has been officially marked as Cancelled
+    // and updated with a Refunded status on the customer's order.
+    // If this status condition is not met, the refund dispute option must remain hidden.
+    isEligibleForOrder: (order, settings) => {
+      if (settings?.storefrontDisplay?.allowPublicRefunds === false) return false;
+      if (settings?.storefrontDisplay?.allowCustomerRefundDisputes === false) return false;
+
+      const isCancelled = order.status === 'Cancelled' || order.status === 'Rejected';
+      const isRefunded =
+        order.status === 'Refunded' ||
+        order.refundDetails?.refundStatus === 'processed' ||
+        Boolean(order.refundDetails?.refundUtr);
+
+      return isCancelled && isRefunded;
     },
   },
 ];
@@ -65,7 +88,19 @@ export function getActiveDisputeRedressals(settings?: StoreSettings): DisputeRed
 }
 
 /**
- * Checks if a specific redressal type is currently enabled.
+ * Returns only the dispute redressal options that are eligible for this specific order based on:
+ * 1. Store settings
+ * 2. Order status conditions:
+ *    - Delivery Issue: ONLY after status is 'Delivered'
+ *    - Refund Dispute: ONLY after officially marked 'Cancelled' AND updated with 'Refunded' status
+ */
+export function getOrderEligibleRedressals(order: Order, settings?: StoreSettings): DisputeRedressalDefinition[] {
+  if (!order) return [];
+  return DISPUTE_REDRESSALS.filter((r) => r.isEligibleForOrder(order, settings));
+}
+
+/**
+ * Checks if a specific redressal type is currently enabled in settings.
  */
 export function isDisputeRedressalEnabled(type: string, settings?: StoreSettings): boolean {
   const match = DISPUTE_REDRESSALS.find((r) => r.type === type || r.id === type);
@@ -75,10 +110,15 @@ export function isDisputeRedressalEnabled(type: string, settings?: StoreSettings
 
 /**
  * Conditional Visibility Rule:
- * Returns TRUE if and only if at least ONE dispute redressal option is actively enabled.
- * If ALL individual dispute options (e.g. delivery, refund, and any future ones) are disabled,
- * this returns FALSE, completely hiding the main "Report Issue" button on the customer-facing front.
+ * Returns TRUE if and only if at least ONE dispute redressal option is actively enabled for this order.
+ * If none of the dispute options match the order's current status condition, returns FALSE,
+ * completely hiding the "Report Issue" button for this order.
  */
+export function isCustomerReportIssueVisibleForOrder(order: Order, settings?: StoreSettings): boolean {
+  if (!order) return false;
+  return getOrderEligibleRedressals(order, settings).length > 0;
+}
+
 export function isCustomerReportIssueVisible(settings?: StoreSettings): boolean {
   return getActiveDisputeRedressals(settings).length > 0;
 }

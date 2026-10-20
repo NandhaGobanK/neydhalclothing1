@@ -6,7 +6,8 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../utils/firebase';
 import {
   getActiveDisputeRedressals,
-  isCustomerReportIssueVisible,
+  getOrderEligibleRedressals,
+  isCustomerReportIssueVisibleForOrder,
   DISPUTE_REDRESSALS,
 } from '../../utils/disputeRedressals';
 import { OrderLiveChat } from '../common/OrderLiveChat';
@@ -1004,116 +1005,104 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           )
                         ) : null}
 
-                        {/* Dynamic Customer Issue Reporting Option with Extensible Redressal Categories */}
-                        {canReportAnyIssue && !order.deliveryIssue?.reported && (
-                          <div className="relative inline-block text-left">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (activeRedressals.length > 1) {
-                                  setOpenIssueDropdownOrderId(
-                                    openIssueDropdownOrderId === order.id ? null : order.id
-                                  );
-                                } else if (activeRedressals.length === 1) {
-                                  const singleOption = activeRedressals[0];
-                                  setReportingIssueOrder(order);
-                                  setReportingIssueType(singleOption.type as any);
-                                  setIssueDescription(
-                                    singleOption.defaultNote(order.orderNumber, order.status)
-                                  );
-                                }
-                              }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-semibold text-xs transition cursor-pointer shadow-2xs"
-                              title="Report a delivery or refund issue for this order"
-                            >
-                              <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                              <span>Report Issue</span>
-                              {activeRedressals.length > 1 && (
-                                <ChevronDown className={`w-3 h-3 text-rose-700 transition-transform ${openIssueDropdownOrderId === order.id ? 'rotate-180' : ''}`} />
+                        {/* Conditional Customer Issue Reporting Dropdown (Rule: Delivery only if Delivered; Refund only if Cancelled + Refunded) */}
+                        {(() => {
+                          const eligibleRedressals = getOrderEligibleRedressals(order, settings);
+                          const canReportIssueForThisOrder = eligibleRedressals.length > 0 && !order.deliveryIssue?.reported;
+                          if (!canReportIssueForThisOrder) return null;
+
+                          return (
+                            <div className="relative inline-block text-left">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (eligibleRedressals.length > 1) {
+                                    setOpenIssueDropdownOrderId(
+                                      openIssueDropdownOrderId === order.id ? null : order.id
+                                    );
+                                  } else if (eligibleRedressals.length === 1) {
+                                    const singleOption = eligibleRedressals[0];
+                                    setReportingIssueOrder(order);
+                                    setReportingIssueType(singleOption.type as any);
+                                    setIssueDescription(
+                                      singleOption.defaultNote(order.orderNumber, order.status)
+                                    );
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-semibold text-xs transition cursor-pointer shadow-2xs"
+                                title="Report an issue for this order"
+                              >
+                                <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Report Issue</span>
+                                {eligibleRedressals.length > 1 && (
+                                  <ChevronDown className={`w-3 h-3 text-rose-700 transition-transform ${openIssueDropdownOrderId === order.id ? 'rotate-180' : ''}`} />
+                                )}
+                              </button>
+
+                              {/* Click-away backdrop */}
+                              {openIssueDropdownOrderId === order.id && (
+                                <div
+                                  className="fixed inset-0 z-20"
+                                  onClick={() => setOpenIssueDropdownOrderId(null)}
+                                />
                               )}
-                            </button>
 
-                            {/* Click-away backdrop */}
-                            {openIssueDropdownOrderId === order.id && (
-                              <div
-                                className="fixed inset-0 z-20"
-                                onClick={() => setOpenIssueDropdownOrderId(null)}
-                              />
-                            )}
+                              {/* Conditional Dropdown Menu containing ONLY eligible options for this order's state */}
+                              {openIssueDropdownOrderId === order.id && eligibleRedressals.length > 1 && (
+                                <div className="absolute left-0 bottom-full mb-1.5 sm:bottom-auto sm:top-full sm:mt-1.5 w-72 rounded-2xl bg-white border border-neutral-200 shadow-xl z-30 p-1.5 animate-in fade-in zoom-in-95 duration-150">
+                                  <div className="px-2.5 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider border-b border-neutral-100 mb-1">
+                                    Select Issue Category
+                                  </div>
 
-                            {/* Conditional Dropdown Menu dynamically rendered for all enabled redressals */}
-                            {openIssueDropdownOrderId === order.id && activeRedressals.length > 1 && (
-                              <div className="absolute left-0 bottom-full mb-1.5 sm:bottom-auto sm:top-full sm:mt-1.5 w-72 rounded-2xl bg-white border border-neutral-200 shadow-xl z-30 p-1.5 animate-in fade-in zoom-in-95 duration-150">
-                                <div className="px-2.5 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider border-b border-neutral-100 mb-1">
-                                  Select Issue Category
+                                  {eligibleRedressals.map((redressal) => (
+                                    <button
+                                      key={redressal.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenIssueDropdownOrderId(null);
+                                        setReportingIssueOrder(order);
+                                        setReportingIssueType(redressal.type as any);
+                                        setIssueDescription(
+                                          redressal.defaultNote(order.orderNumber, order.status)
+                                        );
+                                      }}
+                                      className="w-full text-left p-2.5 rounded-xl hover:bg-rose-50 text-neutral-800 hover:text-rose-900 transition flex items-start gap-2.5 cursor-pointer group"
+                                    >
+                                      <div className="p-1.5 rounded-lg bg-neutral-100 group-hover:bg-rose-100 shrink-0 mt-0.5">
+                                        {redressal.iconType === 'truck' ? (
+                                          <Truck className="w-4 h-4 text-rose-600" />
+                                        ) : redressal.iconType === 'refund' ? (
+                                          <RotateCcw className="w-4 h-4 text-amber-600" />
+                                        ) : (
+                                          <AlertCircle className="w-4 h-4 text-rose-600" />
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="font-bold text-xs text-neutral-900 group-hover:text-rose-900 leading-tight">
+                                          {redressal.title}
+                                        </p>
+                                        <p className="text-[10px] text-neutral-500 group-hover:text-neutral-700 leading-snug mt-0.5">
+                                          {redressal.description}
+                                        </p>
+                                      </div>
+                                    </button>
+                                  ))}
                                 </div>
-
-                                {activeRedressals.map((redressal) => (
-                                  <button
-                                    key={redressal.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setOpenIssueDropdownOrderId(null);
-                                      setReportingIssueOrder(order);
-                                      setReportingIssueType(redressal.type as any);
-                                      setIssueDescription(
-                                        redressal.defaultNote(order.orderNumber, order.status)
-                                      );
-                                    }}
-                                    className="w-full text-left p-2.5 rounded-xl hover:bg-rose-50 text-neutral-800 hover:text-rose-900 transition flex items-start gap-2.5 cursor-pointer group"
-                                  >
-                                    <div className="p-1.5 rounded-lg bg-neutral-100 group-hover:bg-rose-100 shrink-0 mt-0.5">
-                                      {redressal.iconType === 'truck' ? (
-                                        <Truck className="w-4 h-4 text-rose-600" />
-                                      ) : redressal.iconType === 'refund' ? (
-                                        <RotateCcw className="w-4 h-4 text-amber-600" />
-                                      ) : (
-                                        <AlertCircle className="w-4 h-4 text-rose-600" />
-                                      )}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="font-bold text-xs text-neutral-900 group-hover:text-rose-900 leading-tight">
-                                        {redressal.title}
-                                      </p>
-                                      <p className="text-[10px] text-neutral-500 group-hover:text-neutral-700 leading-snug mt-0.5">
-                                        {redressal.description}
-                                      </p>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
 
-                      {/* Live Chat Action Button (Conditional Availability based on Order & Dispute Status) */}
+                      {/* Order-Specific Customer-to-Staff Live Chat Integration */}
                       {(() => {
-                        const isDelivered = order.status === 'Delivered';
+                        const isOrderClosed = Boolean(order.isClosed);
+                        const isLiveChatGloballyEnabled = settings.storefrontDisplay?.allowLiveChat !== false;
+                        const isChatAvailable = isLiveChatGloballyEnabled && !isOrderClosed;
                         const hasActiveDispute = Boolean(
                           order.deliveryIssue &&
                             (order.deliveryIssue.status === 'open' || order.deliveryIssue.status === 'investigating')
                         );
-                        const isDisputeResolved = Boolean(
-                          order.deliveryIssue && order.deliveryIssue.status === 'resolved'
-                        );
-                        const isOrderClosed = Boolean(order.isClosed);
-                        const isLiveChatGloballyEnabled = settings.storefrontDisplay?.allowLiveChat !== false;
-
-                        // Chat enabled if:
-                        // - Live Chat is enabled in admin settings
-                        // - Active order (Pending, Confirmed, Shipped)
-                        // - Active dispute on any order (even if Delivered)
-                        // Chat disabled if:
-                        // - Admin disabled Live Chat in settings
-                        // - Delivered without active dispute
-                        // - Order is closed or dispute is officially resolved
-                        // - Cancelled / Rejected without active dispute
-                        const isChatAvailable =
-                          isLiveChatGloballyEnabled &&
-                          !isOrderClosed &&
-                          !isDisputeResolved &&
-                          (hasActiveDispute || (!isDelivered && order.status !== 'Cancelled' && order.status !== 'Rejected'));
 
                         return (
                           <div className="flex items-center gap-2 ml-auto">
@@ -1132,7 +1121,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                                     ? 'bg-rose-700 hover:bg-rose-600 text-white'
                                     : 'bg-amber-600 hover:bg-amber-500 text-white'
                                 }`}
-                                title="Open live chat with atelier concierge staff"
+                                title="Open direct real-time chat with boutique staff"
                               >
                                 <MessageSquare className="w-3.5 h-3.5 fill-white" />
                                 <span>
@@ -1167,13 +1156,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                                 )}
                                 <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg border border-neutral-200 flex items-center gap-1">
                                   <Lock className="w-3 h-3 text-neutral-400" />
-                                  <span>
-                                    {isDisputeResolved
-                                      ? 'Chat Closed (Resolved)'
-                                      : isDelivered
-                                      ? 'Chat Closed (Delivered)'
-                                      : 'Chat Closed'}
-                                  </span>
+                                  <span>Order Closed</span>
                                 </span>
                               </div>
                             )}
