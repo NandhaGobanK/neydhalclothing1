@@ -21,10 +21,11 @@ import {
   Check,
   X,
   AlertOctagon,
+  Layers,
 } from 'lucide-react';
 
 export const AnalyticsManager: React.FC = () => {
-  const { orders, products, settings, updateSettings } = useStore();
+  const { orders, products, settings, updateSettings, categories } = useStore();
 
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [sheetSyncSuccess, setSheetSyncSuccess] = useState<{ url: string; count: number } | null>(null);
@@ -143,21 +144,139 @@ export const AnalyticsManager: React.FC = () => {
       .sort((a, b) => b.unitsSold - a.unitsSold || b.revenue - a.revenue);
   }, [products, orders]);
 
-  // Fabric breakdown
-  const fabricBreakdown = useMemo(() => {
-    const map: Record<string, { units: number; revenue: number }> = {};
+  // Dynamic Category-Based Sales Record & Performance Ranking Board (Replacing Fabric Contribution)
+  const categorySalesAnalytics = useMemo(() => {
+    const categoryStatsMap: Record<
+      string,
+      {
+        categoryName: string;
+        imageUrl?: string;
+        description?: string;
+        unitsSold: number;
+        revenue: number;
+        orderCount: number;
+        activeCatalogCount: number;
+      }
+    > = {};
+
+    // 1. Seed from registered store categories
+    (categories || []).forEach((cat) => {
+      const key = cat.name.trim();
+      if (!categoryStatsMap[key]) {
+        categoryStatsMap[key] = {
+          categoryName: key,
+          imageUrl: cat.imageUrl,
+          description: cat.description,
+          unitsSold: 0,
+          revenue: 0,
+          orderCount: 0,
+          activeCatalogCount: 0,
+        };
+      }
+    });
+
+    // 2. Tally catalog products per category
+    products.forEach((p) => {
+      if (p.isVisible !== false) {
+        const cat = p.category?.trim() || 'General Collection';
+        if (!categoryStatsMap[cat]) {
+          categoryStatsMap[cat] = {
+            categoryName: cat,
+            imageUrl: p.images?.[0],
+            unitsSold: 0,
+            revenue: 0,
+            orderCount: 0,
+            activeCatalogCount: 0,
+          };
+        }
+        categoryStatsMap[cat].activeCatalogCount += 1;
+        if (!categoryStatsMap[cat].imageUrl && p.images?.[0]) {
+          categoryStatsMap[cat].imageUrl = p.images[0];
+        }
+      }
+    });
+
+    // 3. Aggregate confirmed/delivered order sales volume & revenue
+    let totalCatRevenue = 0;
+    let totalCatUnits = 0;
+
     orders.forEach((o) => {
       if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+        const orderCats = new Set<string>();
         o.items.forEach((item) => {
-          const f = item.product.fabric || 'Other';
-          if (!map[f]) map[f] = { units: 0, revenue: 0 };
-          map[f].units += item.quantity;
-          map[f].revenue += item.product.price * item.quantity;
+          const cat = item.product.category?.trim() || 'General Collection';
+          if (!categoryStatsMap[cat]) {
+            categoryStatsMap[cat] = {
+              categoryName: cat,
+              imageUrl: item.product.images?.[0],
+              unitsSold: 0,
+              revenue: 0,
+              orderCount: 0,
+              activeCatalogCount: 0,
+            };
+          }
+          const itemRev = item.product.price * item.quantity;
+          categoryStatsMap[cat].unitsSold += item.quantity;
+          categoryStatsMap[cat].revenue += itemRev;
+          totalCatRevenue += itemRev;
+          totalCatUnits += item.quantity;
+          orderCats.add(cat);
+        });
+        orderCats.forEach((catKey) => {
+          if (categoryStatsMap[catKey]) {
+            categoryStatsMap[catKey].orderCount += 1;
+          }
         });
       }
     });
-    return Object.entries(map).sort((a, b) => b[1].revenue - a[1].revenue);
-  }, [orders]);
+
+    const list = Object.values(categoryStatsMap);
+
+    // Sort by revenue descending, then units descending
+    list.sort((a, b) => b.revenue - a.revenue || b.unitsSold - a.unitsSold);
+
+    return list.map((c, index) => {
+      const rank = index + 1;
+      const revenueSharePct = totalCatRevenue > 0
+        ? Math.round((c.revenue / totalCatRevenue) * 100)
+        : 0;
+      const unitsSharePct = totalCatUnits > 0
+        ? Math.round((c.unitsSold / totalCatUnits) * 100)
+        : 0;
+
+      let badgeLabel = 'Growing Category';
+      let badgeStyle = 'bg-neutral-100 text-neutral-700 border-neutral-300';
+      let rankMedal = `#${rank}`;
+
+      if (rank === 1 && c.revenue > 0) {
+        badgeLabel = '🏆 Rank #1 · Store Leader';
+        badgeStyle = 'bg-amber-100 text-amber-900 border-amber-400 font-extrabold shadow-2xs';
+        rankMedal = '🥇 1st';
+      } else if (rank === 2 && c.revenue > 0) {
+        badgeLabel = '🥈 Rank #2 · High Demand';
+        badgeStyle = 'bg-slate-100 text-slate-900 border-slate-300 font-bold';
+        rankMedal = '🥈 2nd';
+      } else if (rank === 3 && c.revenue > 0) {
+        badgeLabel = '🥉 Rank #3 · Steady Volume';
+        badgeStyle = 'bg-amber-50 text-amber-900 border-amber-200 font-bold';
+        rankMedal = '🥉 3rd';
+      } else if (c.revenue > 0) {
+        badgeLabel = `⭐ Rank #${rank} · Active`;
+        badgeStyle = 'bg-blue-50 text-blue-900 border-blue-200 font-semibold';
+        rankMedal = `#${rank}`;
+      }
+
+      return {
+        ...c,
+        rank,
+        rankMedal,
+        revenueSharePct,
+        unitsSharePct,
+        badgeLabel,
+        badgeStyle,
+      };
+    });
+  }, [orders, products, categories]);
 
   // Staff order attribution
   const staffAttribution = useMemo(() => {
@@ -208,7 +327,14 @@ export const AnalyticsManager: React.FC = () => {
           stockCount: p.product.stockCount,
           stockStatus: p.product.stockStatus,
         })),
-        fabricBreakdown,
+        categoryBreakdown: categorySalesAnalytics.map((c) => ({
+          categoryName: c.categoryName,
+          unitsSold: c.unitsSold,
+          revenue: c.revenue,
+          orderCount: c.orderCount,
+          rank: c.rank,
+          revenueSharePct: c.revenueSharePct,
+        })),
         staffAttribution,
       };
 
@@ -499,35 +625,104 @@ export const AnalyticsManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid: Fabric Breakdown + Staff Concierge Sales Attribution */}
+      {/* Grid: Category Sales & Ranking + Staff Concierge Sales Attribution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Fabric Breakdown */}
-        <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-xs space-y-3">
-          <h4 className="font-serif text-base font-bold text-neutral-900 flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-amber-600" />
-            <span>Fabric Category Contribution</span>
-          </h4>
+        {/* Category-Based Sales Record & Performance Ranking Board (Prompt: Replaced Fabric Contribution) */}
+        <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+            <div>
+              <h4 className="font-serif text-base font-bold text-neutral-900 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-amber-600" />
+                <span>Category-Based Sales Tracking & Ranking</span>
+              </h4>
+              <p className="text-[11px] text-neutral-500 mt-0.5">
+                Dynamic sales volume, revenue, and store rankings across all active boutique categories
+              </p>
+            </div>
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-700 border border-neutral-200 shrink-0 self-start sm:self-center">
+              {categorySalesAnalytics.length} Active {categorySalesAnalytics.length === 1 ? 'Category' : 'Categories'}
+            </span>
+          </div>
 
-          <div className="space-y-2.5 pt-1">
-            {fabricBreakdown.map(([fabric, data]) => {
-              const pct = stats.netRevenue > 0 ? Math.round((data.revenue / stats.netRevenue) * 100) : 0;
-              return (
-                <div key={fabric} className="text-xs space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-neutral-800">{fabric}</span>
-                    <span className="font-bold tabular-nums text-neutral-900">
-                      {formatPrice(data.revenue)} ({data.units} pcs · {pct}%)
-                    </span>
+          <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+            {categorySalesAnalytics.length === 0 ? (
+              <p className="text-xs text-neutral-400 p-4 text-center">No categories created yet.</p>
+            ) : (
+              categorySalesAnalytics.map((cat) => (
+                <div
+                  key={cat.categoryName}
+                  className={`p-3.5 rounded-2xl border transition text-xs space-y-2 ${
+                    cat.rank === 1 && cat.revenue > 0
+                      ? 'bg-amber-50/50 border-amber-300 ring-1 ring-amber-300/60 shadow-2xs'
+                      : 'bg-white hover:bg-neutral-50/60 border-neutral-200/90'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Rank Indicator */}
+                      <span
+                        className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                          cat.rank === 1 && cat.revenue > 0
+                            ? 'bg-amber-500 text-neutral-950 shadow-2xs font-extrabold'
+                            : cat.rank === 2 && cat.revenue > 0
+                            ? 'bg-slate-300 text-slate-900 font-bold'
+                            : cat.rank === 3 && cat.revenue > 0
+                            ? 'bg-amber-200 text-amber-950 font-bold'
+                            : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+                        }`}
+                      >
+                        {cat.rank}
+                      </span>
+
+                      {/* Category Thumbnail & Details */}
+                      {cat.imageUrl && (
+                        <img
+                          src={cat.imageUrl}
+                          alt={cat.categoryName}
+                          className="w-9 h-9 rounded-xl object-cover bg-neutral-100 border border-neutral-200 shrink-0"
+                        />
+                      )}
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-serif font-bold text-neutral-900 text-sm truncate">
+                            {cat.categoryName}
+                          </p>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cat.badgeStyle}`}>
+                            {cat.badgeLabel}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-500">
+                          {cat.activeCatalogCount} active designs · {cat.orderCount} orders
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Volume & Revenue */}
+                    <div className="text-right shrink-0">
+                      <p className="font-serif font-bold text-sm text-neutral-950 tabular-nums">
+                        {formatPrice(cat.revenue)}
+                      </p>
+                      <p className="text-[11px] font-semibold text-neutral-600">
+                        {cat.unitsSold} {cat.unitsSold === 1 ? 'piece' : 'pieces'} sold ({cat.revenueSharePct}%)
+                      </p>
+                    </div>
                   </div>
-                  <div className="w-full bg-neutral-100 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-amber-600 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(pct, 100)}%` }}
-                    />
+
+                  {/* Revenue Share Visual Progress Bar */}
+                  <div className="space-y-1 pt-1">
+                    <div className="w-full bg-neutral-100 rounded-full h-2 overflow-hidden">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-500 ${
+                          cat.rank === 1 ? 'bg-amber-500' : cat.rank === 2 ? 'bg-slate-500' : 'bg-neutral-700'
+                        }`}
+                        style={{ width: `${Math.min(cat.revenueSharePct, 100)}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
-              );
-            })}
+              ))
+            )}
           </div>
         </div>
 
@@ -592,14 +787,14 @@ export const AnalyticsManager: React.FC = () => {
 
             <div className="p-6 space-y-4 text-xs text-neutral-700">
               <p className="leading-relaxed">
-                You are about to export and synchronize boutique analytics, sales KPIs, SKU rankings, and fabric category statistics directly into your Google Sheets spreadsheet.
+                You are about to export and synchronize boutique analytics, sales KPIs, SKU rankings, and category-based sales & rankings directly into your Google Sheets spreadsheet.
               </p>
               <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 space-y-1">
                 <p className="font-semibold">Spreadsheet tabs included:</p>
                 <ul className="list-disc list-inside space-y-0.5 text-emerald-800">
                   <li><strong>Overview & KPIs:</strong> Revenue, AOV, order totals.</li>
                   <li><strong>Product Sales Tracker:</strong> Saree sales velocity and ratings.</li>
-                  <li><strong>Fabric Breakdown:</strong> Kanjivaram, Banarasi, and Chanderi splits.</li>
+                  <li><strong>Category Sales & Ranking:</strong> Performance ranks, volume, and revenue by store category.</li>
                   <li><strong>Staff Attribution:</strong> Orders and gross workload per staff.</li>
                 </ul>
               </div>

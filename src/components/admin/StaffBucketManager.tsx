@@ -44,6 +44,17 @@ import {
 } from 'lucide-react';
 import { StaffPerformanceBoard } from './StaffPerformanceBoard';
 
+export type BucketStageCardFilter =
+  | 'total'
+  | 'Pending'
+  | 'Confirmed'
+  | 'Shipped'
+  | 'Delivered'
+  | 'Cancelled'
+  | 'Refunded'
+  | 'Customer Issue'
+  | 'Closed';
+
 interface StaffBucketManagerProps {
   initialStaffId?: string;
   onNavigateToTab?: (tab: 'orders' | 'staff' | 'products' | 'analytics' | 'settings' | 'customers_issue') => void;
@@ -88,8 +99,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
     }
   }, [initialStaffId]);
 
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
-  const [bucketViewMode, setBucketViewMode] = useState<'all' | 'active' | 'closed'>('active');
+  const [activeStageFilter, setActiveStageFilter] = useState<BucketStageCardFilter>('total');
   const [bucketSearchQuery, setBucketSearchQuery] = useState('');
   const [selectedDetailOrder, setSelectedDetailOrder] = useState<Order | null>(null);
 
@@ -149,8 +159,6 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [sheetSyncSuccess, setSheetSyncSuccess] = useState<{ url: string; count: number } | null>(null);
   const [sheetSyncError, setSheetSyncError] = useState<string | null>(null);
-  const [showOnlyDisputes, setShowOnlyDisputes] = useState(false);
-
   // Active bucket flags
   const isViewingAdmin = activeBucketStaffId === 'admin';
   const isViewingUnassigned = activeBucketStaffId === 'unassigned';
@@ -178,39 +186,85 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
     });
   }, [orders, activeBucketStaffId, isViewingUnassigned, isViewingAdmin]);
 
-  const activeOrdersCount = useMemo(() => bucketOrders.filter((o) => !o.isClosed).length, [bucketOrders]);
-  const closedOrdersCount = useMemo(() => bucketOrders.filter((o) => o.isClosed).length, [bucketOrders]);
-
-  // Filtered bucket orders
+  // Filtered bucket orders based on active metric card stage selection & search query
   const filteredBucketOrders = useMemo(() => {
     return bucketOrders.filter((o) => {
-      // Disputed orders filter (from clicking Customers Issue card)
-      if (showOnlyDisputes && !o.deliveryIssue?.reported) return false;
+      // 1. Interactive metric card stage filter
+      switch (activeStageFilter) {
+        case 'total':
+          // Show all in bucket
+          break;
+        case 'Pending':
+          if (o.status !== 'Pending' || o.isClosed) return false;
+          break;
+        case 'Confirmed':
+          if (o.status !== 'Confirmed' || o.isClosed) return false;
+          break;
+        case 'Shipped':
+          if (o.status !== 'Shipped' || o.isClosed) return false;
+          break;
+        case 'Delivered':
+          if (o.status !== 'Delivered' || o.isClosed) return false;
+          break;
+        case 'Cancelled':
+          if ((o.status !== 'Cancelled' && o.status !== 'Rejected') || o.isClosed) return false;
+          break;
+        case 'Refunded': {
+          const isRef =
+            o.status === 'Refunded' ||
+            o.refundDetails?.refundStatus === 'processed' ||
+            (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund');
+          if (!isRef) return false;
+          break;
+        }
+        case 'Customer Issue':
+          if (!o.deliveryIssue?.reported) return false;
+          break;
+        case 'Closed':
+          if (!o.isClosed) return false;
+          break;
+      }
 
-      // Filter by bucketViewMode ('active' vs 'closed')
-      if (bucketViewMode === 'closed' && !o.isClosed) return false;
-      if (bucketViewMode === 'active' && o.isClosed) return false;
-
-      const matchStatus =
-        selectedStatusFilter === 'all'
-          ? true
-          : selectedStatusFilter === 'Refunded'
-          ? o.refundDetails?.refundStatus === 'processed' ||
-            (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund')
-          : o.status === selectedStatusFilter;
-
+      // 2. Search query within bucket (Order #, Customer, Phone, UTR, Courier, SKU)
       const q = bucketSearchQuery.toLowerCase().trim();
-      const matchQuery =
-        !q ||
+      if (!q) return true;
+
+      const cleanNum = q.replace(/^[#\s]+/, '').trim();
+      const searchDigits = q.replace(/\D/g, '');
+      const oNum = o.orderNumber.toLowerCase().replace(/^[#\s]+/, '').trim();
+
+      const matchNum =
+        oNum === cleanNum ||
+        oNum.includes(cleanNum) ||
         o.orderNumber.toLowerCase().includes(q) ||
-        o.customer.name.toLowerCase().includes(q) ||
-        o.customer.phone.includes(q) ||
-        (o.refundDetails?.refundUtr && o.refundDetails.refundUtr.toLowerCase().includes(q)) ||
-        (o.refundDetails?.refundUpiId && o.refundDetails.refundUpiId.toLowerCase().includes(q)) ||
-        o.items.some((it) => it.product.title.toLowerCase().includes(q) || it.product.productCode.toLowerCase().includes(q));
-      return matchStatus && matchQuery;
+        (`#${o.orderNumber.toLowerCase()}`).includes(q);
+
+      const matchCustomer = o.customer.name.toLowerCase().includes(q);
+      const phoneDigits = o.customer.phone.replace(/\D/g, '');
+      const matchPhone =
+        o.customer.phone.toLowerCase().includes(q) ||
+        (searchDigits.length >= 3 && phoneDigits.includes(searchDigits));
+
+      const matchUtr = Boolean(
+        (o.upiTransactionId && o.upiTransactionId.toLowerCase().includes(cleanNum)) ||
+        (o.refundDetails?.refundUtr && o.refundDetails.refundUtr.toLowerCase().includes(cleanNum)) ||
+        (o.refundDetails?.refundUpiId && o.refundDetails.refundUpiId.toLowerCase().includes(q))
+      );
+
+      const matchCourier = Boolean(
+        o.shippingDetails?.trackingNumber &&
+        o.shippingDetails.trackingNumber.toLowerCase().includes(cleanNum)
+      );
+
+      const matchItems = o.items.some(
+        (it) =>
+          it.product.title.toLowerCase().includes(q) ||
+          (it.product.productCode && it.product.productCode.toLowerCase().includes(cleanNum))
+      );
+
+      return matchNum || matchCustomer || matchPhone || matchUtr || matchCourier || matchItems;
     });
-  }, [bucketOrders, bucketViewMode, selectedStatusFilter, bucketSearchQuery, showOnlyDisputes]);
+  }, [bucketOrders, activeStageFilter, bucketSearchQuery]);
 
   // Requirement 7: Global Cross-Bucket Search across all orders
   const globalSearchResults = useMemo(() => {
@@ -231,22 +285,37 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
     });
   }, [orders, globalOrderSearch]);
 
-  // Metrics for active bucket
+  // Metrics for active bucket (Strictly matches the 9 stage cards layout)
   const bucketMetrics = useMemo(() => {
     const total = bucketOrders.length;
-    const pending = bucketOrders.filter((o) => o.status === 'Pending').length;
-    const confirmed = bucketOrders.filter((o) => o.status === 'Confirmed').length;
-    const shipped = bucketOrders.filter((o) => o.status === 'Shipped').length;
-    const delivered = bucketOrders.filter((o) => o.status === 'Delivered').length;
-    const customerIssues = bucketOrders.filter((o) => o.deliveryIssue?.reported).length;
+    const pending = bucketOrders.filter((o) => o.status === 'Pending' && !o.isClosed).length;
+    const confirmed = bucketOrders.filter((o) => o.status === 'Confirmed' && !o.isClosed).length;
+    const shipped = bucketOrders.filter((o) => o.status === 'Shipped' && !o.isClosed).length;
+    const delivered = bucketOrders.filter((o) => o.status === 'Delivered' && !o.isClosed).length;
+    const cancelled = bucketOrders.filter(
+      (o) => (o.status === 'Cancelled' || o.status === 'Rejected') && !o.isClosed
+    ).length;
     const refunded = bucketOrders.filter(
       (o) =>
+        o.status === 'Refunded' ||
         o.refundDetails?.refundStatus === 'processed' ||
         (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund')
     ).length;
-    const closed = bucketOrders.filter((o) => o.isClosed).length;
+    const customerIssues = bucketOrders.filter((o) => Boolean(o.deliveryIssue?.reported)).length;
+    const closed = bucketOrders.filter((o) => Boolean(o.isClosed)).length;
     const totalValue = bucketOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-    return { total, pending, confirmed, shipped, delivered, customerIssues, refunded, closed, totalValue };
+    return {
+      total,
+      pending,
+      confirmed,
+      shipped,
+      delivered,
+      cancelled,
+      refunded,
+      customerIssues,
+      closed,
+      totalValue,
+    };
   }, [bucketOrders]);
 
   // Staff Performance Breakdown for Whole Store Analytics & Appreciation (User Request)
@@ -864,40 +933,36 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         />
       )}
 
-      {/* Metrics Row for Selected Bucket: 7 Interactive Clickable Metric Cards (User Request 1 & 8) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+      {/* Interactive Metric Filter Cards: 9 strictly ordered stages */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-2.5 sm:gap-3">
         {/* 1. Total in Bucket */}
         <button
           type="button"
-          onClick={() => {
-            setSelectedStatusFilter('all');
-            setBucketViewMode('active');
-            setShowOnlyDisputes(false);
-          }}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatusFilter === 'all' && !showOnlyDisputes
+          onClick={() => setActiveStageFilter('total')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'total'
               ? 'bg-neutral-900 text-white border-neutral-900 ring-2 ring-neutral-900 shadow-sm'
               : 'bg-white hover:bg-neutral-50/80 border-neutral-200/90 text-neutral-900 hover:border-neutral-300'
           }`}
-          title="Click to view all active orders in this bucket"
+          title="Click to view all orders in this bucket"
         >
           <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatusFilter === 'all' && !showOnlyDisputes ? 'text-neutral-400' : 'text-neutral-500'
+            className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+              activeStageFilter === 'total' ? 'text-neutral-400' : 'text-neutral-500'
             }`}
           >
             Total in Bucket
           </span>
           <p
             className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatusFilter === 'all' && !showOnlyDisputes ? 'text-amber-300' : 'text-neutral-950'
+              activeStageFilter === 'total' ? 'text-amber-300' : 'text-neutral-950'
             }`}
           >
             {bucketMetrics.total}
           </p>
           <span
-            className={`text-[11px] font-semibold ${
-              selectedStatusFilter === 'all' && !showOnlyDisputes ? 'text-neutral-300' : 'text-neutral-500'
+            className={`text-[10px] sm:text-[11px] font-semibold truncate ${
+              activeStageFilter === 'total' ? 'text-neutral-300' : 'text-neutral-500'
             }`}
           >
             {formatPrice(bucketMetrics.totalValue)}
@@ -907,35 +972,31 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         {/* 2. Pending */}
         <button
           type="button"
-          onClick={() => {
-            setSelectedStatusFilter('Pending');
-            setBucketViewMode('active');
-            setShowOnlyDisputes(false);
-          }}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatusFilter === 'Pending' && !showOnlyDisputes
+          onClick={() => setActiveStageFilter('Pending')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'Pending'
               ? 'bg-amber-500 text-neutral-950 border-amber-500 ring-2 ring-amber-400 font-bold shadow-sm'
               : 'bg-white hover:bg-amber-50/40 border-amber-200 bg-amber-50/20 text-neutral-900 hover:border-amber-300'
           }`}
           title="Click to filter Pending orders"
         >
           <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatusFilter === 'Pending' && !showOnlyDisputes ? 'text-neutral-950 font-extrabold' : 'text-amber-800'
+            className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+              activeStageFilter === 'Pending' ? 'text-neutral-950 font-extrabold' : 'text-amber-800'
             }`}
           >
             Pending
           </span>
           <p
             className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatusFilter === 'Pending' && !showOnlyDisputes ? 'text-neutral-950' : 'text-amber-700'
+              activeStageFilter === 'Pending' ? 'text-neutral-950' : 'text-amber-700'
             }`}
           >
             {bucketMetrics.pending}
           </p>
           <span
-            className={`text-[10px] ${
-              selectedStatusFilter === 'Pending' && !showOnlyDisputes ? 'text-neutral-900 font-medium' : 'text-neutral-500'
+            className={`text-[10px] truncate ${
+              activeStageFilter === 'Pending' ? 'text-neutral-900 font-medium' : 'text-neutral-500'
             }`}
           >
             Intake / verify
@@ -945,35 +1006,31 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         {/* 3. Confirmed */}
         <button
           type="button"
-          onClick={() => {
-            setSelectedStatusFilter('Confirmed');
-            setBucketViewMode('active');
-            setShowOnlyDisputes(false);
-          }}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatusFilter === 'Confirmed' && !showOnlyDisputes
+          onClick={() => setActiveStageFilter('Confirmed')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'Confirmed'
               ? 'bg-purple-700 text-white border-purple-700 ring-2 ring-purple-500 font-bold shadow-sm'
               : 'bg-white hover:bg-purple-50/40 border-purple-200 bg-purple-50/20 text-neutral-900 hover:border-purple-300'
           }`}
           title="Click to filter Confirmed orders"
         >
           <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatusFilter === 'Confirmed' && !showOnlyDisputes ? 'text-purple-200' : 'text-purple-800'
+            className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+              activeStageFilter === 'Confirmed' ? 'text-purple-200' : 'text-purple-800'
             }`}
           >
             Confirmed
           </span>
           <p
             className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatusFilter === 'Confirmed' && !showOnlyDisputes ? 'text-white' : 'text-purple-700'
+              activeStageFilter === 'Confirmed' ? 'text-white' : 'text-purple-700'
             }`}
           >
             {bucketMetrics.confirmed}
           </p>
           <span
-            className={`text-[10px] ${
-              selectedStatusFilter === 'Confirmed' && !showOnlyDisputes ? 'text-purple-200' : 'text-neutral-500'
+            className={`text-[10px] truncate ${
+              activeStageFilter === 'Confirmed' ? 'text-purple-200' : 'text-neutral-500'
             }`}
           >
             Loom reserving
@@ -983,229 +1040,257 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         {/* 4. Shipped */}
         <button
           type="button"
-          onClick={() => {
-            setSelectedStatusFilter('Shipped');
-            setBucketViewMode('active');
-            setShowOnlyDisputes(false);
-          }}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatusFilter === 'Shipped' && !showOnlyDisputes
+          onClick={() => setActiveStageFilter('Shipped')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'Shipped'
               ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-400 font-bold shadow-sm'
               : 'bg-white hover:bg-blue-50/40 border-blue-200 bg-blue-50/20 text-neutral-900 hover:border-blue-300'
           }`}
           title="Click to filter Shipped orders"
         >
           <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatusFilter === 'Shipped' && !showOnlyDisputes ? 'text-blue-200' : 'text-blue-800'
+            className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+              activeStageFilter === 'Shipped' ? 'text-blue-200' : 'text-blue-800'
             }`}
           >
             Shipped
           </span>
           <p
             className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatusFilter === 'Shipped' && !showOnlyDisputes ? 'text-white' : 'text-blue-700'
+              activeStageFilter === 'Shipped' ? 'text-white' : 'text-blue-700'
             }`}
           >
             {bucketMetrics.shipped}
           </p>
           <span
-            className={`text-[10px] ${
-              selectedStatusFilter === 'Shipped' && !showOnlyDisputes ? 'text-blue-200' : 'text-neutral-500'
+            className={`text-[10px] truncate ${
+              activeStageFilter === 'Shipped' ? 'text-blue-200' : 'text-neutral-500'
             }`}
           >
-            In courier transit
+            In transit
           </span>
         </button>
 
         {/* 5. Delivered */}
         <button
           type="button"
-          onClick={() => {
-            setSelectedStatusFilter('Delivered');
-            setBucketViewMode('all');
-            setShowOnlyDisputes(false);
-          }}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatusFilter === 'Delivered' && !showOnlyDisputes
+          onClick={() => setActiveStageFilter('Delivered')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'Delivered'
               ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-400 font-bold shadow-sm'
               : 'bg-white hover:bg-emerald-50/40 border-emerald-200 bg-emerald-50/20 text-neutral-900 hover:border-emerald-300'
           }`}
           title="Click to filter Delivered orders"
         >
           <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              selectedStatusFilter === 'Delivered' && !showOnlyDisputes ? 'text-emerald-200' : 'text-emerald-800'
+            className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+              activeStageFilter === 'Delivered' ? 'text-emerald-200' : 'text-emerald-800'
             }`}
           >
             Delivered
           </span>
           <p
             className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatusFilter === 'Delivered' && !showOnlyDisputes ? 'text-white' : 'text-emerald-700'
+              activeStageFilter === 'Delivered' ? 'text-white' : 'text-emerald-700'
             }`}
           >
             {bucketMetrics.delivered}
           </p>
           <span
-            className={`text-[10px] ${
-              selectedStatusFilter === 'Delivered' && !showOnlyDisputes ? 'text-emerald-200' : 'text-neutral-500'
+            className={`text-[10px] truncate ${
+              activeStageFilter === 'Delivered' ? 'text-emerald-200' : 'text-neutral-500'
             }`}
           >
-            Closed deal ✓
+            Delivered to client
           </span>
         </button>
 
-        {/* 6. Customers Issue */}
+        {/* 6. Cancelled */}
         <button
           type="button"
-          onClick={() => {
-            if (onNavigateToTab) {
-              onNavigateToTab('customers_issue');
-            } else {
-              setShowOnlyDisputes(true);
-              setSelectedStatusFilter('all');
-            }
-          }}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            showOnlyDisputes
-              ? 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-400 font-bold shadow-sm'
+          onClick={() => setActiveStageFilter('Cancelled')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'Cancelled'
+              ? 'bg-rose-700 text-white border-rose-700 ring-2 ring-rose-500 font-bold shadow-sm'
               : 'bg-white hover:bg-rose-50/40 border-rose-200 bg-rose-50/20 text-neutral-900 hover:border-rose-300'
           }`}
-          title="Click to view Customers Issue & delivery disputes"
+          title="Click to filter Cancelled & Rejected orders"
         >
-          <div className="flex items-center justify-between">
-            <span
-              className={`text-[10px] font-bold uppercase tracking-wider block ${
-                showOnlyDisputes ? 'text-rose-200' : 'text-rose-800'
-              }`}
-            >
-              Customers Issue
-            </span>
-            {bucketMetrics.customerIssues > 0 && (
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-            )}
-          </div>
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+              activeStageFilter === 'Cancelled' ? 'text-rose-200' : 'text-rose-800'
+            }`}
+          >
+            Cancelled
+          </span>
           <p
             className={`font-serif text-2xl font-bold mt-0.5 ${
-              showOnlyDisputes ? 'text-white' : 'text-rose-700'
+              activeStageFilter === 'Cancelled' ? 'text-white' : 'text-rose-700'
             }`}
           >
-            {bucketMetrics.customerIssues}
+            {bucketMetrics.cancelled}
           </p>
           <span
-            className={`text-[10px] ${
-              showOnlyDisputes ? 'text-rose-200' : 'text-neutral-500'
+            className={`text-[10px] truncate ${
+              activeStageFilter === 'Cancelled' ? 'text-rose-200' : 'text-neutral-500'
             }`}
           >
-            {bucketMetrics.customerIssues === 0 ? 'Zero disputes' : `${bucketMetrics.customerIssues} non-delivery`}
+            Cancelled / rejected
           </span>
         </button>
 
-        {/* 7. Refunded Orders (Separate Clickable Box - User Request 1) */}
+        {/* 7. Refunded */}
         <button
           type="button"
-          onClick={() => {
-            setSelectedStatusFilter('Refunded');
-            setBucketViewMode('all');
-            setShowOnlyDisputes(false);
-          }}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group ${
-            selectedStatusFilter === 'Refunded' && !showOnlyDisputes
+          onClick={() => setActiveStageFilter('Refunded')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'Refunded'
               ? 'bg-amber-600 text-white border-amber-600 ring-2 ring-amber-400 font-bold shadow-sm'
               : 'bg-white hover:bg-amber-50/40 border-amber-200 bg-amber-50/20 text-neutral-900 hover:border-amber-300'
           }`}
-          title="Click to filter Refunded orders in this bucket"
+          title="Click to filter Refunded orders"
         >
           <div className="flex items-center justify-between">
             <span
-              className={`text-[10px] font-bold uppercase tracking-wider block ${
-                selectedStatusFilter === 'Refunded' && !showOnlyDisputes ? 'text-amber-200' : 'text-amber-800'
+              className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+                activeStageFilter === 'Refunded' ? 'text-amber-200' : 'text-amber-800'
               }`}
             >
               Refunded
             </span>
             {bucketMetrics.refunded > 0 && (
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
             )}
           </div>
           <p
             className={`font-serif text-2xl font-bold mt-0.5 ${
-              selectedStatusFilter === 'Refunded' && !showOnlyDisputes ? 'text-white' : 'text-amber-700'
+              activeStageFilter === 'Refunded' ? 'text-white' : 'text-amber-700'
             }`}
           >
             {bucketMetrics.refunded}
           </p>
           <span
-            className={`text-[10px] ${
-              selectedStatusFilter === 'Refunded' && !showOnlyDisputes ? 'text-amber-200' : 'text-neutral-500'
+            className={`text-[10px] truncate ${
+              activeStageFilter === 'Refunded' ? 'text-amber-200' : 'text-neutral-500'
             }`}
           >
             Refund settlements
           </span>
         </button>
+
+        {/* 8. Customer Issue */}
+        <button
+          type="button"
+          onClick={() => setActiveStageFilter('Customer Issue')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'Customer Issue'
+              ? 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-400 font-bold shadow-sm'
+              : 'bg-white hover:bg-rose-50/40 border-rose-200 bg-rose-50/20 text-neutral-900 hover:border-rose-300'
+          }`}
+          title="Click to filter Customer Issues & reported disputes"
+        >
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+                activeStageFilter === 'Customer Issue' ? 'text-rose-200' : 'text-rose-800'
+              }`}
+            >
+              Customer Issue
+            </span>
+            {bucketMetrics.customerIssues > 0 && (
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
+            )}
+          </div>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              activeStageFilter === 'Customer Issue' ? 'text-white' : 'text-rose-700'
+            }`}
+          >
+            {bucketMetrics.customerIssues}
+          </p>
+          <span
+            className={`text-[10px] truncate ${
+              activeStageFilter === 'Customer Issue' ? 'text-rose-200' : 'text-neutral-500'
+            }`}
+          >
+            {bucketMetrics.customerIssues === 0 ? 'Zero disputes' : `${bucketMetrics.customerIssues} reported`}
+          </span>
+        </button>
+
+        {/* 9. Closed */}
+        <button
+          type="button"
+          onClick={() => setActiveStageFilter('Closed')}
+          className={`p-3 sm:p-3.5 rounded-2xl border text-left transition cursor-pointer shadow-2xs group flex flex-col justify-between ${
+            activeStageFilter === 'Closed'
+              ? 'bg-emerald-800 text-white border-emerald-800 ring-2 ring-emerald-600 font-bold shadow-sm'
+              : 'bg-white hover:bg-neutral-50 border-neutral-200/90 text-neutral-900 hover:border-neutral-300'
+          }`}
+          title="Click to filter Closed orders"
+        >
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+              activeStageFilter === 'Closed' ? 'text-emerald-200' : 'text-neutral-600'
+            }`}
+          >
+            Closed
+          </span>
+          <p
+            className={`font-serif text-2xl font-bold mt-0.5 ${
+              activeStageFilter === 'Closed' ? 'text-white' : 'text-emerald-700'
+            }`}
+          >
+            {bucketMetrics.closed}
+          </p>
+          <span
+            className={`text-[10px] truncate ${
+              activeStageFilter === 'Closed' ? 'text-emerald-200' : 'text-neutral-500'
+            }`}
+          >
+            Archived / settled
+          </span>
+        </button>
       </div>
 
-      {/* Filter and Search Bar for Bucket */}
-      <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {/* Active vs Closed Queue Toggles & Status Pills */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Active vs Closed toggle (User Request 5 & Clarification Answer) */}
-          <div className="flex items-center p-1 bg-neutral-100 rounded-xl border border-neutral-200/80">
+      {/* Streamlined Search and Active Filter Indicator Bar (Old pill filters completely removed) */}
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-neutral-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Active Stage Filter Status & Quick Reset */}
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-neutral-500 font-medium">Filtered by:</span>
+          <span className="font-bold text-neutral-900 bg-neutral-100 px-2.5 py-1 rounded-lg border border-neutral-200 flex items-center gap-1.5">
+            <span>{activeStageFilter === 'total' ? 'Total in Bucket' : activeStageFilter}</span>
+            <span className="text-neutral-500 font-normal">({filteredBucketOrders.length} {filteredBucketOrders.length === 1 ? 'order' : 'orders'})</span>
+          </span>
+          {activeStageFilter !== 'total' && (
             <button
               type="button"
-              onClick={() => setBucketViewMode('active')}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                bucketViewMode === 'active'
-                  ? 'bg-neutral-900 text-white shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
+              onClick={() => setActiveStageFilter('total')}
+              className="text-amber-800 hover:text-amber-950 font-semibold underline text-xs cursor-pointer ml-1"
             >
-              Active Queue ({activeOrdersCount})
+              Show All in Bucket
             </button>
-            <button
-              type="button"
-              onClick={() => setBucketViewMode('closed')}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                bucketViewMode === 'closed'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              <CheckCircle className="w-3.5 h-3.5" />
-              <span>Closed Orders ({closedOrdersCount})</span>
-            </button>
-          </div>
-
-          {/* Status Pills */}
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-            {(['all', 'Pending', 'Confirmed', 'Shipped', 'Delivered', 'Refunded', 'Cancelled'] as const).map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setSelectedStatusFilter(st)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                  selectedStatusFilter === st
-                    ? 'bg-neutral-950 text-white shadow-xs'
-                    : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-600'
-                }`}
-              >
-                {st === 'all' ? 'All Stages' : st}
-              </button>
-            ))}
-          </div>
+          )}
         </div>
 
-        {/* Search */}
-        <div className="relative w-full sm:w-72">
+        {/* Bucket Search Bar */}
+        <div className="relative w-full sm:w-80">
           <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={bucketSearchQuery}
             onChange={(e) => setBucketSearchQuery(e.target.value)}
-            placeholder="Search bucket orders..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-neutral-300 text-xs focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+            placeholder="Search this bucket (Order #, Customer, UTR, Courier)..."
+            className="w-full pl-8 pr-16 py-1.5 rounded-xl border border-neutral-300 text-xs focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
           />
+          {bucketSearchQuery && (
+            <button
+              type="button"
+              onClick={() => setBucketSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400 hover:text-neutral-700 bg-neutral-100 hover:bg-neutral-200 px-1.5 py-0.5 rounded cursor-pointer"
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
 

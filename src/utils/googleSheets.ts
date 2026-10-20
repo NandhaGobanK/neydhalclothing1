@@ -346,7 +346,15 @@ export interface AnalyticsSyncInput {
     stockCount: number;
     stockStatus: string;
   }>;
-  fabricBreakdown: Array<[string, { units: number; revenue: number }]>;
+  categoryBreakdown?: Array<{
+    categoryName: string;
+    unitsSold: number;
+    revenue: number;
+    orderCount: number;
+    rank: number;
+    revenueSharePct: number;
+  }>;
+  fabricBreakdown?: Array<[string, { units: number; revenue: number }]>;
   staffAttribution: Array<{
     name: string;
     username: string;
@@ -411,14 +419,35 @@ export async function syncAnalyticsToGoogleSheet(
   ]);
   const productValues = [productHeader, ...productRows];
 
-  // Tab 3: Fabric Breakdown
-  const fabricHeader = ['Fabric Weave Category', 'Total Sarees Sold (Units)', 'Gross Revenue (₹)'];
-  const fabricRows = data.fabricBreakdown.map(([fab, metrics]) => [
-    fab,
-    metrics.units,
-    metrics.revenue,
-  ]);
-  const fabricValues = [fabricHeader, ...fabricRows];
+  // Tab 3: Category-Based Sales & Performance Ranking
+  let tab3Values: any[][];
+  if (data.categoryBreakdown && data.categoryBreakdown.length > 0) {
+    const categoryHeader = [
+      'Rank',
+      'Store Category',
+      'Units Sold (Pieces)',
+      'Gross Revenue (₹)',
+      'Orders Count',
+      'Revenue Share (%)',
+    ];
+    const categoryRows = data.categoryBreakdown.map((cat) => [
+      `#${cat.rank}`,
+      cat.categoryName,
+      cat.unitsSold,
+      cat.revenue,
+      cat.orderCount,
+      `${cat.revenueSharePct}%`,
+    ]);
+    tab3Values = [categoryHeader, ...categoryRows];
+  } else {
+    const fabricHeader = ['Fabric Weave Category', 'Total Sarees Sold (Units)', 'Gross Revenue (₹)'];
+    const fabricRows = (data.fabricBreakdown || []).map(([fab, metrics]) => [
+      fab,
+      metrics.units,
+      metrics.revenue,
+    ]);
+    tab3Values = [fabricHeader, ...fabricRows];
+  }
 
   // Tab 4: Staff Attribution
   const staffHeader = ['Staff Member Name', 'Username', 'Orders Handled', 'Total Order Value (₹)'];
@@ -454,7 +483,7 @@ export async function syncAnalyticsToGoogleSheet(
   const batchData = [
     { range: "'Overview & KPIs'!A1", values: kpiValues },
     { range: "'Product Sales Tracker'!A1", values: productValues },
-    { range: "'Fabric Breakdown'!A1", values: fabricValues },
+    { range: "'Fabric Breakdown'!A1", values: tab3Values },
     { range: "'Staff Attribution'!A1", values: staffValues },
   ];
 

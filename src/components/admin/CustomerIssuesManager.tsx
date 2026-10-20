@@ -25,6 +25,9 @@ import {
   Layers,
   Sparkles,
   X,
+  Eye,
+  ShoppingBag,
+  Package,
 } from 'lucide-react';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 
@@ -57,6 +60,15 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'unassigned' | 'mine' | 'other'>('all');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [chatModalOrder, setChatModalOrder] = useState<Order | null>(null);
+
+  // Clickable Disputed Order Inspection & Resolution Panel Modal State
+  const [selectedDisputeDetailOrder, setSelectedDisputeDetailOrder] = useState<Order | null>(null);
+  const [modalQuickComment, setModalQuickComment] = useState('');
+  const [modalQuickResolutionNotes, setModalQuickResolutionNotes] = useState('');
+  const [isModalResolvingOpen, setIsModalResolvingOpen] = useState(false);
+  const [isModalReassigningOpen, setIsModalReassigningOpen] = useState(false);
+  const [modalTargetStaffId, setModalTargetStaffId] = useState('admin');
+  const [modalReassignNote, setModalReassignNote] = useState('');
 
   // Dynamic Routing alert banner state
   const [routingToast, setRoutingToast] = useState<{
@@ -303,6 +315,37 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
         </div>
       </div>
 
+      {/* Customer Issue Alert Banner (Strictly displayed on Customer Issue page) */}
+      {openCount > 0 && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-700 text-white shadow-md border border-rose-500 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-white text-rose-700 shrink-0 shadow-xs">
+              <ShieldAlert className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
+                <span>⚠️ Customer Issue Alert: {openCount} Open {openCount === 1 ? 'Dispute' : 'Disputes'} Pending Action</span>
+              </h4>
+              <p className="text-xs text-rose-100 font-medium mt-0.5">
+                Customers have reported non-delivery or refund issues. Please review, claim, assign, or add investigation notes.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setFilterStatus('open');
+                setOwnershipFilter('all');
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-white text-rose-950 text-xs font-bold hover:bg-neutral-100 transition shadow-xs cursor-pointer"
+            >
+              Filter Open Issues ({openCount})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Routing Success Alert Banner */}
       {routingToast && (
         <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500 via-emerald-600 to-emerald-700 text-white text-xs font-medium shadow-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
@@ -497,12 +540,26 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
             return (
               <div
                 key={order.id}
-                className={`bg-white rounded-3xl border p-5 sm:p-6 shadow-xs hover:border-neutral-300 transition space-y-4 ${
+                onClick={() => setSelectedDisputeDetailOrder(order)}
+                className={`bg-white rounded-3xl border p-5 sm:p-6 shadow-xs hover:border-amber-400 hover:shadow-md transition space-y-4 cursor-pointer group/dispute ${
                   isUnassigned
                     ? 'border-rose-300 ring-1 ring-rose-200/60'
                     : 'border-neutral-200'
                 }`}
+                title="Click anywhere to inspect complete order details, investigation log & resolution panel"
               >
+                {/* Clickable Quick Hint Banner */}
+                <div className="flex items-center justify-between text-[11px] text-neutral-400 group-hover/dispute:text-amber-800 transition pb-0.5">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Eye className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Click order card anywhere to view complete details, investigation log & resolution panel</span>
+                  </span>
+                  <span className="font-bold text-amber-700 group-hover/dispute:translate-x-0.5 transition-transform flex items-center gap-1">
+                    <span>Inspect Order</span>
+                    <span>&rarr;</span>
+                  </span>
+                </div>
+
                 {/* Dispute Header Row with Assignment Pill */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-3">
                   <div className="flex items-center gap-2.5 flex-wrap">
@@ -571,6 +628,17 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     >
                       {order.isClosed ? 'Closed Order' : 'Active Handling'}
                     </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDisputeDetailOrder(order);
+                      }}
+                      className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition shadow-2xs flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-neutral-950" />
+                      <span>Inspect Details & Resolution</span>
+                    </button>
                   </div>
                 </div>
 
@@ -958,7 +1026,10 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     {!isAssignedToMe && (
                       <button
                         type="button"
-                        onClick={() => handleAssignToMe(order)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAssignToMe(order);
+                        }}
                         className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
                         title="Take ownership of this delivery dispute and route to your personal bucket"
                       >
@@ -970,7 +1041,8 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     {/* Reassign Button */}
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setReassigningOrder(order);
                         setTargetStaffId(order.assignedStaffId || 'admin');
                         setReassignmentNote('');
@@ -986,7 +1058,10 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     {order.isClosed ? (
                       <button
                         type="button"
-                        onClick={() => setReopeningOrder(order)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReopeningOrder(order);
+                        }}
                         className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
                         title="Reopen order to active queue so staff can investigate with courier"
                       >
@@ -996,7 +1071,10 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setInvestigatingOrder(order)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setInvestigatingOrder(order);
+                        }}
                         className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
                         title="Add investigation progress comment without re-prompting for reopen explanation"
                       >
@@ -1009,7 +1087,8 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     {issueStatus !== 'resolved' && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setResolvingOrder(order);
                           setResolutionNotes('');
                         }}
@@ -1025,7 +1104,8 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     {!order.isClosed && (
                       <button
                         type="button"
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           await closeOrder(order.id, currentUserName);
                         }}
                         className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
@@ -1041,7 +1121,10 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     {/* Live Customer Chat Stream (User Request 3) */}
                     <button
                       type="button"
-                      onClick={() => setChatModalOrder(order)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setChatModalOrder(order);
+                      }}
                       className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
                       title="Chat in real-time with customer regarding this dispute"
                     >
@@ -1058,7 +1141,8 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                     {/* Customer WhatsApp Coordination (User Request 1: Chat directly with users regarding refund updates) */}
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         const cleanPhone = order.customer.phone.replace(/[^0-9]/g, '');
                         const isRefund = isRefundCase(order);
                         const text = isRefund
@@ -1385,6 +1469,582 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODAL 0: Complete Disputed Order Details, Investigation Log & Resolution Panel (Requirement: Clickable Orders on Customer Issue Page) */}
+      {selectedDisputeDetailOrder && (() => {
+        const currentOrder =
+          orders.find((o) => o.id === selectedDisputeDetailOrder.id) || selectedDisputeDetailOrder;
+        const courier = getCourierDetails(currentOrder.shippingDetails?.courierName);
+        const issueStatus = currentOrder.deliveryIssue?.status || (currentOrder.isClosed ? 'resolved' : 'open');
+        const commentsList = currentOrder.deliveryIssue?.investigationComments || [];
+        const isAssignedToMe = currentOrder.assignedStaffId === currentUserId;
+        const isUnassigned = !currentOrder.assignedStaffId || currentOrder.assignedStaffId === 'unassigned';
+        const isRefund = isRefundCase(currentOrder);
+
+        const handleModalAddComment = async (e: React.FormEvent) => {
+          e.preventDefault();
+          if (!modalQuickComment.trim()) return;
+          await addInvestigationComment(
+            currentOrder.id,
+            modalQuickComment.trim(),
+            currentUserName,
+            'investigating'
+          );
+          setModalQuickComment('');
+        };
+
+        const handleModalResolve = async (e: React.FormEvent) => {
+          e.preventDefault();
+          await resolveDeliveryIssue(
+            currentOrder.id,
+            modalQuickResolutionNotes.trim() || 'Dispute resolved with customer and courier partner.',
+            'resolve'
+          );
+          setModalQuickResolutionNotes('');
+          setIsModalResolvingOpen(false);
+        };
+
+        const handleModalReassign = (e: React.FormEvent) => {
+          e.preventDefault();
+          const chosenStaff =
+            modalTargetStaffId === 'admin'
+              ? { id: 'admin', name: 'Store Owner' }
+              : staffMembers.find((s) => s.id === modalTargetStaffId) || {
+                  id: modalTargetStaffId,
+                  name: 'Staff Concierge',
+                };
+          const reason =
+            modalReassignNote.trim() ||
+            `Reassigned dispute investigation to ${chosenStaff.name}`;
+          assignOrderStaff(currentOrder.id, chosenStaff.id, chosenStaff.name, reason);
+          setIsModalReassigningOpen(false);
+          setModalReassignNote('');
+        };
+
+        return (
+          <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+            <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto flex flex-col max-h-[92vh]">
+              {/* Modal Header */}
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-neutral-950 via-neutral-900 to-rose-950 text-white flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    <AlertCircle className="w-5 h-5 text-rose-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-serif text-base sm:text-lg font-bold text-white">
+                        Disputed Order #{currentOrder.orderNumber}
+                      </h3>
+                      <span className="font-mono text-xs font-bold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-2 py-0.5 rounded">
+                        {isRefund ? 'Refund Case' : 'Delivery Dispute'}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                          issueStatus === 'open'
+                            ? 'bg-rose-500 text-white'
+                            : issueStatus === 'investigating'
+                            ? 'bg-amber-500 text-neutral-950'
+                            : 'bg-emerald-500 text-white'
+                        }`}
+                      >
+                        Status: {issueStatus}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-neutral-400 mt-0.5">
+                      Customer: {currentOrder.customer.name} ({currentOrder.customer.phone}) · Placed: {new Date(currentOrder.createdAt).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDisputeDetailOrder(null)}
+                  className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body - 3 Core Sections */}
+              <div className="p-5 sm:p-6 space-y-6 overflow-y-auto text-xs text-neutral-700 flex-1">
+                {/* 1. Handling Bucket & Quick Status Bar */}
+                <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-neutral-600">Handling Bucket:</span>
+                    <span
+                      className={`font-bold px-2.5 py-1 rounded-lg border text-xs flex items-center gap-1.5 ${
+                        isUnassigned
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : isAssignedToMe
+                          ? 'bg-blue-100 text-blue-900 border-blue-300'
+                          : 'bg-white text-neutral-900 border-neutral-200'
+                      }`}
+                    >
+                      <User className="w-3.5 h-3.5" />
+                      <span>
+                        {isUnassigned
+                          ? 'Unassigned Dispute (Needs Owner)'
+                          : isAssignedToMe
+                          ? `Assigned to You (${currentUserName})`
+                          : `Owner: ${currentOrder.assignedStaffName || 'Staff Specialist'}`}
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-neutral-500 font-medium">Order Status:</span>
+                    <span className="font-bold text-neutral-900 bg-white px-2.5 py-1 rounded-lg border border-neutral-200">
+                      {currentOrder.status}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        currentOrder.isClosed
+                          ? 'bg-neutral-200 text-neutral-700'
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      }`}
+                    >
+                      {currentOrder.isClosed ? 'Closed' : 'Active'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 2. Customer Dispute Statement Callout */}
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-950 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-rose-900">
+                    <AlertCircle className="w-4 h-4 text-rose-600" />
+                    <span>Customer Grievance / Non-Delivery Statement</span>
+                  </div>
+                  <p className="text-xs font-medium text-rose-950 leading-relaxed bg-white/80 p-3 rounded-xl border border-rose-200/60 font-sans">
+                    "{currentOrder.deliveryIssue?.issueDescription ||
+                      currentOrder.cancellationReason ||
+                      'Customer dispute logged for boutique concierge investigation.'}"
+                  </p>
+                  {currentOrder.deliveryIssue?.resolutionNotes && (
+                    <div className="text-[11px] text-emerald-950 bg-emerald-50 p-2.5 rounded-xl border border-emerald-300">
+                      <strong>Recorded Resolution:</strong> {currentOrder.deliveryIssue.resolutionNotes}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Customer Profile & Delivery Address Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block">
+                      Customer Profile & Contact
+                    </span>
+                    <p className="font-bold text-neutral-900 text-sm">{currentOrder.customer.name}</p>
+                    <p className="flex items-center gap-1.5 font-mono text-neutral-800">
+                      <Phone className="w-3.5 h-3.5 text-neutral-400" />
+                      <a href={`tel:${currentOrder.customer.phone}`} className="hover:text-amber-800 font-semibold underline">
+                        {currentOrder.customer.phone}
+                      </a>
+                    </p>
+                    {currentOrder.customer.email && (
+                      <p className="flex items-center gap-1.5 text-neutral-600">
+                        <Mail className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>{currentOrder.customer.email}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block">
+                      Delivery Destination Address
+                    </span>
+                    <p className="flex items-start gap-1.5 text-neutral-800 leading-relaxed font-medium">
+                      <MapPin className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                      <span>
+                        {currentOrder.customer.address}, {currentOrder.customer.city},{' '}
+                        {currentOrder.customer.state} - {currentOrder.customer.pincode}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* 4. Ordered Items & Financials */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                      Ordered Sarees ({currentOrder.items.length})
+                    </span>
+                    <span className="text-xs font-bold text-neutral-900">
+                      Total Order Value: {formatPrice(currentOrder.totalAmount)}
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-neutral-100 rounded-2xl border border-neutral-200 overflow-hidden bg-white">
+                    {currentOrder.items.map((item, idx) => (
+                      <div key={idx} className="p-3.5 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={item.product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                            alt={item.product.title}
+                            className="w-12 h-14 rounded-xl object-cover border border-neutral-200 shrink-0 bg-neutral-100"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-serif font-bold text-neutral-900 text-xs sm:text-sm truncate">
+                              {item.product.title}
+                            </p>
+                            <p className="text-[11px] text-neutral-500 font-mono mt-0.5">
+                              SKU: {item.product.productCode} · Qty: {item.quantity} · {item.product.fabric || 'Pure Silk'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="font-serif font-bold text-sm text-neutral-900">
+                            {formatPrice(item.product.price * item.quantity)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Financials & Payment UTR Box */}
+                  <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <span className="text-neutral-500 font-medium block">Subtotal:</span>
+                      <span className="font-semibold text-neutral-900">{formatPrice(currentOrder.subtotal)}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500 font-medium block">Shipping:</span>
+                      <span className="font-semibold text-neutral-900">
+                        {currentOrder.shippingFee === 0 ? 'FREE' : formatPrice(currentOrder.shippingFee)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500 font-medium block">Total Paid:</span>
+                      <span className="font-bold text-neutral-950 font-serif">{formatPrice(currentOrder.totalAmount)}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500 font-medium block">Prepaid UTR:</span>
+                      <span className="font-mono font-bold text-neutral-900 bg-white px-2 py-0.5 rounded border border-amber-200 truncate inline-block max-w-full">
+                        {currentOrder.upiTransactionId || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Courier Logistics or Refund Record */}
+                {courier && currentOrder.shippingDetails?.trackingNumber && (
+                  <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-2 text-xs text-blue-950">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-bold text-blue-950">
+                        <Truck className="w-4 h-4 text-blue-700" />
+                        <span>Dispatch & Courier Logistics · {courier.name}</span>
+                      </div>
+                      <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border border-blue-300 text-blue-900">
+                        Tracking: {currentOrder.shippingDetails.trackingNumber}
+                      </span>
+                    </div>
+                    <p className="text-blue-900">
+                      Branch Office: {courier.addressLine1}, {courier.city} - {courier.pincode} · Phone: {courier.phone}
+                    </p>
+                    {courier.mapsUrl && (
+                      <a
+                        href={courier.mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-blue-700 hover:text-blue-950 font-bold underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>View {courier.name} Hub on Google Maps</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Refund Record if applicable */}
+                {currentOrder.refundDetails && (
+                  <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-300 text-xs text-amber-950 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                        <RotateCcw className="w-4 h-4 text-amber-700" />
+                        <span>Refund Transaction Record</span>
+                      </div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        currentOrder.refundDetails.refundStatus === 'processed'
+                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                          : 'bg-amber-200 text-amber-950'
+                      }`}>
+                        {currentOrder.refundDetails.refundStatus === 'processed' ? 'Refund Completed' : 'Pending Settlement'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white/90 p-3 rounded-xl border border-amber-200">
+                      <div>
+                        <span className="text-neutral-500 block text-[11px]">Refund UPI:</span>
+                        <span className="font-mono font-bold text-neutral-900">{currentOrder.refundDetails.refundUpiId || currentOrder.customer.phone}</span>
+                      </div>
+                      <div>
+                        <span className="text-neutral-500 block text-[11px]">Bank Refund UTR:</span>
+                        <span className="font-mono font-bold text-emerald-800">{currentOrder.refundDetails.refundUtr || 'Pending UTR'}</span>
+                      </div>
+                      <div>
+                        <span className="text-neutral-500 block text-[11px]">Processed At:</span>
+                        <span className="text-neutral-800 font-medium">{currentOrder.refundDetails.processedAt ? new Date(currentOrder.refundDetails.processedAt).toLocaleString('en-IN') : 'In Queue'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. Complete Investigation Log Thread */}
+                <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-amber-600" />
+                      <h4 className="font-bold text-xs text-neutral-900 uppercase tracking-wider">
+                        Investigation Updates & Log Thread ({commentsList.length})
+                      </h4>
+                    </div>
+                  </div>
+
+                  {commentsList.length === 0 ? (
+                    <p className="text-xs text-neutral-400 italic bg-white p-3 rounded-xl border border-neutral-200">
+                      No investigation notes logged yet. Log your findings or courier dispatch updates below.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                      {commentsList.map((comm) => (
+                        <div
+                          key={comm.id}
+                          className="p-3 rounded-xl bg-white border border-neutral-200 text-xs space-y-1 shadow-2xs"
+                        >
+                          <div className="flex items-center justify-between text-[11px] text-neutral-500">
+                            <span className="font-bold text-neutral-900 flex items-center gap-1">
+                              <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                              <span>{comm.author}</span>
+                            </span>
+                            <span>{new Date(comm.timestamp).toLocaleString('en-IN')}</span>
+                          </div>
+                          <p className="text-neutral-800 leading-relaxed font-medium">{comm.comment}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Inline Add Investigation Comment */}
+                  <form onSubmit={handleModalAddComment} className="pt-2 flex gap-2">
+                    <input
+                      type="text"
+                      value={modalQuickComment}
+                      onChange={(e) => setModalQuickComment(e.target.value)}
+                      placeholder="Add an investigation note, courier branch response, or update..."
+                      className="flex-1 p-2.5 rounded-xl border border-neutral-300 bg-white text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!modalQuickComment.trim()}
+                      className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-neutral-950 font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Log Note</span>
+                    </button>
+                  </form>
+                </div>
+
+                {/* 7. Dedicated Resolution Action Panel */}
+                <div className="p-5 rounded-2xl bg-neutral-900 text-white space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      <div>
+                        <h4 className="font-serif font-bold text-sm text-white">
+                          Dispute Resolution & Concierge Panel
+                        </h4>
+                        <p className="text-[11px] text-neutral-400">
+                          Resolve claims, reassign ownership, or coordinate directly with the patron
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* WhatsApp Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cleanPhone = currentOrder.customer.phone.replace(/[^0-9]/g, '');
+                          const text = isRefund
+                            ? `Namaste ${currentOrder.customer.name}! 🪔✨\n\nRegarding your refund inquiry for order #${currentOrder.orderNumber} (Amount: ${formatPrice(currentOrder.totalAmount)}).\n• Refund Status: *${currentOrder.refundDetails?.refundStatus === 'processed' ? 'Processed' : 'In Queue'}*${currentOrder.refundDetails?.refundUtr ? `\n• Bank Transaction UTR ID: *${currentOrder.refundDetails.refundUtr}*` : ''}\n\nOur concierge finance team has verified your case. Please let us know if you need any additional assistance.\n\nWarm regards,\n${settings.boutiqueName}`
+                            : `Namaste ${currentOrder.customer.name}! 🪔✨\n\nRegarding your delivery query for order #${currentOrder.orderNumber} (${currentOrder.shippingDetails?.courierName || 'Courier'}).\n\nOur concierge team is actively investigating with the local courier dispatch office to verify handover and ensure you receive your authentic handloom saree.\n\nWarm regards,\n${settings.boutiqueName}`;
+                          openWhatsApp(cleanPhone, text);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>WhatsApp Customer</span>
+                      </button>
+
+                      {/* Live Customer Chat */}
+                      <button
+                        type="button"
+                        onClick={() => setChatModalOrder(currentOrder)}
+                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>Live Chat</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Resolution Input / Reopen / Close Actions */}
+                  <div className="pt-2 border-t border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {issueStatus !== 'resolved' && (
+                        <button
+                          type="button"
+                          onClick={() => setIsModalResolvingOpen(!isModalResolvingOpen)}
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Mark Dispute Resolved...</span>
+                        </button>
+                      )}
+
+                      {currentOrder.isClosed ? (
+                        <button
+                          type="button"
+                          onClick={() => setReopeningOrder(currentOrder)}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reopen Disputed Order</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await closeOrder(currentOrder.id, currentUserName);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer border border-neutral-700"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Close Order</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setIsModalReassigningOpen(!isModalReassigningOpen)}
+                        className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold text-xs transition flex items-center gap-1.5 border border-neutral-700 cursor-pointer"
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>{currentOrder.assignedStaffId ? 'Reassign Case' : 'Assign Case'}</span>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const summary = `Dispute Order #${currentOrder.orderNumber} - ${currentOrder.customer.name} (${currentOrder.customer.phone}) - Amount: ${formatPrice(currentOrder.totalAmount)} - Status: ${issueStatus}`;
+                        copyToClipboard(summary, `modal-copy-${currentOrder.id}`);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer border border-neutral-700"
+                    >
+                      {copiedKey === `modal-copy-${currentOrder.id}` ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-neutral-400" />
+                          <span>Copy Case Summary</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Resolution Notes Expanded Form */}
+                  {isModalResolvingOpen && (
+                    <form onSubmit={handleModalResolve} className="p-3.5 bg-neutral-800 rounded-2xl border border-neutral-700 space-y-2.5 animate-in fade-in">
+                      <label className="block text-xs font-bold text-emerald-300">
+                        Official Resolution Notes & Courier Confirmation *
+                      </label>
+                      <textarea
+                        required
+                        rows={2}
+                        value={modalQuickResolutionNotes}
+                        onChange={(e) => setModalQuickResolutionNotes(e.target.value)}
+                        placeholder="e.g. Courier hub re-attempted delivery; package physically handed over and patron confirmed receipt."
+                        className="w-full p-2.5 rounded-xl bg-neutral-900 border border-neutral-600 text-white text-xs focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsModalResolvingOpen(false)}
+                          className="px-3 py-1.5 rounded-xl border border-neutral-600 text-neutral-300 text-xs hover:bg-neutral-700"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer"
+                        >
+                          Confirm Official Resolution
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Reassign Case Expanded Form */}
+                  {isModalReassigningOpen && (
+                    <form onSubmit={handleModalReassign} className="p-3.5 bg-neutral-800 rounded-2xl border border-neutral-700 space-y-2.5 animate-in fade-in">
+                      <label className="block text-xs font-bold text-amber-300">
+                        Reassign Dispute to Staff / Owner Bucket *
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={modalTargetStaffId}
+                          onChange={(e) => setModalTargetStaffId(e.target.value)}
+                          className="w-full p-2 rounded-xl bg-neutral-900 border border-neutral-600 text-white text-xs"
+                        >
+                          <option value="admin">Store Owner / Admin</option>
+                          {staffMembers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} (@{s.username}) · {s.role}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={modalReassignNote}
+                          onChange={(e) => setModalReassignNote(e.target.value)}
+                          placeholder="Handover note (optional)"
+                          className="w-full p-2 rounded-xl bg-neutral-900 border border-neutral-600 text-white text-xs"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsModalReassigningOpen(false)}
+                          className="px-3 py-1.5 rounded-xl border border-neutral-600 text-neutral-300 text-xs hover:bg-neutral-700"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs cursor-pointer"
+                        >
+                          Confirm & Route to Bucket
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDisputeDetailOrder(null)}
+                  className="px-5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

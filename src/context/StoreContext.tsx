@@ -493,19 +493,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [categories, setCategories] = useState<SareeCategory[]>(() => {
     const stored = loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', []);
     return stored.filter((c) => {
-      const name = (c.name || '').toLowerCase().trim();
-      const isDemo =
-        c.id.startsWith('cat-poontamil') ||
-        c.id.startsWith('cat-foil') ||
-        c.id.startsWith('cat-demo') ||
-        name === 'poontamil sarees' ||
-        name === 'foil print sarees' ||
-        name === 'soft menna work saree' ||
-        name === 'tissue dhoti set' ||
-        name === 'couple combo / silk dhoti shirt' ||
-        name === 'cotton kids dhoti set' ||
-        name.includes('demo') ||
-        (c as any).isDemo === true;
+      const isDemo = (c as any).isDemo === true && c.id.startsWith('mock-demo-seed-');
       return !isDemo;
     });
   });
@@ -913,21 +901,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const list: SareeCategory[] = [];
           snapshot.forEach((d) => {
             const data = d.data() as SareeCategory;
-            const catName = (data.name || '').toLowerCase().trim();
-            // Wipe default demo categories permanently from the database
-            const isDemo =
-              d.id.startsWith('cat-poontamil') ||
-              d.id.startsWith('cat-foil') ||
-              d.id.startsWith('cat-demo') ||
-              catName === 'poontamil sarees' ||
-              catName === 'foil print sarees' ||
-              catName === 'soft menna work saree' ||
-              catName === 'tissue dhoti set' ||
-              catName === 'couple combo / silk dhoti shirt' ||
-              catName === 'cotton kids dhoti set' ||
-              catName.includes('demo') ||
-              (data as any).isDemo === true;
-            if (isDemo) {
+            // Only prune if explicitly marked as mock-demo-seed
+            const isMockSeed = (data as any).isDemo === true && d.id.startsWith('mock-demo-seed-');
+            if (isMockSeed) {
               deleteDoc(doc(db, 'categories', d.id)).catch(() => {});
               return;
             }
@@ -2610,21 +2586,53 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const addCategory = async (catInput: Omit<SareeCategory, 'id'>): Promise<SareeCategory> => {
     const fallbackImg = '/assets/images/hero_saree_atelier_1791651761357.jpg';
+    const trimmedName = (catInput.name || '').trim();
+    if (!trimmedName) {
+      throw new Error('Please enter a valid category name.');
+    }
+
+    // Clean slug for reliable document ID generation (handling special characters and spacing)
+    const slug = trimmedName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 24);
+    const safeDocId = `cat_${slug || 'custom'}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
     const newCat: SareeCategory = {
-      id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: catInput.name.trim(),
+      id: safeDocId,
+      name: trimmedName,
       description: catInput.description?.trim() || '',
       imageUrl: catInput.imageUrl?.trim() || fallbackImg,
       displayOrder: catInput.displayOrder ?? (categories.length + 1),
     };
-    const updated = [...categories, newCat];
-    setCategories(updated);
-    saveToStorage('aara_boutique_categories_v3', updated);
+
+    // Reflect immediately in state & local cache
+    setCategories((prev) => {
+      const exists = prev.some((c) => c.id === newCat.id || c.name.toLowerCase().trim() === trimmedName.toLowerCase());
+      if (exists) {
+        return prev.map((c) => (c.name.toLowerCase().trim() === trimmedName.toLowerCase() ? { ...c, ...newCat, id: c.id } : c));
+      }
+      return [...prev, newCat];
+    });
+
+    const currentStorage = loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', []);
+    const updatedStorage = [
+      ...currentStorage.filter((c) => c.name.toLowerCase().trim() !== trimmedName.toLowerCase()),
+      newCat,
+    ];
+    saveToStorage('aara_boutique_categories_v3', updatedStorage);
 
     // Persist directly to Firestore /categories/{id}
-    await setDoc(doc(db, 'categories', newCat.id), sanitizeForFirestore(newCat)).catch((err) =>
-      handleFirestoreError(err, OperationType.CREATE, `categories/${newCat.id}`)
-    );
+    try {
+      await setDoc(doc(db, 'categories', newCat.id), sanitizeForFirestore(newCat));
+    } catch (err: any) {
+      console.error('Failed to write category to Firestore:', err);
+      handleFirestoreError(err, OperationType.CREATE, `categories/${newCat.id}`);
+      throw err;
+    }
+
     return newCat;
   };
 

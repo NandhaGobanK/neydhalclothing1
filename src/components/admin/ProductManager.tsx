@@ -1447,7 +1447,7 @@ export const ProductManager: React.FC = () => {
                   <td className="py-3 px-3">
                     <div className="min-w-0">
                       <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-800 border border-rose-200 truncate max-w-full">
-                        {product.category || 'Poontamil sarees'}
+                        {product.category || 'General Collection'}
                       </span>
                       <p className="font-semibold text-neutral-800 text-xs truncate mt-0.5">{product.fabric}</p>
                       <p className="text-neutral-500 text-[10px] truncate">{product.color}</p>
