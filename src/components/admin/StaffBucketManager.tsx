@@ -150,6 +150,7 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
   const [cancellationReasonPreset, setCancellationReasonPreset] = useState('Weaver Loom Backlog / Out of Stock');
   const [cancellationReasonCustom, setCancellationReasonCustom] = useState('');
   const [refundUtr, setRefundUtr] = useState('');
+  const [refundUtrError, setRefundUtrError] = useState<string | null>(null);
   const [refundNotes, setRefundNotes] = useState('');
   const [refundModalOrder, setRefundModalOrder] = useState<Order | null>(null);
   const [refundTool, setRefundTool] = useState('PhonePe');
@@ -2614,6 +2615,8 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
             </form>
           </div>
         </div>
+      )}
+
       {/* Order Live Chat Modal */}
       {liveChatOrder && (
         <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">

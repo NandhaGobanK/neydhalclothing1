@@ -167,7 +167,7 @@ export interface CustomerDeliveryIssue {
   reported: boolean;
   reportedAt: string;
   customerPhone: string;
-  issueType?: 'delivery' | 'refund' | 'general'; // Delivery issue vs Refund issue
+  issueType?: 'delivery' | 'refund' | 'general' | 'cancellation'; // Delivery issue vs Refund issue vs Cancellation
   issueDescription: string;
   status: 'open' | 'investigating' | 'resolved';
   resolutionNotes?: string;

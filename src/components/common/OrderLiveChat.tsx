@@ -98,6 +98,10 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
   // Chat is only disabled if the order is permanently closed by admin.
   const isOrderClosed = Boolean(order.isClosed);
   const isCustomerChatDisabled = mode === 'customer' && isOrderClosed;
+  const hasActiveDispute = Boolean(
+    (order.deliveryIssue?.reported && order.deliveryIssue?.status !== 'resolved') ||
+    (order.cancellationRequest?.requested && order.cancellationRequest?.status === 'pending')
+  );
 
   const chatDisabledReason = isOrderClosed
     ? 'This order has been officially closed by the boutique atelier. Live chat is now closed, but previous conversation history is preserved.'
