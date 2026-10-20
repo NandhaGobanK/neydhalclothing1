@@ -116,50 +116,7 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
   settingsDelivery: { canView: true, canEdit: false },
 };
 
-export const DEFAULT_SAREE_CATEGORIES: SareeCategory[] = [
-  {
-    id: 'cat-poontamil',
-    name: 'Poontamil sarees',
-    description: 'Graceful floral handloom drapes woven with delicate silver and gold zari booties.',
-    imageUrl: '/src/assets/images/saree_kanjivaram_crimson_1791651781402.jpg',
-    displayOrder: 1,
-  },
-  {
-    id: 'cat-foil-print',
-    name: 'Foil print sarees',
-    description: 'Contemporary lustrous foil prints on festive pure silk and gossamer textures.',
-    imageUrl: '/src/assets/images/saree_banarasi_emerald_1791651794836.jpg',
-    displayOrder: 2,
-  },
-  {
-    id: 'cat-soft-menna',
-    name: 'Soft menna work saree',
-    description: 'Fine pastel drapes with delicate Meenakari floral threadwork and featherlight touch.',
-    imageUrl: '/src/assets/images/saree_chanderi_lavender_1791651806313.jpg',
-    displayOrder: 3,
-  },
-  {
-    id: 'cat-cotton-kids-dhoti',
-    name: 'Cotton kids dhoti set',
-    description: 'Traditional pure cotton festive dhoti and shirt ensembles crafted for young boys.',
-    imageUrl: '/src/assets/images/saree_tussar_pink_1791651839213.jpg',
-    displayOrder: 4,
-  },
-  {
-    id: 'cat-tissue-dhoti',
-    name: 'Tissue dhoti set',
-    description: 'Shimmering metallic gold and silver tissue dhoti sets with matching angavastram.',
-    imageUrl: '/src/assets/images/saree_organza_royal_1791651817454.jpg',
-    displayOrder: 5,
-  },
-  {
-    id: 'cat-couple-combo',
-    name: 'Couple combo / silk dhoti shirt',
-    description: 'Harmonious wedding matching combos featuring bride silk saree and groom silk dhoti shirt.',
-    imageUrl: '/src/assets/images/saree_georgette_mustard_1791651828784.jpg',
-    displayOrder: 6,
-  },
-];
+export const DEFAULT_SAREE_CATEGORIES: SareeCategory[] = [];
 
 export const DEFAULT_PRODUCT_ATTRIBUTES: ProductAttributeDefinition[] = [
   {
@@ -200,6 +157,7 @@ export const INITIAL_SETTINGS: StoreSettings = {
   sareeCategories: DEFAULT_SAREE_CATEGORIES,
   productAttributes: DEFAULT_PRODUCT_ATTRIBUTES,
   isFabricOptional: true,
+  autoConfirmationMode: false,
   tagline: 'Pure Handloom Silk & Heirloom Sarees',
   contactPhone: '+91 98765 43210',
   contactEmail: 'nandhagoban21@gmail.com',

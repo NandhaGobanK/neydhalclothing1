@@ -117,7 +117,7 @@ interface StoreContextType {
     orderId: string,
     shippingDetails: { courierName: string; trackingNumber: string; notes?: string }
   ) => void;
-  markRefundProcessed: (orderId: string, refundUtr: string, notes?: string) => void;
+  markRefundProcessed: (orderId: string, refundUtr: string, refundTool?: string, notes?: string) => void;
   assignOrderStaff: (orderId: string, staffId: string, staffName: string, reasonOrNote?: string) => void;
   addOrderWorkLog: (orderId: string, action: string, note?: string) => void;
   requestOrderCancellation: (
@@ -276,6 +276,20 @@ function loadFromStorage<T>(key: string, fallback: T): T {
     console.error(`Error loading key ${key} from storage:`, err);
     return fallback;
   }
+}
+
+export function getBoutiqueOrderPrefix(boutiqueName?: string): string {
+  if (!boutiqueName || !boutiqueName.trim()) return 'BOUTIQUE';
+  const clean = boutiqueName.trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    const initials = words.map((w) => w.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase()).join('');
+    if (initials.length >= 2 && initials.length <= 6) {
+      return initials;
+    }
+  }
+  const slug = clean.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return slug.length > 0 ? slug.slice(0, 8) : 'BOUTIQUE';
 }
 
 function saveToStorage<T>(key: string, data: T) {
@@ -455,10 +469,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Dynamic Hierarchical Saree Categories State (Synced with Firestore /categories)
   const [categories, setCategories] = useState<SareeCategory[]>(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('neydhal_fresh_brand_new') === 'true') {
-      return loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', []);
-    }
-    return loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', DEFAULT_SAREE_CATEGORIES);
+    const stored = loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', []);
+    return stored.filter((c) => {
+      const name = (c.name || '').toLowerCase().trim();
+      return (
+        !c.id.startsWith('cat-poontamil') &&
+        !c.id.startsWith('cat-foil') &&
+        name !== 'poontamil sarees' &&
+        name !== 'foil print sarees'
+      );
+    });
   });
 
   // Active, visible wishlist derived state: instantly purges any deleted or hidden product from badges & lists
@@ -863,20 +883,26 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (!snapshot.empty) {
           const list: SareeCategory[] = [];
           snapshot.forEach((d) => {
-            list.push({ id: d.id, ...d.data() } as SareeCategory);
+            const data = d.data() as SareeCategory;
+            const catName = (data.name || '').toLowerCase().trim();
+            // Wipe default demo categories permanently from the database
+            const isDemo =
+              d.id.startsWith('cat-poontamil') ||
+              d.id.startsWith('cat-foil') ||
+              catName === 'poontamil sarees' ||
+              catName === 'foil print sarees';
+            if (isDemo) {
+              deleteDoc(doc(db, 'categories', d.id)).catch(() => {});
+              return;
+            }
+            list.push({ id: d.id, ...data } as SareeCategory);
           });
           list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
           setCategories(list);
           saveToStorage('aara_boutique_categories_v3', list);
         } else {
-          if (isInitial && DEFAULT_SAREE_CATEGORIES.length > 0 && localStorage.getItem('neydhal_fresh_brand_new') !== 'true') {
-            DEFAULT_SAREE_CATEGORIES.forEach((cat) => {
-              setDoc(doc(db, 'categories', cat.id), sanitizeForFirestore(cat)).catch(() => {});
-            });
-          } else if (localStorage.getItem('neydhal_fresh_brand_new') === 'true') {
-            setCategories([]);
-            saveToStorage('aara_boutique_categories_v3', []);
-          }
+          setCategories([]);
+          saveToStorage('aara_boutique_categories_v3', []);
         }
         isInitial = false;
       },
@@ -1394,7 +1420,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const isFree = deliv.freeDeliveryEnabled && subtotal >= deliv.freeDeliveryThreshold;
     const shippingFee = items.length === 0 ? 0 : isFree ? 0 : Math.max(0, deliv.shippingFee || 0);
     const totalAmount = subtotal + shippingFee;
-    const orderNumber = `AARA-${Math.floor(1000 + Math.random() * 9000)}`;
+    const prefix = getBoutiqueOrderPrefix(settings.boutiqueName);
+    const orderNumber = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     // User request: when user places an order it should NOT assign to staff by default;
     // it must appear in the unassigned queue for staff to assign and close the deal.
@@ -1628,7 +1655,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
-  const markRefundProcessed = (orderId: string, refundUtr: string, notes?: string) => {
+  const markRefundProcessed = (orderId: string, refundUtr: string, refundTool = 'UPI / NetBanking', notes?: string) => {
     let orderToSync: Partial<Order> | null = null;
     setOrders((prev) =>
       prev.map((ord) => {
@@ -1643,21 +1670,56 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           staffId: currentUser?.staffId || ord.assignedStaffId || 'admin',
           staffName: actorName,
           assignedBy: actorName,
-          action: `Processed refund of ₹${ord.totalAmount} (UTR: ${refundUtr.trim()})${crossStaffNote}`,
-          note: notes?.trim() || 'Refund processed to customer bank account / UPI',
+          action: `Processed refund of ₹${ord.totalAmount} via ${refundTool} (UTR: ${refundUtr.trim()})${crossStaffNote}`,
+          note: notes?.trim() || `Refund processed to customer via ${refundTool}`,
         };
         const updatedHistory = [...(ord.assignmentHistory || []), refundLog];
 
+        const refundStatusLog: OrderStatusHistory = {
+          status: 'Refunded',
+          timestamp: new Date().toISOString(),
+          updatedBy: actorName,
+          note: `Refund completed via ${refundTool} (12-digit UTR: ${refundUtr.trim()}). ${notes || ''}`.trim(),
+        };
+
+        // Requirement 3: Automatically update corresponding customer issue/refund dispute with attached refund details and mark as resolved
+        let updatedDeliveryIssue = ord.deliveryIssue;
+        if (ord.deliveryIssue?.reported) {
+          const disputeComment: InvestigationComment = {
+            id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            timestamp: new Date().toISOString(),
+            author: actorName,
+            authorId: currentUser?.staffId || (currentUser?.type === 'admin' ? 'admin' : undefined),
+            comment: `Refund successfully processed via ${refundTool}. Bank UTR: ${refundUtr.trim()}. Case marked as resolved.`,
+          };
+          updatedDeliveryIssue = {
+            ...ord.deliveryIssue,
+            status: 'resolved',
+            resolvedAt: new Date().toISOString(),
+            resolvedBy: actorName,
+            resolutionNotes: `Refund completed via ${refundTool} (Bank UTR: ${refundUtr.trim()}). ${notes || ''}`.trim(),
+            investigationComments: [
+              ...(ord.deliveryIssue.investigationComments || []),
+              disputeComment,
+            ],
+          };
+        }
+
         const updated: Order = {
           ...ord,
+          status: 'Refunded',
+          statusHistory: [...(ord.statusHistory || []), refundStatusLog],
+          deliveryIssue: updatedDeliveryIssue,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           assignmentHistory: updatedHistory,
           refundDetails: {
             ...ord.refundDetails,
             refundStatus: 'processed',
             refundUtr: refundUtr.trim(),
+            refundTool: refundTool.trim(),
+            refundAmount: ord.totalAmount,
             processedAt: new Date().toISOString(),
-            notes: notes || 'Refund processed via banking app',
+            notes: notes || `Refund processed via ${refundTool}`,
           },
         };
         orderToSync = updated;
@@ -1703,8 +1765,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         const updatedHistory = [...(ord.assignmentHistory || []), newLogEntry];
 
+        // Requirement 2: Auto-Confirmation Mode Toggle
+        // When enabled, assigning an order transitions Pending -> Confirmed instantly
+        let nextStatus = ord.status;
+        let nextStatusHistory = ord.statusHistory || [];
+        if (settings.autoConfirmationMode && ord.status === 'Pending' && staffId) {
+          nextStatus = 'Confirmed';
+          const autoConfirmLog: OrderStatusHistory = {
+            status: 'Confirmed',
+            timestamp: new Date().toISOString(),
+            updatedBy: actorName,
+            note: `Auto-confirmed upon assignment to ${staffName} (Auto-Confirmation Mode active)`,
+          };
+          nextStatusHistory = [...nextStatusHistory, autoConfirmLog];
+        }
+
         const updated: Order = {
           ...ord,
+          status: nextStatus,
+          statusHistory: nextStatusHistory,
           assignedStaffId: staffId,
           assignedStaffName: staffName,
           assignedAt: ord.assignedAt || new Date().toISOString(),

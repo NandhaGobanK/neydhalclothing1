@@ -145,10 +145,16 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
     intendedStatus?: OrderStatus;
   } | null>(null);
 
-  // Refund Modal State
+  // Refund Modal State with 12-digit UTR validation and transaction tool
   const [refundModalOrder, setRefundModalOrder] = useState<Order | null>(null);
   const [refundUtr, setRefundUtr] = useState('');
+  const [refundTool, setRefundTool] = useState('PhonePe');
+  const [refundUtrError, setRefundUtrError] = useState<string | null>(null);
   const [refundNotes, setRefundNotes] = useState('');
+
+  // Global Cross-Bucket Order Search State (Requirement 7)
+  const [globalOrderSearch, setGlobalOrderSearch] = useState('');
+  const [selectedDetailOrder, setSelectedDetailOrder] = useState<Order | null>(null);
 
   // Editable Automated Message Dispatcher Modal (User Request)
   const [messageModalOrder, setMessageModalOrder] = useState<Order | null>(null);
@@ -297,6 +303,25 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
     });
   }, [unassignedOrders, selectedStatus, searchQuery]);
 
+  // Requirement 7: Global Cross-Bucket Search across all orders
+  const globalSearchResults = useMemo(() => {
+    if (!globalOrderSearch.trim()) return [];
+    const q = globalOrderSearch.trim().toLowerCase();
+    const cleanNum = q.replace(/^[#\s]+/, '').trim();
+    return orders.filter((o) => {
+      const oNum = o.orderNumber.toLowerCase().replace(/^[#\s]+/, '').trim();
+      return (
+        oNum === cleanNum ||
+        oNum.includes(cleanNum) ||
+        o.orderNumber.toLowerCase().includes(q) ||
+        o.customer.name.toLowerCase().includes(q) ||
+        o.customer.phone.includes(q) ||
+        o.upiTransactionId.toLowerCase().includes(q) ||
+        (o.assignedStaffName && o.assignedStaffName.toLowerCase().includes(q))
+      );
+    });
+  }, [orders, globalOrderSearch]);
+
   const handleStatusChange = (order: Order, newStatus: OrderStatus) => {
     // User Requirement 5: Order must be assigned before changing stages and working on it
     if (!order.assignedStaffId || order.assignedStaffId === 'unassigned') {
@@ -382,13 +407,12 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
 
     setCancellationModalOrder(null);
 
-    // Open refund modal immediately to capture UTR
+    // Requirement 3: Open refund prompt immediately with 12-digit UTR validation & transaction tool
     setRefundModalOrder(updatedOrder);
     setRefundUtr('');
+    setRefundTool('PhonePe');
+    setRefundUtrError(null);
     setRefundNotes('');
-
-    // Open automated message editor so admin can review dynamic variables and personalize before sending
-    handleOpenMessageModal(updatedOrder, targetStatus);
   };
 
   const handleSaveShipping = (e: React.FormEvent) => {
@@ -419,16 +443,28 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
 
   const handleSaveRefund = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!refundModalOrder || !refundUtr.trim()) return;
+    if (!refundModalOrder) return;
 
-    markRefundProcessed(refundModalOrder.id, refundUtr.trim(), refundNotes.trim());
+    const cleanUtr = refundUtr.trim();
+    // Requirement 3: 12-digit numeric validation rules
+    if (!/^\d{12}$/.test(cleanUtr)) {
+      setRefundUtrError('Bank UTR Number must be exactly 12 numeric digits (e.g. 402819283741)');
+      return;
+    }
+    setRefundUtrError(null);
+
+    markRefundProcessed(refundModalOrder.id, cleanUtr, refundTool, refundNotes.trim());
 
     const updatedOrder: Order = {
       ...refundModalOrder,
+      status: 'Refunded',
       refundDetails: {
         ...refundModalOrder.refundDetails,
         refundStatus: 'processed',
-        refundUtr: refundUtr.trim(),
+        refundUtr: cleanUtr,
+        refundTool,
+        refundAmount: refundModalOrder.totalAmount,
+        processedAt: new Date().toISOString(),
       },
     };
 
@@ -436,7 +472,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
 
     // Open message modal populated with refund UTR details
     setMessageModalOrder(updatedOrder);
-    setMessageModalStage(updatedOrder.status);
+    setMessageModalStage('Refunded');
     const refundMsg = formatWhatsAppRefundMessage(updatedOrder, settings);
     setMessageModalText(refundMsg);
   };
@@ -1846,26 +1882,73 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
             <form onSubmit={handleSaveRefund} className="p-5 space-y-4 text-xs">
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-950 space-y-1">
                 <p className="font-bold">Refund Target Coordinates:</p>
-                <p>Customer: <strong>{refundModalOrder.customer.name}</strong></p>
+                <p>Customer: <strong>{refundModalOrder.customer.name}</strong> ({refundModalOrder.customer.phone})</p>
                 <p>Refund UPI ID: <strong>{refundModalOrder.refundDetails?.refundUpiId || 'Check WhatsApp chat'}</strong></p>
                 <p>Refund Phone: <strong>{refundModalOrder.refundDetails?.refundUpiPhone || refundModalOrder.customer.phone}</strong></p>
-                <p>Total to Refund: <strong className="text-rose-900">{formatPrice(refundModalOrder.totalAmount)}</strong></p>
+                <p>Total to Refund: <strong className="text-rose-900 font-serif text-sm">{formatPrice(refundModalOrder.totalAmount)}</strong></p>
               </div>
 
+              {/* Requirement 3: Transaction Tool Used */}
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">
-                  Bank Refund Transaction ID (UTR Number) *
+                  Transaction Tool Used *
                 </label>
+                <select
+                  value={refundTool}
+                  onChange={(e) => setRefundTool(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white font-medium text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                >
+                  <option value="PhonePe">PhonePe</option>
+                  <option value="Google Pay (GPay)">Google Pay (GPay)</option>
+                  <option value="Paytm">Paytm</option>
+                  <option value="BHIM UPI">BHIM UPI</option>
+                  <option value="NetBanking / IMPS">NetBanking / IMPS</option>
+                  <option value="Bank Transfer (NEFT/RTGS)">Bank Transfer (NEFT/RTGS)</option>
+                  <option value="Other Banking Tool">Other Banking Tool</option>
+                </select>
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  Select payment application used to transfer the refund amount.
+                </p>
+              </div>
+
+              {/* Requirement 3: 12-digit numeric validation UTR */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-neutral-800">
+                    Bank Refund UTR Number * (12 Digits)
+                  </label>
+                  <span className={`text-[11px] font-mono font-bold ${
+                    refundUtr.length === 12 ? 'text-emerald-600' : 'text-neutral-400'
+                  }`}>
+                    {refundUtr.length}/12 digits
+                  </span>
+                </div>
                 <input
                   type="text"
+                  maxLength={12}
                   value={refundUtr}
-                  onChange={(e) => setRefundUtr(e.target.value)}
+                  onChange={(e) => {
+                    const digitsOnly = e.target.value.replace(/[^0-9]/g, '').slice(0, 12);
+                    setRefundUtr(digitsOnly);
+                    if (digitsOnly.length === 12) {
+                      setRefundUtrError(null);
+                    }
+                  }}
                   required
-                  placeholder="e.g. UTR301928491029"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 uppercase"
+                  placeholder="e.g. 402819283741"
+                  className={`w-full p-2.5 rounded-xl border font-mono text-sm tracking-widest text-neutral-900 focus:outline-hidden ${
+                    refundUtrError
+                      ? 'border-rose-500 focus:ring-2 focus:ring-rose-500/40 bg-rose-50/30'
+                      : 'border-neutral-300 focus:ring-2 focus:ring-amber-500/40'
+                  }`}
                 />
+                {refundUtrError && (
+                  <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                    {refundUtrError}
+                  </p>
+                )}
                 <p className="text-[11px] text-neutral-500 mt-1">
-                  This UTR will be recorded in the order and sent directly to the customer so they can track the refunded money in their bank account.
+                  This 12-digit bank UTR will be recorded on the order, updated in the tracking page, and automatically attached to resolve any open customer dispute.
                 </p>
               </div>
 
@@ -1877,24 +1960,32 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                   type="text"
                   value={refundNotes}
                   onChange={(e) => setRefundNotes(e.target.value)}
-                  placeholder="e.g. Sent via Google Pay business banking"
+                  placeholder={`e.g. Refunded to customer UPI via ${refundTool}`}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                 />
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-[11px] space-y-0.5">
+                <p className="font-bold">Automatic Status & Dispute Resolution:</p>
+                <p>
+                  Submitting will mark the order as <strong>Refunded</strong> and automatically resolve any open customer refund dispute with these attached transaction details.
+                </p>
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setRefundModalOrder(null)}
-                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold"
+                  className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 font-semibold cursor-pointer hover:bg-neutral-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold"
+                  disabled={refundUtr.length !== 12}
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition shadow-xs"
                 >
-                  Save Refund UTR
+                  Confirm & Mark as Refunded
                 </button>
               </div>
             </form>

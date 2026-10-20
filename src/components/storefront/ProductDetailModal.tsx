@@ -476,28 +476,59 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                     {product.productCode}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-neutral-200/60">
-                  <span className="text-neutral-500">Weave Technique</span>
-                  <span className="font-medium text-neutral-900 text-right">{product.weaveDetails}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-neutral-200/60">
-                  <span className="text-neutral-500">Border & Pallu</span>
-                  <span className="font-medium text-neutral-900 text-right">{product.borderType}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-neutral-200/60">
-                  <span className="text-neutral-500">Blouse Piece</span>
-                  <span className="font-medium text-neutral-900">
-                    {product.blousePieceIncluded ? 'Included (0.8m Running Silk)' : 'Not Included'}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-neutral-200/60">
-                  <span className="text-neutral-500">Total Saree Length</span>
-                  <span className="font-medium text-neutral-900">{product.lengthMeters} Meters</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-neutral-500">Recommended Occasion</span>
-                  <span className="font-medium text-neutral-900">{product.occasion}</span>
-                </div>
+                {product.fabric && (
+                  <div className="flex justify-between py-1 border-b border-neutral-200/60 items-center">
+                    <span className="text-neutral-500 font-medium">Fabric Type</span>
+                    <span className="font-medium text-neutral-900 text-right">{product.fabric}</span>
+                  </div>
+                )}
+                {product.color && (
+                  <div className="flex justify-between py-1 border-b border-neutral-200/60 items-center">
+                    <span className="text-neutral-500 font-medium">Color Palette</span>
+                    <span className="font-medium text-neutral-900 text-right">{product.color}</span>
+                  </div>
+                )}
+                {(
+                  (product.specificationFields && product.specificationFields.length > 0)
+                    ? product.specificationFields
+                    : (product.customAttributes && Object.keys(product.customAttributes).length > 0)
+                    ? Object.keys(product.customAttributes).map((k) => ({ id: k, name: k }))
+                    : [
+                        { id: 'attr-weave', name: 'Weave Technique' },
+                        { id: 'attr-border', name: 'Border & Pallu Detail' },
+                        { id: 'attr-blouse', name: 'Blouse Piece' },
+                        { id: 'attr-length', name: 'Total Length' },
+                        { id: 'attr-occasion', name: 'Recommended Occasion' },
+                      ]
+                ).map((attr, idx, arr) => {
+                  let val = product.customAttributes?.[attr.id] || product.customAttributes?.[attr.name];
+                  if (!val) {
+                    if (attr.id === 'attr-weave' || attr.name.toLowerCase().includes('weave')) {
+                      val = product.weaveDetails;
+                    } else if (attr.id === 'attr-border' || attr.name.toLowerCase().includes('border')) {
+                      val = product.borderType;
+                    } else if (attr.id === 'attr-blouse' || attr.name.toLowerCase().includes('blouse')) {
+                      val = product.blousePieceIncluded ? 'Included (0.8m Running Silk)' : 'Not Included';
+                    } else if (attr.id === 'attr-length' || attr.name.toLowerCase().includes('length')) {
+                      val = product.lengthMeters ? `${product.lengthMeters} Meters` : undefined;
+                    } else if (attr.id === 'attr-occasion' || attr.name.toLowerCase().includes('occasion')) {
+                      val = product.occasion;
+                    }
+                  }
+                  if (!val) return null;
+                  const isLast = idx === arr.length - 1;
+                  return (
+                    <div
+                      key={attr.id}
+                      className={`flex justify-between py-1 items-center ${
+                        isLast ? '' : 'border-b border-neutral-200/60'
+                      }`}
+                    >
+                      <span className="text-neutral-500 font-medium">{attr.name}</span>
+                      <span className="font-medium text-neutral-900 text-right">{val}</span>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Cancellation & Refund Policy Notice on Product Front (User Request) */}

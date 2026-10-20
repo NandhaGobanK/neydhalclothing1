@@ -149,7 +149,7 @@ export const AnalyticsManager: React.FC = () => {
     orders.forEach((o) => {
       if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
         o.items.forEach((item) => {
-          const f = item.product.fabric || 'Unspecified';
+          const f = item.product.fabric || 'Other';
           if (!map[f]) map[f] = { units: 0, revenue: 0 };
           map[f].units += item.quantity;
           map[f].revenue += item.product.price * item.quantity;

@@ -144,6 +144,9 @@ export const SettingsManager: React.FC = () => {
   const [freeDeliveryEnabled, setFreeDeliveryEnabled] = useState<boolean>(settings.delivery?.freeDeliveryEnabled ?? true);
   const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState<number>(settings.delivery?.freeDeliveryThreshold ?? 20000);
 
+  // Requirement 2: Auto-Confirmation Mode Toggle
+  const [autoConfirmationMode, setAutoConfirmationMode] = useState<boolean>(settings.autoConfirmationMode ?? false);
+
   // Payment Config
   const [upiId, setUpiId] = useState(settings.payment.upiId);
   const [payeeName, setPayeeName] = useState(settings.payment.payeeName);
@@ -238,6 +241,9 @@ export const SettingsManager: React.FC = () => {
       if (settings.staffIdleAlert) {
         setStaffIdleAlertEnabled(settings.staffIdleAlert.enabled ?? true);
         setIdleThresholdMinutes(settings.staffIdleAlert.idleThresholdMinutes ?? 15);
+      }
+      if (settings.autoConfirmationMode !== undefined) {
+        setAutoConfirmationMode(settings.autoConfirmationMode);
       }
     }
   }, [settings]);
@@ -493,6 +499,7 @@ export const SettingsManager: React.FC = () => {
         enabled: staffIdleAlertEnabled,
         idleThresholdMinutes: Number(idleThresholdMinutes) || 15,
       },
+      autoConfirmationMode,
       ...(isAdmin ? { adminPin: adminPin.trim() || '889988' } : {}),
     });
 
@@ -1414,6 +1421,72 @@ export const SettingsManager: React.FC = () => {
                   <span className="text-[10px] text-neutral-400 font-mono">(Device Time Synced)</span>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Section 4C: Auto-Confirmation Mode Toggle (Requirement 2) */}
+        {isAdmin && (
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-rose-950 font-serif font-bold text-base sm:text-lg">
+                <CheckCircle2 className="w-5 h-5 text-amber-600" />
+                <h3>Auto-Confirmation Mode (Order Assignment)</h3>
+              </div>
+              <span
+                className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 ${
+                  autoConfirmationMode
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    autoConfirmationMode ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'
+                  }`}
+                />
+                <span>{autoConfirmationMode ? 'Auto-Confirm: ON' : 'Auto-Confirm: OFF'}</span>
+              </span>
+            </div>
+
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              When enabled, assigning any order from the unassigned queue to a staff member or store administrator will <strong>automatically transition the order from Pending to Confirmed</strong> immediately, eliminating the need to manually click the Confirmed stage toggle.
+            </p>
+
+            <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200/90 space-y-3 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-neutral-900 block text-sm">
+                    Enable Auto-Confirmation Mode
+                  </span>
+                  <span className="text-[11px] text-neutral-500">
+                    Instantly move assigned orders into the Confirmed pipeline stage
+                  </span>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={autoConfirmationMode}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setAutoConfirmationMode(enabled);
+                      updateSettings({ autoConfirmationMode: enabled });
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
+              {autoConfirmationMode && (
+                <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-200 flex items-center gap-2 text-[11px]">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Active: Whenever an order in <strong>Pending</strong> state is assigned to a staff specialist or claimed by store owner, it will instantly switch to <strong>Confirmed</strong> and notify the customer.
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}

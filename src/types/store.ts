@@ -56,6 +56,7 @@ export interface Product {
   lengthMeters?: number;
   occasion?: string;
   customAttributes?: Record<string, string>; // Dynamic specification key-value pairs
+  specificationFields?: ProductAttributeDefinition[]; // Product-specific custom specification fields definitions
   isFeatured?: boolean;
   createdAt: string;
   skuEditCount?: number; // Count of SKU modifications (maximum 1 allowed)
@@ -106,6 +107,7 @@ export type OrderStatus =
   | 'Shipped'
   | 'Delivered'
   | 'Cancelled'
+  | 'Refunded'
   | 'Rejected';
 
 export interface CustomerDetails {
@@ -130,7 +132,9 @@ export interface RefundDetails {
   refundUpiId?: string;
   refundUpiPhone?: string;
   refundStatus: 'pending' | 'processed' | 'not_required';
-  refundUtr?: string; // UTR reference generated upon refund
+  refundUtr?: string; // UTR reference generated upon refund (12 digits)
+  refundTool?: string; // Transaction tool used (PhonePe, Paytm, GPay, etc.)
+  refundAmount?: number;
   processedAt?: string;
   notes?: string;
 }
@@ -397,6 +401,7 @@ export interface StoreSettings {
   sareeCategories?: SareeCategory[]; // Configured saree and apparel categories
   productAttributes?: ProductAttributeDefinition[]; // Flexible custom specifications / attributes
   isFabricOptional?: boolean; // Admin preference: whether Fabric Type is optional
+  autoConfirmationMode?: boolean; // When enabled, assigning order automatically transitions Pending -> Confirmed
   isFreshBrandNew?: boolean; // True when reset to clean fresh state
   lastResetAt?: string; // Timestamp of latest fresh reset
 }

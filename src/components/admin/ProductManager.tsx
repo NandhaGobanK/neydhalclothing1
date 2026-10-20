@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Product, SareeFabric, SareeColor, SareeCategory } from '../../types/store';
+import { Product, SareeFabric, SareeColor, SareeCategory, ProductAttributeDefinition } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
 import {
   Plus,
@@ -43,10 +43,6 @@ export const ProductManager: React.FC = () => {
     addCategory,
     deleteCategory,
     checkSkuUniqueInRegistry,
-    productAttributes,
-    addProductAttribute,
-    updateProductAttribute,
-    deleteProductAttribute,
     toggleFabricOptional,
     settings,
   } = useStore();
@@ -64,7 +60,8 @@ export const ProductManager: React.FC = () => {
   const [tableSearchQuery, setTableSearchQuery] = useState('');
   const [copiedSku, setCopiedSku] = useState<string | null>(null);
 
-  // Dynamic Specifications / Custom Attributes Manager State
+  // Product-Specific Specifications / Custom Attributes State
+  const [productSpecificAttributes, setProductSpecificAttributes] = useState<ProductAttributeDefinition[]>([]);
   const [customAttributesValues, setCustomAttributesValues] = useState<Record<string, string>>({});
   const [isAttributesManagerOpen, setIsAttributesManagerOpen] = useState(false);
   const [newAttrName, setNewAttrName] = useState('');
@@ -316,13 +313,75 @@ export const ProductManager: React.FC = () => {
     setLengthMeters(6.3);
     setOccasion('Wedding & Reception');
 
-    // Initialize dynamic custom specification attributes
-    const initialAttrs: Record<string, string> = {};
-    (productAttributes || []).forEach((attr) => {
-      initialAttrs[attr.id] = '';
-    });
+    // Initialize product-specific specification fields
+    const initialFields: ProductAttributeDefinition[] = [
+      { id: 'attr-weave', name: 'Weave Technique', placeholder: 'e.g. Traditional Korvai Handloom', isOptional: true },
+      { id: 'attr-border', name: 'Border & Pallu Detail', placeholder: 'e.g. Heavy Zari Contrast Border', isOptional: true },
+      { id: 'attr-blouse', name: 'Blouse Piece', placeholder: 'e.g. Included (0.8m Running Silk)', isOptional: true },
+      { id: 'attr-length', name: 'Total Length', placeholder: 'e.g. 6.3 Meters', isOptional: true },
+      { id: 'attr-occasion', name: 'Recommended Occasion', placeholder: 'e.g. Bridal & Festive', isOptional: true },
+    ];
+    setProductSpecificAttributes(initialFields);
+    const initialAttrs: Record<string, string> = {
+      'attr-weave': 'Traditional Korvai Handloom Weave',
+      'attr-border': 'Pure Gold Zari Contrast Pallu',
+      'attr-blouse': 'Included (0.8m Running Silk)',
+      'attr-length': '6.3 Meters',
+      'attr-occasion': 'Wedding & Reception',
+    };
     setCustomAttributesValues(initialAttrs);
     setIsEditingModalOpen(true);
+  };
+
+  // Product-Specific Dynamic Specification Field Handlers (Unique to each product)
+  const handleAddProductSpecificAttribute = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAttrName.trim()) return;
+    const newId = `attr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newAttr: ProductAttributeDefinition = {
+      id: newId,
+      name: newAttrName.trim(),
+      placeholder: newAttrPlaceholder.trim() || undefined,
+      isOptional: newAttrIsOptional,
+    };
+    setProductSpecificAttributes((prev) => [...prev, newAttr]);
+    setCustomAttributesValues((prev) => ({ ...prev, [newId]: '' }));
+    setNewAttrName('');
+    setNewAttrPlaceholder('');
+    setNewAttrIsOptional(true);
+  };
+
+  const handleStartEditAttribute = (attr: { id: string; name: string; placeholder?: string; isOptional?: boolean }) => {
+    setEditingAttrId(attr.id);
+    setEditingAttrName(attr.name);
+    setEditingAttrPlaceholder(attr.placeholder || '');
+    setEditingAttrIsOptional(attr.isOptional !== false);
+  };
+
+  const handleSaveEditProductSpecificAttribute = (id: string) => {
+    if (!editingAttrName.trim()) return;
+    setProductSpecificAttributes((prev) =>
+      prev.map((attr) =>
+        attr.id === id
+          ? {
+              ...attr,
+              name: editingAttrName.trim(),
+              placeholder: editingAttrPlaceholder.trim() || undefined,
+              isOptional: editingAttrIsOptional,
+            }
+          : attr
+      )
+    );
+    setEditingAttrId(null);
+  };
+
+  const handleDeleteProductSpecificAttribute = (id: string) => {
+    setProductSpecificAttributes((prev) => prev.filter((attr) => attr.id !== id));
+    setCustomAttributesValues((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   // Dynamic Category Creation and Real-Time Deletion
@@ -393,9 +452,12 @@ export const ProductManager: React.FC = () => {
     if (prod.fabric && standardFabricsList.includes(prod.fabric)) {
       setFabric(prod.fabric);
       setCustomFabric('');
-    } else {
+    } else if (prod.fabric) {
       setFabric('Other');
-      setCustomFabric(prod.fabric || '');
+      setCustomFabric(prod.fabric);
+    } else {
+      setFabric(standardFabricsList[0] as SareeFabric);
+      setCustomFabric('');
     }
 
     setProductCode(prod.productCode);
@@ -413,11 +475,37 @@ export const ProductManager: React.FC = () => {
     setInstagramShortsUrl(prod.instagramShortsUrl || '');
     setWeaveDetails(prod.weaveDetails || '');
     setBorderType(prod.borderType || '');
-    setBlousePieceIncluded(prod.blousePieceIncluded ?? true);
+    setBlousePieceIncluded(Boolean(prod.blousePieceIncluded));
     setLengthMeters(prod.lengthMeters || 6.3);
     setOccasion(prod.occasion || 'Festive');
 
-    // Populate dynamic specifications from customAttributes & legacy fields
+    // Populate product-specific specification fields
+    let initialFields: ProductAttributeDefinition[] = [];
+    if (prod.specificationFields && prod.specificationFields.length > 0) {
+      initialFields = prod.specificationFields.map((f) => ({ ...f }));
+    } else if (prod.customAttributes && Object.keys(prod.customAttributes).length > 0) {
+      initialFields = Object.keys(prod.customAttributes).map((key) => {
+        const cleanName = key.startsWith('attr-')
+          ? key.replace('attr-', '').replace(/([A-Z])/g, ' $1').trim()
+          : key;
+        return {
+          id: key,
+          name: cleanName.charAt(0).toUpperCase() + cleanName.slice(1),
+          isOptional: true,
+        };
+      });
+    } else {
+      initialFields = [
+        { id: 'attr-weave', name: 'Weave Technique', placeholder: 'e.g. Traditional Korvai Handloom', isOptional: true },
+        { id: 'attr-border', name: 'Border & Pallu Detail', placeholder: 'e.g. Heavy Zari Contrast Border', isOptional: true },
+        { id: 'attr-blouse', name: 'Blouse Piece', placeholder: 'e.g. Included (0.8m Running Silk)', isOptional: true },
+        { id: 'attr-length', name: 'Total Length', placeholder: 'e.g. 6.3 Meters', isOptional: true },
+        { id: 'attr-occasion', name: 'Recommended Occasion', placeholder: 'e.g. Bridal & Festive', isOptional: true },
+      ];
+    }
+    setProductSpecificAttributes(initialFields);
+
+    // Populate dynamic specifications values from customAttributes & legacy fields
     const initialAttrs: Record<string, string> = { ...(prod.customAttributes || {}) };
     if (prod.weaveDetails && !initialAttrs['attr-weave']) initialAttrs['attr-weave'] = prod.weaveDetails;
     if (prod.borderType && !initialAttrs['attr-border']) initialAttrs['attr-border'] = prod.borderType;
@@ -510,8 +598,8 @@ export const ProductManager: React.FC = () => {
       return;
     }
 
-    // Check required dynamic custom attributes
-    for (const attr of productAttributes) {
+    // Check required dynamic product-specific attributes
+    for (const attr of productSpecificAttributes) {
       if (!attr.isOptional) {
         const val = customAttributesValues[attr.id] || customAttributesValues[attr.name];
         if (!val || !val.trim()) {
@@ -560,6 +648,7 @@ export const ProductManager: React.FC = () => {
       blousePieceIncluded,
       lengthMeters: !isNaN(finalLength) ? finalLength : undefined,
       occasion: finalOccasion ? finalOccasion.trim() : undefined,
+      specificationFields: productSpecificAttributes,
       customAttributes: customAttributesValues,
     };
 
@@ -788,6 +877,7 @@ export const ProductManager: React.FC = () => {
                 <span>Flat Inventory ({products.length})</span>
               </button>
 
+
               {canEditProducts && (
                 <button
                   type="button"
@@ -886,10 +976,11 @@ export const ProductManager: React.FC = () => {
                               setActiveCategoryView(cat);
                               openAddModal(cat.name);
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-semibold transition cursor-pointer"
-                            title={`Add saree directly inside ${cat.name}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-semibold transition cursor-pointer"
+                            title={`Add product directly inside ${cat.name}`}
                           >
-                            + Add Saree
+                            <Plus className="w-3 h-3 text-amber-600" />
+                            <span>Add Product</span>
                           </button>
                         )}
                         <button
@@ -964,9 +1055,10 @@ export const ProductManager: React.FC = () => {
                   type="button"
                   onClick={() => openAddModal(activeCategoryView.name)}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+                  title={`Add Product inside ${activeCategoryView.name}`}
                 >
                   <Plus className="w-4 h-4 text-amber-300" />
-                  <span>Add Saree in {activeCategoryView.name}</span>
+                  <span>Add Product</span>
                 </button>
               )}
             </div>
@@ -1008,7 +1100,7 @@ export const ProductManager: React.FC = () => {
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>Add New Saree</span>
+                <span>Add Product</span>
               </button>
             )}
           </div>
@@ -1028,7 +1120,7 @@ export const ProductManager: React.FC = () => {
               placeholder={
                 activeCategoryView
                   ? `Search sarees within ${activeCategoryView.name}...`
-                  : 'Search by Unique Saree Code (e.g. AARA-KAN-CRIM-101) or Saree Name...'
+                  : 'Search by Unique SKU Code (e.g. AARA-KAN-CRIM-101) or Name...'
               }
               className="flex-1 bg-transparent text-xs text-neutral-900 focus:outline-hidden"
             />
@@ -1064,9 +1156,10 @@ export const ProductManager: React.FC = () => {
                     type="button"
                     onClick={() => openAddModal(activeCategoryView.name)}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 transition cursor-pointer"
+                    title={`Add Product inside ${activeCategoryView.name}`}
                   >
                     <Plus className="w-4 h-4 text-amber-300" />
-                    <span>Add Saree to {activeCategoryView.name}</span>
+                    <span>Add Product</span>
                   </button>
                 )}
               </div>
@@ -1521,7 +1614,7 @@ export const ProductManager: React.FC = () => {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-neutral-800 mb-1">Saree Name / Title *</label>
+                  <label className="block font-bold text-neutral-800 mb-1">Name *</label>
                   <input
                     type="text"
                     value={title}
@@ -1548,8 +1641,20 @@ export const ProductManager: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block font-semibold text-neutral-700">
-                      Fabric Type {settings.isFabricOptional ? <span className="text-neutral-400 font-normal">(Optional)</span> : <span className="text-rose-600 font-bold">*</span>}
+                      Fabric Type {settings.isFabricOptional ? <span className="text-neutral-400 font-normal text-xs">(Optional)</span> : <span className="text-rose-600 font-bold text-xs">*</span>}
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => toggleFabricOptional()}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition cursor-pointer border ${
+                        settings.isFabricOptional
+                          ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                          : 'bg-neutral-100 text-neutral-700 border-neutral-300 hover:bg-neutral-200'
+                      }`}
+                      title="Toggle whether Fabric Type is optional or mandatory"
+                    >
+                      {settings.isFabricOptional ? 'Optional: ON' : 'Make Optional'}
+                    </button>
                   </div>
                   <select
                     value={fabric || ''}
@@ -1808,49 +1913,79 @@ export const ProductManager: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Weave Specifications */}
-                <div>
-                  <label className="block font-semibold text-neutral-700 mb-1">Weave Technique</label>
-                  <input
-                    type="text"
-                    value={weaveDetails}
-                    onChange={(e) => setWeaveDetails(e.target.value)}
-                    placeholder="e.g. Double-Korvai Handloom"
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
-                  />
-                </div>
+                {/* Product-Specific Specifications & Custom Attributes */}
+                <div className="sm:col-span-2 pt-3 border-t border-neutral-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <label className="font-bold text-neutral-800 text-xs uppercase tracking-wider block">
+                          Product Specifications & Attributes
+                        </label>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                          {productSpecificAttributes.length} Fields (Product-Specific)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        These specification fields are unique to this individual product and not shared globally across other categories.
+                      </p>
+                    </div>
 
-                <div>
-                  <label className="block font-semibold text-neutral-700 mb-1">Border & Pallu Detail</label>
-                  <input
-                    type="text"
-                    value={borderType}
-                    onChange={(e) => setBorderType(e.target.value)}
-                    placeholder="e.g. 9-inch Temple Border"
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
-                  />
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsAttributesManagerOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-800 text-xs font-semibold shadow-2xs transition cursor-pointer self-start sm:self-auto"
+                      title="Manage and customize specification fields for this product"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Manage Specification Fields</span>
+                    </button>
+                  </div>
 
-                <div>
-                  <label className="block font-semibold text-neutral-700 mb-1">Length (Meters)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={lengthMeters}
-                    onChange={(e) => setLengthMeters(Number(e.target.value))}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-neutral-700 mb-1">Occasion</label>
-                  <input
-                    type="text"
-                    value={occasion}
-                    onChange={(e) => setOccasion(e.target.value)}
-                    placeholder="e.g. Bridal Muhurtham"
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
-                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {productSpecificAttributes.map((attr) => {
+                      const val = customAttributesValues[attr.id] ?? '';
+                      return (
+                        <div key={attr.id} className="space-y-1 relative group">
+                          <div className="flex items-center justify-between">
+                            <label className="block font-semibold text-neutral-700 text-xs truncate">
+                              {attr.name}{' '}
+                              {attr.isOptional ? (
+                                <span className="text-neutral-400 font-normal">(Optional)</span>
+                              ) : (
+                                <span className="text-rose-600 font-bold">*</span>
+                              )}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProductSpecificAttribute(attr.id)}
+                              className="text-neutral-400 hover:text-rose-600 transition p-0.5 cursor-pointer"
+                              title={`Remove "${attr.name}" from this product`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            required={!attr.isOptional}
+                            value={val}
+                            onChange={(e) =>
+                              setCustomAttributesValues((prev) => ({
+                                ...prev,
+                                [attr.id]: e.target.value,
+                              }))
+                            }
+                            placeholder={attr.placeholder || `e.g. Enter ${attr.name}`}
+                            className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 bg-white"
+                          />
+                        </div>
+                      );
+                    })}
+                    {productSpecificAttributes.length === 0 && (
+                      <div className="sm:col-span-2 p-4 text-center border border-dashed border-neutral-300 rounded-xl text-neutral-500 text-xs">
+                        No specification fields added for this product yet. Click "Manage Specification Fields" to add custom columns.
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="sm:col-span-2 flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-200">
@@ -2411,6 +2546,253 @@ export const ProductManager: React.FC = () => {
                   <span>Yes, Delete Category</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product-Specific Specifications & Custom Attributes Manager Modal */}
+      {isAttributesManagerOpen && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <SlidersHorizontal className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-serif text-base font-bold text-white">
+                      Manage Specification Fields
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-neutral-950">
+                      Product-Specific
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400">
+                    Custom specifications for {title.trim() ? `"${title.trim()}"` : 'this product'}. Uniquely editable and not shared globally.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAttributesManagerOpen(false);
+                  setEditingAttrId(null);
+                }}
+                className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6 text-xs">
+              {/* Product Specification Columns List */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-neutral-900 text-sm">
+                      Current Specification Fields ({productSpecificAttributes.length})
+                    </h4>
+                    <p className="text-[11px] text-neutral-500">
+                      These fields appear in the product form and on the storefront specification table for this individual product only.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {productSpecificAttributes.map((attr) => {
+                    const isEditing = editingAttrId === attr.id;
+                    return (
+                      <div
+                        key={attr.id}
+                        className={`p-3.5 rounded-2xl border transition ${
+                          isEditing
+                            ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-400/30'
+                            : 'bg-neutral-50 border-neutral-200/90'
+                        }`}
+                      >
+                        {isEditing ? (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                  Field / Column Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editingAttrName}
+                                  onChange={(e) => setEditingAttrName(e.target.value)}
+                                  className="w-full p-2 bg-white rounded-xl border border-neutral-300 text-xs text-neutral-900"
+                                  placeholder="e.g. Sleeve Cut"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                  Input Placeholder
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editingAttrPlaceholder}
+                                  onChange={(e) => setEditingAttrPlaceholder(e.target.value)}
+                                  className="w-full p-2 bg-white rounded-xl border border-neutral-300 text-xs text-neutral-900"
+                                  placeholder="e.g. Half sleeve with lace"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-1">
+                              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-neutral-700">
+                                <input
+                                  type="checkbox"
+                                  checked={editingAttrIsOptional}
+                                  onChange={(e) => setEditingAttrIsOptional(e.target.checked)}
+                                  className="w-4 h-4 rounded text-amber-600 cursor-pointer"
+                                />
+                                <span>Optional Field (not mandatory)</span>
+                              </label>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingAttrId(null)}
+                                  className="px-3 py-1.5 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-700 text-xs font-semibold cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEditProductSpecificAttribute(attr.id)}
+                                  className="px-3.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-bold shadow-xs cursor-pointer"
+                                >
+                                  Save Changes
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="space-y-0.5 flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-neutral-900 text-sm">{attr.name}</span>
+                                <span
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                    attr.isOptional
+                                      ? 'bg-neutral-200/80 text-neutral-700'
+                                      : 'bg-rose-100 text-rose-800 font-bold'
+                                  }`}
+                                >
+                                  {attr.isOptional ? 'Optional' : 'Required *'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-neutral-500 font-mono truncate">
+                                Placeholder: "{attr.placeholder || `Enter ${attr.name}`}"
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditAttribute(attr)}
+                                className="p-2 rounded-xl border border-neutral-200 hover:bg-white text-neutral-700 hover:text-neutral-950 transition cursor-pointer"
+                                title="Rename or modify field"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteProductSpecificAttribute(attr.id)}
+                                className="p-2 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-600 hover:text-rose-800 transition cursor-pointer"
+                                title="Remove this specification field from this product"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {productSpecificAttributes.length === 0 && (
+                    <div className="p-6 text-center border border-dashed border-neutral-300 rounded-2xl text-neutral-500">
+                      No custom specification fields configured for this product yet. Add one below!
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Add New Specification Field to This Product */}
+              <form onSubmit={handleAddProductSpecificAttribute} className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-amber-600" />
+                  <h4 className="font-bold text-neutral-900 text-xs uppercase tracking-wider">
+                    Add Specification Field to This Product
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                      Field Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newAttrName}
+                      onChange={(e) => setNewAttrName(e.target.value)}
+                      placeholder="e.g. Dhoti Border, Sleeve Cut, Lining Material"
+                      className="w-full p-2.5 bg-white rounded-xl border border-neutral-300 text-xs text-neutral-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                      Helper / Placeholder
+                    </label>
+                    <input
+                      type="text"
+                      value={newAttrPlaceholder}
+                      onChange={(e) => setNewAttrPlaceholder(e.target.value)}
+                      placeholder="e.g. Pure Zari 2-inch Temple Border"
+                      className="w-full p-2.5 bg-white rounded-xl border border-neutral-300 text-xs text-neutral-900"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-neutral-700">
+                    <input
+                      type="checkbox"
+                      checked={newAttrIsOptional}
+                      onChange={(e) => setNewAttrIsOptional(e.target.checked)}
+                      className="w-4 h-4 rounded text-amber-600 cursor-pointer"
+                    />
+                    <span>Set as Optional (not mandatory during entry)</span>
+                  </label>
+
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs shadow-xs transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add to This Product</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAttributesManagerOpen(false);
+                  setEditingAttrId(null);
+                }}
+                className="px-5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs transition cursor-pointer"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
