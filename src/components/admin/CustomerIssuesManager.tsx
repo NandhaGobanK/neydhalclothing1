@@ -565,56 +565,41 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
               <div
                 key={order.id}
                 onClick={() => setSelectedDisputeDetailOrder(order)}
-                className={`bg-white rounded-3xl border p-5 sm:p-6 shadow-xs hover:border-amber-400 hover:shadow-md transition space-y-4 cursor-pointer group/dispute ${
+                className={`bg-white rounded-2xl border p-4 sm:p-5 shadow-xs hover:border-amber-400 hover:shadow-md transition space-y-3 cursor-pointer group/dispute ${
                   isUnassigned
                     ? 'border-rose-300 ring-1 ring-rose-200/60'
                     : 'border-neutral-200'
                 }`}
-                title="Click anywhere to inspect complete order details, investigation log & resolution panel"
+                title="Click to open full dispute workspace modal"
               >
-                {/* Clickable Quick Hint Banner */}
-                <div className="flex items-center justify-between text-[11px] text-neutral-400 group-hover/dispute:text-amber-800 transition pb-0.5">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <Eye className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Click order card anywhere to view complete details, investigation log & resolution panel</span>
-                  </span>
-                  <span className="font-bold text-amber-700 group-hover/dispute:translate-x-0.5 transition-transform flex items-center gap-1">
-                    <span>Inspect Order</span>
-                    <span>&rarr;</span>
-                  </span>
-                </div>
-
-                {/* Dispute Header Row with Assignment Pill */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-3">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className="font-mono text-sm font-bold text-rose-950 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
+                {/* Header Row: Order Number, Issue Category Badge, Dispute Status, Owner, Stage */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs sm:text-sm font-bold text-rose-950 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
                       #{order.orderNumber}
                     </span>
 
-                    {/* Category Identifier (Cancellation vs Refund vs Delivery) */}
+                    {/* Category Identifier */}
                     {isCancellationCase(order) ? (
-                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                      <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300 flex items-center gap-1 shadow-2xs">
                         <Ban className="w-3 h-3 text-rose-700" />
-                        <span>
-                          Cancellation Request · {order.cancellationRequest?.status === 'pending' ? 'Pending Review' : order.cancellationRequest?.status || 'Active'}
-                        </span>
+                        <span>Cancellation Request</span>
                       </span>
                     ) : isRefundCase(order) ? (
-                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs">
+                      <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs">
                         <RotateCcw className="w-3 h-3 text-amber-700" />
-                        <span>
-                          Refund Case · {order.refundDetails?.refundStatus === 'processed' ? 'Refunded' : 'Refund In Queue'}
-                        </span>
+                        <span>Refund Case</span>
                       </span>
                     ) : (
-                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                      <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300 flex items-center gap-1 shadow-2xs">
                         <Truck className="w-3 h-3 text-rose-600" />
                         <span>Delivery Dispute</span>
                       </span>
                     )}
 
+                    {/* Issue Status Pill */}
                     <span
-                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                      className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                         issueStatus === 'open'
                           ? 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
                           : issueStatus === 'investigating'
@@ -627,7 +612,7 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
 
                     {/* Assigned Owner Badge */}
                     <span
-                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
+                      className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
                         isUnassigned
                           ? 'bg-amber-100 text-amber-900 border border-amber-300'
                           : isAssignedToMe
@@ -638,538 +623,115 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                       <User className="w-3 h-3" />
                       <span>
                         {isUnassigned
-                          ? 'Unassigned Dispute (Needs Owner)'
+                          ? 'Unassigned'
                           : isAssignedToMe
-                          ? `Assigned to You (${currentUserName})`
-                          : `Owner: ${order.assignedStaffName || 'Staff'}`}
+                          ? 'Assigned to You'
+                          : (order.assignedStaffName || 'Staff')}
                       </span>
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold text-neutral-600">
-                      Order Stage: <strong className="text-neutral-900">{order.status}</strong>
+                  {/* Stage & Value */}
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="text-xs text-neutral-500 font-medium">
+                      Stage: <strong className="text-neutral-800">{order.status}</strong>
                     </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                        order.isClosed
-                          ? 'bg-neutral-100 text-neutral-600 border border-neutral-300'
-                          : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      }`}
-                    >
-                      {order.isClosed ? 'Closed Order' : 'Active Handling'}
+                    <span className="text-neutral-300">•</span>
+                    <span className="font-serif font-bold text-xs sm:text-sm text-neutral-900">
+                      {formatPrice(order.totalAmount)}
                     </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedDisputeDetailOrder(order);
-                      }}
-                      className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition shadow-2xs flex items-center gap-1 cursor-pointer shrink-0"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-neutral-950" />
-                      <span>Inspect Details & Resolution</span>
-                    </button>
                   </div>
                 </div>
 
-                {/* Resolution & Timeline Milestones (User Request: Resolution Timestamps) */}
-                <div className="bg-neutral-50/80 rounded-2xl p-3 border border-neutral-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-700">
-                  <div className="flex items-center gap-4 flex-wrap">
+                {/* Middle Compact Row: Customer Info & Snippet */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center text-xs">
+                  {/* Customer contact snippet */}
+                  <div className="md:col-span-5 flex items-center gap-3 text-neutral-700">
+                    <div className="min-w-0">
+                      <p className="font-bold text-neutral-900 truncate">{order.customer.name}</p>
+                      <p className="text-[11px] text-neutral-500 truncate">
+                        {order.customer.phone} · {order.customer.city}, {order.customer.state}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Grievance Statement preview (single-line or two-line truncate) */}
+                  <div className="md:col-span-7 bg-neutral-50 rounded-xl px-3 py-2 border border-neutral-200/80 flex items-start gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                    <p className="text-neutral-800 line-clamp-1 text-[11px] font-medium leading-relaxed">
+                      "{order.deliveryIssue?.issueDescription ||
+                        order.cancellationReason ||
+                        'Customer dispute logged for concierge investigation.'}"
+                    </p>
+                  </div>
+                </div>
+
+                {/* Compact Footer: Reported time, Notes count, and Action buttons */}
+                <div className="pt-2 border-t border-neutral-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-3 text-[11px] text-neutral-500 flex-wrap">
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                      <Clock className="w-3 h-3 text-neutral-400" />
                       <span>
                         Reported:{' '}
-                        <strong>
-                          {order.deliveryIssue?.reportedAt
-                            ? new Date(order.deliveryIssue.reportedAt).toLocaleString('en-IN', {
-                                day: 'numeric',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : 'Recently'}
-                        </strong>
+                        {order.deliveryIssue?.reportedAt
+                          ? new Date(order.deliveryIssue.reportedAt).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                            })
+                          : 'Recently'}
                       </span>
                     </span>
 
-                    {order.deliveredAt && (
-                      <span className="flex items-center gap-1 text-emerald-800">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>
-                          Delivered on:{' '}
-                          <strong>
-                            {new Date(order.deliveredAt).toLocaleString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </strong>
-                        </span>
-                      </span>
-                    )}
-
-                    {(order.disputeResolvedAt || order.deliveryIssue?.resolvedAt) && (
-                      <span className="flex items-center gap-1 text-emerald-900 font-semibold bg-emerald-100/80 px-2 py-0.5 rounded-lg border border-emerald-300">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>
-                          Resolved:{' '}
-                          {new Date(
-                            order.disputeResolvedAt || order.deliveryIssue!.resolvedAt!
-                          ).toLocaleString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                          {order.disputeResolvedBy && ` by ${order.disputeResolvedBy}`}
-                        </span>
+                    {commentsList.length > 0 && (
+                      <span className="flex items-center gap-1 font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                        <MessageSquare className="w-3 h-3 text-amber-600" />
+                        <span>{commentsList.length} Notes</span>
                       </span>
                     )}
 
                     {resolutionDuration && (
-                      <span className="px-2 py-0.5 rounded-lg bg-neutral-200 text-neutral-800 text-[10px] font-bold">
-                        Resolution Speed: {resolutionDuration}
+                      <span className="px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 font-medium">
+                        Speed: {resolutionDuration}
                       </span>
                     )}
                   </div>
 
-                  {/* Dynamic Action: View in Staff Bucket */}
-                  {order.assignedStaffId && onNavigateToTab && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (order.assignedStaffId === 'admin') {
-                          onNavigateToTab('admin_bucket');
-                        } else {
-                          onNavigateToTab('staff_buckets', order.assignedStaffId);
-                        }
-                      }}
-                      className="text-amber-800 hover:text-amber-900 font-bold text-xs underline cursor-pointer flex items-center gap-1"
-                    >
-                      <Layers className="w-3 h-3" />
-                      <span>Open in {order.assignedStaffName || 'Staff'}'s Bucket &rarr;</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Dedicated Refund Settlement Details Box (User Request 1) */}
-                {order.refundDetails && (
-                  <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-950 space-y-2 text-xs">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                        <RotateCcw className="w-4 h-4 text-amber-700" />
-                        <span className="uppercase tracking-wider text-[11px]">
-                          Refund Settlement Status & UPI Record
-                        </span>
-                      </div>
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          order.refundDetails.refundStatus === 'processed'
-                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                            : 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
-                        }`}
-                      >
-                        {order.refundDetails.refundStatus === 'processed'
-                          ? 'Refund Completed ✓'
-                          : 'Refund Settlement Pending'}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white/80 p-3 rounded-xl border border-amber-200/80 text-[11px]">
-                      <div>
-                        <span className="text-neutral-500 font-medium block">Refund Target UPI:</span>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <p className="font-mono font-bold text-neutral-900 truncate">
-                            {order.refundDetails.refundUpiId || order.customer.phone}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              copyToClipboard(
-                                order.refundDetails!.refundUpiId || order.customer.phone,
-                                `refund-upi-${order.id}`
-                              )
-                            }
-                            className="p-0.5 text-neutral-500 hover:text-amber-800"
-                            title="Copy UPI ID"
-                          >
-                            {copiedKey === `refund-upi-${order.id}` ? (
-                              <Check className="w-3 h-3 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3 h-3" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-neutral-500 font-medium block">Bank UTR Reference:</span>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <p className="font-mono font-bold text-emerald-800 truncate">
-                            {order.refundDetails.refundUtr || 'Awaiting UTR generation'}
-                          </p>
-                          {order.refundDetails.refundUtr && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                copyToClipboard(order.refundDetails!.refundUtr!, `refund-utr-${order.id}`)
-                              }
-                              className="p-0.5 text-neutral-500 hover:text-emerald-800"
-                              title="Copy UTR ID"
-                            >
-                              {copiedKey === `refund-utr-${order.id}` ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-neutral-500 font-medium block">Processed At:</span>
-                        <p className="text-neutral-800 font-medium mt-0.5">
-                          {order.refundDetails.processedAt
-                            ? new Date(order.refundDetails.processedAt).toLocaleString('en-IN', {
-                                day: 'numeric',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : 'In Finance Queue'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Customer Issue / Dispute Statement Callout */}
-                <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200 text-rose-950 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <h4 className="font-bold text-xs uppercase tracking-wider text-rose-900">
-                      {isRefundCase(order)
-                        ? 'Customer Inquiry / Reason for Settlement'
-                        : 'Customer Non-Delivery Statement'}
-                    </h4>
-                  </div>
-                  <p className="text-xs font-medium text-rose-950 leading-relaxed bg-white/70 p-3 rounded-xl border border-rose-100">
-                    "{order.deliveryIssue?.issueDescription ||
-                      order.cancellationReason ||
-                      'Customer inquiry logged for boutique concierge investigation.'}"
-                  </p>
-                  {order.deliveryIssue?.resolutionNotes && (
-                    <div className="text-[11px] text-emerald-900 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
-                      <strong>Latest Resolution Finding:</strong> {order.deliveryIssue.resolutionNotes}
-                    </div>
-                  )}
-                </div>
-
-                {/* Investigation Comments & Handover Logs Thread (User Request: Investigation Comments instead of re-prompting) */}
-                <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/90 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4 text-amber-600" />
-                      <h4 className="font-bold text-xs text-neutral-900 uppercase tracking-wider">
-                        Investigation Updates & Log Thread ({commentsList.length})
-                      </h4>
-                    </div>
-                    {!order.isClosed && (
-                      <button
-                        type="button"
-                        onClick={() => setInvestigatingOrder(order)}
-                        className="text-xs font-bold text-amber-800 hover:text-amber-950 underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Sparkles className="w-3 h-3 text-amber-600" />
-                        <span>+ Add Investigation Note</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {commentsList.length === 0 ? (
-                    <p className="text-xs text-neutral-400 italic bg-white p-3 rounded-xl border border-neutral-200/60">
-                      No investigation notes logged yet. Click "Update Dispute Investigation" below to add notes from your courier coordination.
-                    </p>
-                  ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {commentsList.map((comm) => (
-                        <div
-                          key={comm.id}
-                          className="p-2.5 rounded-xl bg-white border border-neutral-200/80 text-xs space-y-1 shadow-2xs"
-                        >
-                          <div className="flex items-center justify-between text-[11px] text-neutral-500">
-                            <span className="font-bold text-neutral-900 flex items-center gap-1">
-                              <UserCheck className="w-3 h-3 text-amber-600" />
-                              <span>{comm.author}</span>
-                            </span>
-                            <span>
-                              {new Date(comm.timestamp).toLocaleString('en-IN', {
-                                day: 'numeric',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                          <p className="text-neutral-800 leading-relaxed font-medium">
-                            {comm.comment}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Grid: Customer Details & Courier Integration Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  {/* Customer & Order Profile */}
-                  <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 space-y-2.5">
-                    <div className="flex items-center gap-2 text-neutral-900 font-bold">
-                      <User className="w-4 h-4 text-amber-600" />
-                      <span>Customer & Delivery Destination</span>
-                    </div>
-                    <div className="space-y-1 text-neutral-700">
-                      <p className="font-semibold text-neutral-900">{order.customer.name}</p>
-                      <p className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-neutral-400" />
-                        <a
-                          href={`tel:${order.customer.phone}`}
-                          className="hover:text-amber-800 font-mono font-medium"
-                        >
-                          {order.customer.phone}
-                        </a>
-                      </p>
-                      {order.customer.email && (
-                        <p className="flex items-center gap-1.5">
-                          <Mail className="w-3.5 h-3.5 text-neutral-400" />
-                          <span>{order.customer.email}</span>
-                        </p>
-                      )}
-                      <p className="flex items-start gap-1.5 pt-1 text-neutral-600">
-                        <MapPin className="w-3.5 h-3.5 text-neutral-400 shrink-0 mt-0.5" />
-                        <span>
-                          {order.customer.address}, {order.customer.city},{' '}
-                          {order.customer.state} - {order.customer.pincode}
-                        </span>
-                      </p>
-                    </div>
-
-                    <div className="pt-2 border-t border-neutral-200 flex items-center justify-between">
-                      <span className="text-neutral-500">Total Order Value:</span>
-                      <span className="font-bold font-serif text-sm text-neutral-900">
-                        {formatPrice(order.totalAmount)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Courier Partner Office Details & Sharable Maps Link */}
-                  <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-amber-950 font-bold">
-                        <Truck className="w-4 h-4 text-amber-700" />
-                        <span>Courier Partner Details ({order.shippingDetails?.courierName || 'Unassigned'})</span>
-                      </div>
-                      {order.shippingDetails?.trackingNumber && (
-                        <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-amber-200">
-                          <span className="font-mono font-bold text-[11px] text-neutral-900">
-                            {order.shippingDetails.trackingNumber}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              copyToClipboard(order.shippingDetails!.trackingNumber, `track-${order.id}`)
-                            }
-                            className="p-0.5 hover:text-amber-700 cursor-pointer"
-                            title="Copy Tracking #"
-                          >
-                            {copiedKey === `track-${order.id}` ? (
-                              <Check className="w-3 h-3 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3 h-3" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {courier ? (
-                      <div className="space-y-1.5 text-neutral-800">
-                        <p className="font-bold text-neutral-900 flex items-center gap-1.5">
-                          <Building className="w-3.5 h-3.5 text-amber-600" />
-                          <span>{courier.name} Local Branch Hub</span>
-                        </p>
-                        <p className="text-[11px] text-neutral-600 flex items-start gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
-                          <span>
-                            {courier.addressLine1}
-                            {courier.addressLine2 ? `, ${courier.addressLine2}` : ''}, {courier.city} -{' '}
-                            {courier.pincode}
-                          </span>
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
-                          <p className="flex items-center gap-1.5">
-                            <Phone className="w-3.5 h-3.5 text-neutral-500" />
-                            <a href={`tel:${courier.phone}`} className="hover:text-amber-800 font-semibold">
-                              {courier.phone}
-                            </a>
-                          </p>
-                          <p className="flex items-center gap-1.5 truncate">
-                            <Mail className="w-3.5 h-3.5 text-neutral-500" />
-                            <a href={`mailto:${courier.supportEmail}`} className="hover:text-amber-800 truncate">
-                              {courier.supportEmail}
-                            </a>
-                          </p>
-                        </div>
-
-                        {courier.mapsUrl && (
-                          <div className="pt-2">
-                            <a
-                              href={courier.mapsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-neutral-100 text-amber-900 border border-amber-300 font-semibold text-[11px] transition shadow-2xs"
-                            >
-                              <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                              <span>View {courier.name} on Google Maps</span>
-                              <ExternalLink className="w-3 h-3 text-neutral-500" />
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-neutral-600 space-y-1">
-                        <p className="font-semibold">{order.shippingDetails?.courierName || 'Partner not specified'}</p>
-                        <p className="text-[11px] text-neutral-500">
-                          To view complete office address, phone, and Google Maps link, configure this courier in Settings.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Action Toolbar: Assign to Me, Reassign, Update Investigation, Reopen, Resolve, WhatsApp */}
-                <div className="pt-3 border-t border-neutral-100 flex flex-wrap items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Assign to Me Button (User Request: Assign & Reassign Options for Disputes) */}
-                    {!isAssignedToMe && (
+                  {/* Action Buttons Toolbar */}
+                  <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+                    {/* Assign to Me button if unassigned */}
+                    {isUnassigned && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleAssignToMe(order);
                         }}
-                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                        title="Take ownership of this delivery dispute and route to your personal bucket"
+                        className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs transition flex items-center gap-1 border border-blue-200 cursor-pointer"
+                        title="Claim this dispute to your bucket"
                       >
-                        <UserPlus className="w-3.5 h-3.5" />
-                        <span>Assign to Me</span>
+                        <UserPlus className="w-3 h-3" />
+                        <span>Claim</span>
                       </button>
                     )}
 
-                    {/* Reassign Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setReassigningOrder(order);
-                        setTargetStaffId(order.assignedStaffId || 'admin');
-                        setReassignmentNote('');
-                      }}
-                      className="px-3 py-2 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-800 font-semibold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                      title="Reassign this dispute to another staff member or admin"
-                    >
-                      <UserCheck className="w-3.5 h-3.5 text-neutral-600" />
-                      <span>{order.assignedStaffId ? 'Reassign Case' : 'Assign Case'}</span>
-                    </button>
-
-                    {/* Investigation Update / Reopen Button (User Request: Investigation Comments instead of re-prompting) */}
-                    {order.isClosed ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setReopeningOrder(order);
-                        }}
-                        className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                        title="Reopen order to active queue so staff can investigate with courier"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5 text-neutral-950" />
-                        <span>Reopen Disputed Order</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setInvestigatingOrder(order);
-                        }}
-                        className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                        title="Add investigation progress comment without re-prompting for reopen explanation"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 text-neutral-950" />
-                        <span>Update Dispute Investigation</span>
-                      </button>
-                    )}
-
-                    {/* Mark Resolved Button */}
-                    {issueStatus !== 'resolved' && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setResolvingOrder(order);
-                          setResolutionNotes('');
-                        }}
-                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                        title="Mark delivery dispute resolved with dedicated resolution timestamp"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Mark Dispute Resolved</span>
-                      </button>
-                    )}
-
-                    {/* Final Order Closure Button (User Request 1: Close Order button once refund or dispute is completed) */}
-                    {!order.isClosed && (
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          await closeOrder(order.id, currentUserName);
-                        }}
-                        className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                        title="Officially close this order now that refund or dispute resolution is complete"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Close Order</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {/* Live Customer Chat Stream (User Request 3) */}
+                    {/* Live Chat */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setChatModalOrder(order);
                       }}
-                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                      title="Chat in real-time with customer regarding this dispute"
+                      className="px-2.5 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-xs transition flex items-center gap-1 cursor-pointer"
+                      title="Open Live Chat"
                     >
-                      <MessageSquare className="w-3.5 h-3.5 text-white" />
-                      <span>
-                        Live Chat
-                        {order.chatMessages && order.chatMessages.length > 0 ? ` (${order.chatMessages.length})` : ''}
-                      </span>
+                      <MessageSquare className="w-3 h-3 text-blue-600" />
+                      <span>Chat</span>
                       {order.chatMessages?.some((m) => !m.readByStaff && m.sender === 'customer') && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       )}
                     </button>
 
-                    {/* Customer WhatsApp Coordination (User Request 1: Chat directly with users regarding refund updates) */}
+                    {/* WhatsApp */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1181,11 +743,24 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                           : `Namaste ${order.customer.name}! 🪔✨\n\nRegarding your delivery query for order #${order.orderNumber} (${order.shippingDetails?.courierName || 'Courier'}, Tracking: ${order.shippingDetails?.trackingNumber || 'Pending'}).\n\nOur concierge team is actively investigating with the local courier dispatch office to verify handover and ensure you receive your authentic handloom saree.\n\nWarm regards,\n${settings.boutiqueName}`;
                         openWhatsApp(cleanPhone, text);
                       }}
-                      className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                      title="Send instant update to customer via WhatsApp"
+                      className="px-2.5 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-xs transition flex items-center gap-1 cursor-pointer"
+                      title="WhatsApp Customer"
                     >
-                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{isRefundCase(order) ? 'Chat Refund with Customer' : 'WhatsApp Customer'}</span>
+                      <MessageSquare className="w-3 h-3 text-emerald-600" />
+                      <span>WhatsApp</span>
+                    </button>
+
+                    {/* Primary Inspect & Resolve Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDisputeDetailOrder(order);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs transition shadow-2xs flex items-center gap-1 cursor-pointer group-hover/dispute:bg-amber-400"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-neutral-950" />
+                      <span>Inspect & Resolve &rarr;</span>
                     </button>
                   </div>
                 </div>

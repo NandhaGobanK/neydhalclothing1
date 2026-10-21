@@ -63,6 +63,8 @@ export interface Product {
   isSkuLocked?: boolean; // True once edited one time; locks SKU permanently
   initialSku?: string; // Original SKU stored upon creation for comparison
   category?: string; // Category grouping (e.g. Poontamil Sarees, Foil Print Sarees, etc.)
+  isRestocked?: boolean; // Set to true when restocked via order cancellation or inventory update
+  restockedAt?: string; // Timestamp of latest restock event
 }
 
 export interface SareeCategory {
@@ -308,6 +310,7 @@ export interface Order {
   claimedAt?: string;
   deliveryIssue?: CustomerDeliveryIssue; // Customer delivery non-receipt report / dispute
   chatMessages?: OrderChatMessage[]; // Direct real-time chat between customer and staff
+  isRestocked?: boolean; // Set to true once purchased items have been restocked upon cancellation
 }
 
 export type ThemeMode = 'light' | 'dark';

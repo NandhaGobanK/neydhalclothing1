@@ -1,7 +1,6 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen, Heart } from 'lucide-react';
-import { PWAInstallButton } from '../pwa/PWAInstallButton';
+import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen, Heart, Sparkles } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 
 interface HeaderProps {
@@ -26,6 +25,26 @@ export const Header: React.FC<HeaderProps> = ({
   React.useEffect(() => {
     setLogoError(false);
   }, [settings.logoUrl]);
+
+  // Check if any product in a category has been restocked
+  const isCatRestocked = React.useCallback(
+    (catId: string) => {
+      if (catId === 'all') {
+        return publicProducts.some(
+          (p) => p.isRestocked && p.stockStatus !== 'out_of_stock' && (p.stockCount ?? 1) > 0
+        );
+      }
+      return publicProducts.some(
+        (p) =>
+          ((p.category && p.category.toLowerCase() === catId.toLowerCase()) ||
+            (p.fabric && p.fabric.toLowerCase() === catId.toLowerCase())) &&
+          p.isRestocked &&
+          p.stockStatus !== 'out_of_stock' &&
+          (p.stockCount ?? 1) > 0
+      );
+    },
+    [publicProducts]
+  );
 
   // Only display fabric keywords that are published from the admin page
   const publishedFabrics = React.useMemo(() => {
@@ -104,19 +123,28 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 2: Navigation Links */}
         <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-neutral-300">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => onSelectCategory?.(cat.id)}
-              className={`hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 ${
-                selectedCategory === cat.id
-                  ? 'text-amber-400 border-b-2 border-amber-400 font-semibold'
-                  : 'text-neutral-300'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
+          {categories.map((cat) => {
+            const restocked = isCatRestocked(cat.id);
+            return (
+              <button
+                key={cat.id}
+                onClick={() => onSelectCategory?.(cat.id)}
+                className={`hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 flex items-center gap-1.5 cursor-pointer ${
+                  selectedCategory === cat.id
+                    ? 'text-amber-400 border-b-2 border-amber-400 font-semibold'
+                    : 'text-neutral-300'
+                }`}
+              >
+                <span>{cat.label}</span>
+                {restocked && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-600 text-white flex items-center gap-0.5 shadow-2xs">
+                    <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                    <span>Restocked</span>
+                  </span>
+                )}
+              </button>
+            );
+          })}
 
           {showTrackOrder && (
             <button
@@ -138,7 +166,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Zone 3: Actions (Track Order on mobile/desktop, PWA install, Cart bag, Discreet Admin) */}
+        {/* Zone 3: Actions (Track Order on mobile/desktop, Wishlist, Cart bag, Discreet Admin) */}
         <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
           {showTrackOrder && (
             <button
@@ -149,8 +177,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Truck className="w-4 h-4" />
             </button>
           )}
-
-          <PWAInstallButton variant="header" onClickGuide={onOpenInstructions} />
 
           {/* Customer Wishlist Button */}
           {onSelectWishlist && (
@@ -172,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Cart Bag Button */}
           <button
             onClick={() => setIsCartOpen(true)}
-            className="relative p-2.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-amber-200 transition-colors flex items-center justify-center"
+            className="relative p-2.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-amber-200 transition-colors flex items-center justify-center cursor-pointer"
             aria-label="View Shopping Bag"
             title="Shopping Bag"
           >
@@ -201,19 +227,27 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Mobile Category Scrollable Tab Strip */}
       <div className="lg:hidden flex items-center gap-2 px-4 py-2 overflow-x-auto no-scrollbar border-t border-neutral-800 bg-neutral-950/80">
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            onClick={() => onSelectCategory?.(cat.id)}
-            className={`px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors ${
-              selectedCategory === cat.id
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 font-medium'
-                : 'text-neutral-400 hover:text-neutral-200 bg-neutral-900 border border-neutral-800'
-            }`}
-          >
-            {cat.label}
-          </button>
-        ))}
+        {categories.map((cat) => {
+          const restocked = isCatRestocked(cat.id);
+          return (
+            <button
+              key={cat.id}
+              onClick={() => onSelectCategory?.(cat.id)}
+              className={`px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors flex items-center gap-1 ${
+                selectedCategory === cat.id
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 font-medium'
+                  : 'text-neutral-400 hover:text-neutral-200 bg-neutral-900 border border-neutral-800'
+              }`}
+            >
+              <span>{cat.label}</span>
+              {restocked && (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-600 text-white">
+                  Restocked
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </header>
   );

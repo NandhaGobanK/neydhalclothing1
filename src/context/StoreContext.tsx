@@ -34,6 +34,7 @@ import {
 import { googleSignOut, setCachedAccessToken } from '../utils/firebaseAuth';
 import { syncPWAAndDocumentMetadata } from '../utils/dynamicManifest';
 import { formatDeviceDateTime, getDeviceTimezone } from '../utils/deviceTime';
+import { sendRestockPushNotification } from '../utils/audio';
 import {
   collection,
   doc,
@@ -133,6 +134,7 @@ interface StoreContextType {
     adminNotes?: string,
     refundUtr?: string
   ) => void;
+  replenishOrderInventory: (order: Order) => void;
   findOrdersByQuery: (query: string) => Order[];
   closeOrder: (orderId: string, closedBy?: string) => void;
   reopenOrder: (orderId: string, reopenedBy: string, reason: string) => void;
@@ -1170,18 +1172,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       (sanitizedUpdates.stockStatus === 'in_stock' || sanitizedUpdates.stockStatus === 'limited') &&
       ((sanitizedUpdates.stockCount !== undefined && sanitizedUpdates.stockCount > 0) || (existingProd && existingProd.stockCount > 0));
 
-    // If restocked, explicitly mention the associated Category Name alongside product details in announcement
+    // Real-time Restock Handling: Discontinue announcement board use; send PWA & Web push notifications with audio chime and flag product & category
     if (wasOutOfStock && willBeRestocked && existingProd) {
+      sanitizedUpdates.isRestocked = true;
+      sanitizedUpdates.restockedAt = new Date().toISOString();
       const restockedTitle = sanitizedUpdates.title || existingProd.title;
       const categoryName = sanitizedUpdates.category || existingProd.category || 'Handlooms';
-      const announcementMsg = `✨ Back in Stock: "${restockedTitle}" (${categoryName}) has been restocked and is now available for ordering!`;
-      updateSettings({
-        announcement: {
-          enabled: true,
-          text: announcementMsg,
-          badgeLabel: 'RESTOCKED',
-        },
-      });
+      sendRestockPushNotification([restockedTitle], categoryName);
     }
 
     setProducts((prev) => {
@@ -1508,6 +1505,57 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return newOrder;
   };
 
+  // Real-Time Stock Replenishment on Order Cancellation
+  const replenishOrderInventory = (order: Order) => {
+    if (order.isRestocked || !order.items || order.items.length === 0) return;
+
+    const restockedTitles: string[] = [];
+    let affectedCategory: string | undefined;
+
+    setProducts((prev) => {
+      const next = prev.map((prod) => {
+        const item = order.items.find(
+          (it) =>
+            it.product.id === prod.id ||
+            (it.product.productCode &&
+              prod.productCode &&
+              it.product.productCode.trim().toUpperCase() === prod.productCode.trim().toUpperCase())
+        );
+        if (!item) return prod;
+
+        const currentStock = prod.stockCount ?? 0;
+        const newCount = currentStock + (item.quantity || 1);
+        const newStatus: 'in_stock' | 'out_of_stock' | 'limited' =
+          newCount > 2 ? 'in_stock' : newCount > 0 ? 'limited' : 'out_of_stock';
+        restockedTitles.push(prod.title);
+        if (prod.category) affectedCategory = prod.category;
+
+        const updatedProd: Product = {
+          ...prod,
+          stockCount: newCount,
+          stockStatus: newStatus,
+          isRestocked: true,
+          restockedAt: new Date().toISOString(),
+        };
+
+        // Persist product update to Firestore immediately
+        setDoc(doc(db, 'products', prod.id), sanitizeForFirestore(updatedProd), { merge: true }).catch((err) =>
+          handleFirestoreError(err, OperationType.UPDATE, `products/${prod.id}`)
+        );
+
+        return updatedProd;
+      });
+
+      saveToStorage(STORAGE_KEYS.PRODUCTS, next);
+      return next;
+    });
+
+    // Send real-time PWA and Web Push Notification with audio chime!
+    if (restockedTitles.length > 0) {
+      sendRestockPushNotification(restockedTitles, affectedCategory);
+    }
+  };
+
   const updateOrderStatus = (
     orderId: string,
     status: OrderStatus,
@@ -1596,11 +1644,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         const isNowDelivered = status === 'Delivered';
+        let didRestock = ord.isRestocked;
+        if (isNowCancelled && !ord.isRestocked) {
+          replenishOrderInventory(ord);
+          didRestock = true;
+        }
+
         const updated: Order = {
           ...ord,
           status,
           statusHistory: updatedStatusHistory,
           deliveryIssue: updatedDeliveryIssue,
+          isRestocked: didRestock,
           deliveredAt: isNowDelivered ? (ord.deliveredAt || new Date().toISOString()) : ord.deliveredAt,
           completedAt: isNowDelivered ? (ord.completedAt || new Date().toISOString()) : ord.completedAt,
           shippingDetails: nextShippingDetails,
@@ -2116,9 +2171,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
 
         if (action === 'approve') {
+          if (!ord.isRestocked) {
+            replenishOrderInventory(ord);
+          }
           const updated: Order = {
             ...ord,
             status: 'Cancelled',
+            isRestocked: true,
             cancellationReason: ord.cancellationRequest?.reason || 'Customer requested cancellation approved',
             cancellationRequest: {
               ...(ord.cancellationRequest || {
@@ -3271,6 +3330,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         addOrderWorkLog,
         requestOrderCancellation,
         resolveCancellationRequest,
+        replenishOrderInventory,
         findOrdersByQuery,
         closeOrder,
         reopenOrder,

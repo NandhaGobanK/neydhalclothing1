@@ -320,9 +320,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   </span>
                   <span aria-hidden="true">·</span>
                   {/* Stock Availability Indicator */}
+                  {product.isRestocked && !isOutOfStock && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-600 text-white border border-emerald-400 shadow-xs">
+                      <span>✨ Restocked</span>
+                    </span>
+                  )}
                   {isOutOfStock ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-neutral-900 text-rose-300 border border-neutral-700">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-600 text-white border border-rose-500 shadow-xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
                       <span>Out of Stock</span>
                     </span>
                   ) : product.stockCount !== undefined && product.stockCount <= 3 ? (

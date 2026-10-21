@@ -21,6 +21,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedColor, setSelectedColor] = useState<string>('all');
   const [priceRange, setPriceRange] = useState<string>('all');
+  const [restockedOnly, setRestockedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'newest' | 'name-asc' | 'name-desc'>('featured');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -75,6 +76,10 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
             p.description.toLowerCase().includes(q);
           if (!match) return false;
         }
+        // Restocked Only Filter
+        if (restockedOnly && !p.isRestocked) {
+          return false;
+        }
         return true;
       })
       .sort((a, b) => {
@@ -87,18 +92,20 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         if (sortBy === 'name-desc') return b.title.localeCompare(a.title);
         return (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0);
       });
-  }, [publicProducts, selectedCategory, selectedColor, priceRange, searchQuery, sortBy]);
+  }, [publicProducts, selectedCategory, selectedColor, priceRange, searchQuery, restockedOnly, sortBy]);
 
   const activeFilterCount =
     (selectedCategory !== 'all' ? 1 : 0) +
     (selectedColor !== 'all' ? 1 : 0) +
     (priceRange !== 'all' ? 1 : 0) +
+    (restockedOnly ? 1 : 0) +
     (searchQuery ? 1 : 0);
 
   const resetFilters = () => {
     onSelectCategory?.('all');
     setSelectedColor('all');
     setPriceRange('all');
+    setRestockedOnly(false);
     setSearchQuery('');
     setSortBy('featured');
   };
@@ -198,6 +205,22 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
 
       {/* Filter Bar (Segmented button tabs) */}
       <div className={`space-y-4 mb-8 ${showMobileFilters ? 'block' : 'hidden md:block'}`}>
+        {/* Restocked Sarees Quick Filter */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRestockedOnly((v) => !v)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              restockedOnly
+                ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-medium'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+            <span>{restockedOnly ? '✓ Viewing Restocked Sarees' : '✨ Filter Restocked Sarees'}</span>
+          </button>
+        </div>
+
         {/* Fabric Filter - Only published fabrics */}
         {publishedFabrics.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-neutral-100 rounded-xl">

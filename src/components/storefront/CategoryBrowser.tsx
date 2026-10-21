@@ -73,9 +73,25 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
 
   const [searchFilter, setSearchFilter] = useState('');
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [restockedOnly, setRestockedOnly] = useState(false);
+  const [categoryRestockFilter, setCategoryRestockFilter] = useState<'all' | 'restocked'>('all');
   const [sortBy, setSortBy] = useState<CategorySortOption>('featured');
   const [isSortOpen, setIsSortOpen] = useState(false);
   const sortRef = React.useRef<HTMLDivElement>(null);
+
+  // Check if any active product in category is restocked
+  const isCategoryRestocked = React.useCallback(
+    (catName: string) => {
+      return publicProducts.some(
+        (p) =>
+          (p.category === catName || p.category?.toLowerCase() === catName.toLowerCase()) &&
+          p.isRestocked &&
+          p.stockStatus !== 'out_of_stock' &&
+          (p.stockCount ?? 1) > 0
+      );
+    },
+    [publicProducts]
+  );
 
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -160,6 +176,11 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
         if (isOut) return false;
       }
 
+      // Restocked only filter
+      if (restockedOnly) {
+        if (!p.isRestocked) return false;
+      }
+
       // Fabric filter
       if (selectedFabric !== 'all' && p.fabric !== selectedFabric) {
         return false;
@@ -186,7 +207,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
     }
 
     return list;
-  }, [publicProducts, activeCategory, searchFilter, inStockOnly, selectedFabric, sortBy]);
+  }, [publicProducts, activeCategory, searchFilter, inStockOnly, restockedOnly, selectedFabric, sortBy]);
 
   const activeCategoryObj = categories.find(
     (c) => c.name.toLowerCase() === (activeCategory || '').toLowerCase()
@@ -307,11 +328,25 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                 onClick={() => setInStockOnly((v) => !v)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
                   inStockOnly
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
+                    ? 'bg-neutral-900 text-white border-neutral-900 shadow-2xs'
                     : 'bg-neutral-50 text-neutral-600 border-neutral-200 hover:bg-neutral-100'
                 }`}
               >
                 {inStockOnly ? '✓ In Stock Only' : 'In Stock Only'}
+              </button>
+
+              {/* Restocked Only Chip */}
+              <button
+                type="button"
+                onClick={() => setRestockedOnly((v) => !v)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border flex items-center gap-1 ${
+                  restockedOnly
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-2xs font-bold'
+                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                }`}
+              >
+                <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" />
+                <span>{restockedOnly ? '✓ Restocked Sarees' : '✨ Restocked Only'}</span>
               </button>
 
               {/* Fabric Filter */}
@@ -431,6 +466,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
               {categoryProducts.map((product) => {
                 const inWishlist = isInWishlist(product.id);
+                const isOutOfStock = product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0);
                 const discountPercent =
                   product.originalPrice && product.originalPrice > product.price
                     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
@@ -442,7 +478,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                     onClick={() => onOpenDetails(product)}
                     className="group bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs hover:shadow-md transition-all duration-200 flex flex-col cursor-pointer relative"
                   >
-                    {/* Top image container with wishlist heart & discount badge */}
+                    {/* Top image container with wishlist heart, restocked badge & discount badge */}
                     <div className="relative aspect-3/4 overflow-hidden bg-neutral-100">
                       <img
                         src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
@@ -451,11 +487,21 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                         loading="lazy"
                       />
 
+                      {/* Prominent Out of Stock Full-Card Overlay */}
+                      {isOutOfStock && (
+                        <div className="absolute inset-0 bg-neutral-950/70 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center p-2 text-center pointer-events-none animate-in fade-in">
+                          <span className="px-2.5 py-1 rounded-full bg-rose-600 text-white font-bold text-[10px] uppercase tracking-wider shadow-lg border border-rose-400 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                            <span>Out of Stock</span>
+                          </span>
+                        </div>
+                      )}
+
                       {/* Wishlist Heart Button (interactive toggle) */}
                       <button
                         type="button"
                         onClick={(e) => handleToggleWishlist(e, product.id)}
-                        className={`absolute top-2.5 right-2.5 w-8 h-8 rounded-full flex items-center justify-center shadow-md backdrop-blur-md transition cursor-pointer ${
+                        className={`absolute top-2.5 right-2.5 z-25 w-8 h-8 rounded-full flex items-center justify-center shadow-md backdrop-blur-md transition cursor-pointer ${
                           inWishlist
                             ? 'bg-white text-rose-600 ring-2 ring-rose-500'
                             : 'bg-white/80 hover:bg-white text-neutral-700 hover:text-rose-600'
@@ -468,15 +514,23 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                         />
                       </button>
 
-                      {/* Discount Percentage Badge */}
-                      {discountPercent && discountPercent > 0 && (
-                        <div className="absolute top-2.5 left-2.5 bg-rose-600 text-white font-bold text-[10px] px-2 py-0.5 rounded-md shadow-xs tracking-tight">
-                          {discountPercent}% OFF
-                        </div>
-                      )}
+                      {/* Top Badges (Restocked Tag & Discount) */}
+                      <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 items-start z-10">
+                        {product.isRestocked && !isOutOfStock && (
+                          <div className="bg-emerald-600 text-white font-bold text-[10px] px-2 py-0.5 rounded-md shadow-xs tracking-tight flex items-center gap-1 border border-emerald-400 animate-in zoom-in-75">
+                            <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                            <span>Restocked</span>
+                          </div>
+                        )}
+                        {discountPercent && discountPercent > 0 && (
+                          <div className="bg-rose-600 text-white font-bold text-[10px] px-2 py-0.5 rounded-md shadow-xs tracking-tight">
+                            {discountPercent}% OFF
+                          </div>
+                        )}
+                      </div>
 
                       {/* SKU Identifier Badge */}
-                      <div className="absolute bottom-2 left-2 bg-neutral-900/80 backdrop-blur-xs text-amber-200 font-mono text-[9px] px-1.5 py-0.5 rounded border border-neutral-700/60 font-semibold tracking-wider">
+                      <div className="absolute bottom-2 left-2 bg-neutral-900/80 backdrop-blur-xs text-amber-200 font-mono text-[9px] px-1.5 py-0.5 rounded border border-neutral-700/60 font-semibold tracking-wider z-10">
                         {product.productCode}
                       </div>
                     </div>
@@ -599,56 +653,110 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
           </div>
         </div>
 
-        {/* Visual Category Cards Grid (Poontamil sarees, Foil print sarees, Soft menna work saree, Cotton kids dhoti set, Tissue dhoti set, Couple combo / silk dhoti shirt) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {categories.map((category) => {
-            const count = categoryCounts[category.name] || 0;
-            return (
-              <div
-                key={category.id}
-                onClick={() => handleCategoryClick(category.name)}
-                className="group relative bg-white rounded-2xl border border-neutral-200/90 overflow-hidden shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-between"
-              >
-                {/* Visual Category Preview Image */}
-                <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-100">
-                  <img
-                    src={category.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
-                    alt={category.name}
-                    className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-
-                  {/* Item Count Pill */}
-                  <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
-                    {count} {count === 1 ? 'Design' : 'Designs'}
-                  </div>
-
-                  {/* Category Title Overlay */}
-                  <div className="absolute bottom-3 left-3 right-3 text-white">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300">
-                      Explore Collection
-                    </span>
-                    <h3 className="font-serif font-bold text-lg sm:text-xl text-white group-hover:text-amber-200 transition">
-                      {category.name}
-                    </h3>
-                  </div>
-                </div>
-
-                {/* Category Card Footer */}
-                <div className="p-4 bg-white flex items-center justify-between text-xs border-t border-neutral-100">
-                  <p className="text-neutral-500 line-clamp-1 pr-2 text-[11px]">
-                    {category.description || 'Authentic pure handloom weave with tested quality.'}
-                  </p>
-                  <span className="text-rose-900 font-bold inline-flex items-center gap-1 shrink-0 group-hover:translate-x-1 transition-transform">
-                    <span>View items</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+        {/* Category-Level Restock Filter Tabs */}
+        <div className="flex items-center gap-2 pb-1 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setCategoryRestockFilter('all')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+              categoryRestockFilter === 'all'
+                ? 'bg-neutral-900 text-white shadow-xs'
+                : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
+            }`}
+          >
+            All Collections ({categories.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setCategoryRestockFilter('restocked')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              categoryRestockFilter === 'restocked'
+                ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-medium'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+            <span>✨ Restocked Collections ({categories.filter((c) => isCategoryRestocked(c.name)).length})</span>
+          </button>
         </div>
+
+        {/* Visual Category Cards Grid */}
+        {categories.filter((c) => (categoryRestockFilter === 'restocked' ? isCategoryRestocked(c.name) : true)).length === 0 ? (
+          <div className="p-12 text-center bg-white rounded-3xl border border-neutral-200 space-y-2">
+            <Sparkles className="w-8 h-8 text-amber-500 mx-auto" />
+            <h3 className="font-serif text-base font-bold text-neutral-900">No Restocked Collections Right Now</h3>
+            <p className="text-xs text-neutral-500">All current sarees are at normal inventory levels.</p>
+            <button
+              type="button"
+              onClick={() => setCategoryRestockFilter('all')}
+              className="mt-2 px-4 py-1.5 rounded-xl bg-neutral-900 text-white text-xs font-semibold"
+            >
+              View All Collections
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {categories
+              .filter((c) => (categoryRestockFilter === 'restocked' ? isCategoryRestocked(c.name) : true))
+              .map((category) => {
+                const count = categoryCounts[category.name] || 0;
+                const isRestocked = isCategoryRestocked(category.name);
+
+                return (
+                  <div
+                    key={category.id}
+                    onClick={() => handleCategoryClick(category.name)}
+                    className="group relative bg-white rounded-2xl border border-neutral-200/90 overflow-hidden shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-between"
+                  >
+                    {/* Visual Category Preview Image */}
+                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-100">
+                      <img
+                        src={category.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                        alt={category.name}
+                        className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+
+                      {/* Restocked Badge on Category Icon / Card */}
+                      {isRestocked && (
+                        <div className="absolute top-3 left-3 bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-md border border-emerald-400 flex items-center gap-1 z-10 animate-in zoom-in-75">
+                          <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
+                          <span>Restocked</span>
+                        </div>
+                      )}
+
+                      {/* Item Count Pill */}
+                      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                        {count} {count === 1 ? 'Design' : 'Designs'}
+                      </div>
+
+                      {/* Category Title Overlay */}
+                      <div className="absolute bottom-3 left-3 right-3 text-white">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300">
+                          Explore Collection
+                        </span>
+                        <h3 className="font-serif font-bold text-lg sm:text-xl text-white group-hover:text-amber-200 transition">
+                          {category.name}
+                        </h3>
+                      </div>
+                    </div>
+
+                    {/* Category Card Footer */}
+                    <div className="p-4 bg-white flex items-center justify-between text-xs border-t border-neutral-100">
+                      <p className="text-neutral-500 line-clamp-1 pr-2 text-[11px]">
+                        {category.description || 'Authentic pure handloom weave with tested quality.'}
+                      </p>
+                      <span className="text-rose-900 font-bold inline-flex items-center gap-1 shrink-0 group-hover:translate-x-1 transition-transform">
+                        <span>View items</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
     </div>
   );
