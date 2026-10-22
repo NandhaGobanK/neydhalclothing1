@@ -156,7 +156,12 @@ function MainAppContent() {
 
   const handleScrollToCatalog = () => {
     setSelectedCategory('all');
-    setCustomerActiveTab('categories');
+    const el = document.getElementById('catalog-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      setCustomerActiveTab('categories');
+    }
   };
 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
@@ -293,6 +298,15 @@ function MainAppContent() {
                       );
                     })}
                   </div>
+                </section>
+
+                {/* Saree Collection Catalog */}
+                <section id="catalog-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+                  <ProductGrid
+                    selectedCategory={selectedCategory}
+                    onSelectCategory={(cat) => setSelectedCategory(cat)}
+                    onOpenDetails={(product) => setActiveProductModal(product)}
+                  />
                 </section>
               </main>
             )}

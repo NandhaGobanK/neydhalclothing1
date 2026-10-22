@@ -494,10 +494,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Dynamic Hierarchical Saree Categories State (Synced with Firestore /categories)
   const [categories, setCategories] = useState<SareeCategory[]>(() => {
     const stored = loadFromStorage<SareeCategory[]>('aara_boutique_categories_v3', []);
-    return stored.filter((c) => {
+    const filtered = stored.filter((c) => {
       const isDemo = (c as any).isDemo === true && c.id.startsWith('mock-demo-seed-');
       return !isDemo;
     });
+    if (filtered.length > 0) return filtered;
+    return DEFAULT_SAREE_CATEGORIES;
   });
 
   // Active, visible wishlist derived state: instantly purges any deleted or hidden product from badges & lists
@@ -663,6 +665,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           });
           setProducts(list);
           saveToStorage(STORAGE_KEYS.PRODUCTS, list);
+        } else if (!isSeeding && localStorage.getItem('neydhal_fresh_brand_new') !== 'true') {
+          isSeeding = true;
+          INITIAL_PRODUCTS.forEach((p) => {
+            if (!deletedIds.has(p.id)) {
+              setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p)).catch((err) =>
+                handleFirestoreError(err, OperationType.WRITE, `products/${p.id}`)
+              );
+            }
+          });
+          const initialClean = INITIAL_PRODUCTS.filter((p) => !deletedIds.has(p.id)).map(normalizeProductStock);
+          setProducts(initialClean);
+          saveToStorage(STORAGE_KEYS.PRODUCTS, initialClean);
         } else {
           setProducts([]);
           saveToStorage(STORAGE_KEYS.PRODUCTS, []);
@@ -914,6 +928,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           list.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
           setCategories(list);
           saveToStorage('aara_boutique_categories_v3', list);
+        } else if (isInitial && DEFAULT_SAREE_CATEGORIES.length > 0 && localStorage.getItem('neydhal_fresh_brand_new') !== 'true') {
+          DEFAULT_SAREE_CATEGORIES.forEach((cat) => {
+            setDoc(doc(db, 'categories', cat.id), sanitizeForFirestore(cat)).catch(() => {});
+          });
+          setCategories(DEFAULT_SAREE_CATEGORIES);
+          saveToStorage('aara_boutique_categories_v3', DEFAULT_SAREE_CATEGORIES);
         } else {
           setCategories([]);
           saveToStorage('aara_boutique_categories_v3', []);

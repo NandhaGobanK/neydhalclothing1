@@ -116,7 +116,43 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffSectionPermissions = {
   settingsDelivery: { canView: true, canEdit: false },
 };
 
-export const DEFAULT_SAREE_CATEGORIES: SareeCategory[] = [];
+export const DEFAULT_SAREE_CATEGORIES: SareeCategory[] = [
+  {
+    id: 'cat-kanjivaram',
+    name: 'Kanjivaram Silk',
+    description: 'Authentic pure mulberry silk sarees with pure gold zari borders handwoven in Kanchipuram.',
+    imageUrl: '/assets/images/saree_kanjivaram_crimson_1791651781402.jpg',
+    displayOrder: 1,
+  },
+  {
+    id: 'cat-banarasi',
+    name: 'Banarasi Brocade',
+    description: 'Royal pit-loom kadwa weave drapes with floral jaals from the holy ghats of Varanasi.',
+    imageUrl: '/assets/images/saree_banarasi_emerald_1791651794836.jpg',
+    displayOrder: 2,
+  },
+  {
+    id: 'cat-chanderi',
+    name: 'Chanderi Tissue',
+    description: 'Feather-light sheer gossamer silk drapes with shimmering Roopa Kalabattu silver zari.',
+    imageUrl: '/assets/images/saree_chanderi_lavender_1791651806313.jpg',
+    displayOrder: 3,
+  },
+  {
+    id: 'cat-organza',
+    name: 'Organza Silk',
+    description: 'Contemporary translucent silk organza with delicate hand embroidery and gota patti borders.',
+    imageUrl: '/assets/images/saree_chanderi_lavender_1791651806313.jpg',
+    displayOrder: 4,
+  },
+  {
+    id: 'cat-georgette',
+    name: 'Pure Georgette',
+    description: 'High-twist crinkled pure khaddi georgette with antique tilla and matte gold leaf work.',
+    imageUrl: '/assets/images/saree_banarasi_emerald_1791651794836.jpg',
+    displayOrder: 5,
+  },
+];
 
 export const DEFAULT_PRODUCT_ATTRIBUTES: ProductAttributeDefinition[] = [
   {
