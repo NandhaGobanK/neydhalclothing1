@@ -4,6 +4,38 @@
  */
 let audioCtxInstance: AudioContext | null = null;
 
+// Auto-unlock AudioContext on first user touch/click on device
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    try {
+      if (audioCtxInstance && audioCtxInstance.state === 'suspended') {
+        audioCtxInstance.resume().catch(() => {});
+      } else if (!audioCtxInstance) {
+        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtxClass) {
+          audioCtxInstance = new AudioCtxClass();
+        }
+      }
+    } catch {}
+    window.removeEventListener('click', unlockAudio);
+    window.removeEventListener('touchstart', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+  };
+
+  window.addEventListener('click', unlockAudio, { once: true, passive: true });
+  window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+  window.addEventListener('keydown', unlockAudio, { once: true, passive: true });
+}
+
+export function resumeAudioContext(): void {
+  try {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  } catch {}
+}
+
 function getAudioContext(): AudioContext | null {
   try {
     if (!audioCtxInstance || audioCtxInstance.state === 'closed') {

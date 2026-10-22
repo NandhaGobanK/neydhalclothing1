@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import {
   Product,
   Order,
@@ -35,6 +35,10 @@ import { googleSignOut, setCachedAccessToken } from '../utils/firebaseAuth';
 import { syncPWAAndDocumentMetadata } from '../utils/dynamicManifest';
 import { formatDeviceDateTime, getDeviceTimezone } from '../utils/deviceTime';
 import { sendRestockPushNotification } from '../utils/audio';
+import {
+  notifyCustomerOfConciergeMessage,
+  notifyStaffOfCustomerMessage,
+} from '../utils/deviceNotifications';
 import {
   collection,
   doc,
@@ -168,6 +172,19 @@ interface StoreContextType {
     sender: 'customer' | 'staff' | 'admin',
     senderName: string
   ) => Promise<{ success: boolean; message: string }>;
+  markOrderChatMessagesAsRead: (orderId: string, reader: 'customer' | 'staff') => Promise<void>;
+  customerUnreadChatCount: number;
+  staffUnreadChatCount: number;
+  incomingChatAlert: {
+    order: Order;
+    message: OrderChatMessage;
+    recipient: 'customer' | 'staff';
+  } | null;
+  dismissChatAlert: () => void;
+  activeAdminChatOrderId: string | null;
+  setActiveAdminChatOrderId: (id: string | null) => void;
+  activeCustomerChatOrderId: string | null;
+  setActiveCustomerChatOrderId: (id: string | null) => void;
 
   // Courier Services Management
   addCourierService: (courier: Omit<CourierService, 'id'>) => Promise<void>;
@@ -595,6 +612,54 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const customerOrdersCount = customerOrders.length;
 
+  // Active deep-link live chat order IDs
+  const [activeAdminChatOrderId, setActiveAdminChatOrderId] = useState<string | null>(null);
+  const [activeCustomerChatOrderId, setActiveCustomerChatOrderId] = useState<string | null>(null);
+
+  // Floating in-app alert banner for incoming live chat messages
+  const [incomingChatAlert, setIncomingChatAlert] = useState<{
+    order: Order;
+    message: OrderChatMessage;
+    recipient: 'customer' | 'staff';
+  } | null>(null);
+
+  const dismissChatAlert = () => setIncomingChatAlert(null);
+
+  // Unread chat counts
+  const customerUnreadChatCount = useMemo(() => {
+    if (!customerOrders || customerOrders.length === 0) return 0;
+    let count = 0;
+    for (const ord of customerOrders) {
+      if (ord.chatMessages) {
+        for (const msg of ord.chatMessages) {
+          if (!msg.readByCustomer && msg.sender !== 'customer') {
+            count++;
+          }
+        }
+      }
+    }
+    return count;
+  }, [customerOrders]);
+
+  const staffUnreadChatCount = useMemo(() => {
+    if (!orders || orders.length === 0) return 0;
+    let count = 0;
+    for (const ord of orders) {
+      if (ord.chatMessages) {
+        for (const msg of ord.chatMessages) {
+          if (!msg.readByStaff && msg.sender === 'customer') {
+            count++;
+          }
+        }
+      }
+    }
+    return count;
+  }, [orders]);
+
+  // Real-time Live Chat Notification Monitor across Customer and Staff Devices
+  const knownMessageIdsRef = useRef<Set<string>>(new Set());
+  const isInitialChatMountRef = useRef<boolean>(true);
+
   const [currentView, setCurrentView] = useState<'store' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
@@ -641,6 +706,65 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.REVIEWS, reviews);
   }, [reviews]);
+
+  // Real-time Live Chat Notification Monitor
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+
+    const currentMessages: { order: Order; message: OrderChatMessage }[] = [];
+    orders.forEach((ord) => {
+      (ord.chatMessages || []).forEach((msg) => {
+        currentMessages.push({ order: ord, message: msg });
+      });
+    });
+
+    if (isInitialChatMountRef.current) {
+      currentMessages.forEach(({ message }) => {
+        knownMessageIdsRef.current.add(message.id);
+      });
+      isInitialChatMountRef.current = false;
+      return;
+    }
+
+    const newMessages = currentMessages.filter(
+      ({ message }) => !knownMessageIdsRef.current.has(message.id)
+    );
+
+    if (newMessages.length === 0) return;
+
+    // Immediately mark as known to avoid duplicate triggers
+    newMessages.forEach(({ message }) => {
+      knownMessageIdsRef.current.add(message.id);
+    });
+
+    newMessages.forEach(({ order, message }) => {
+      if (message.sender === 'customer') {
+        // Customer replied on live chat -> Notify us on staff device!
+        notifyStaffOfCustomerMessage(order, message, () => {
+          setCurrentView('admin');
+          setActiveAdminChatOrderId(order.id);
+        });
+
+        setIncomingChatAlert({
+          order,
+          message,
+          recipient: 'staff',
+        });
+      } else if (message.sender === 'staff' || message.sender === 'admin') {
+        // We sent live chat message -> Notify customer on user device!
+        notifyCustomerOfConciergeMessage(order, message, () => {
+          setIsTrackOrderOpen(true);
+          setActiveCustomerChatOrderId(order.id);
+        });
+
+        setIncomingChatAlert({
+          order,
+          message,
+          recipient: 'customer',
+        });
+      }
+    });
+  }, [orders]);
 
   // Test Firestore connection on boot
   useEffect(() => {
@@ -2670,6 +2794,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       readByStaff: sender !== 'customer',
     };
 
+    // Register our own sent message ID immediately so self-sent messages do not trigger notification alert
+    knownMessageIdsRef.current.add(newMessage.id);
+
     const updatedMessages = [...(targetOrder.chatMessages || []), newMessage];
 
     setOrders((prev) => {
@@ -2691,6 +2818,53 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch (err: any) {
       console.warn('Firestore live chat sync notice:', err);
       return { success: true, message: 'Message sent locally' };
+    }
+  };
+
+  // Mark chat messages as read for customer or staff
+  const markOrderChatMessagesAsRead = async (
+    orderId: string,
+    reader: 'customer' | 'staff'
+  ): Promise<void> => {
+    const targetOrder = orders.find(
+      (o) => o.id === orderId || o.orderNumber.toUpperCase() === orderId.trim().toUpperCase()
+    );
+    if (!targetOrder || !targetOrder.chatMessages || targetOrder.chatMessages.length === 0) return;
+
+    let hasChanges = false;
+    const updatedMessages = targetOrder.chatMessages.map((msg) => {
+      if (reader === 'customer' && !msg.readByCustomer && msg.sender !== 'customer') {
+        hasChanges = true;
+        return { ...msg, readByCustomer: true };
+      }
+      if (reader === 'staff' && !msg.readByStaff && msg.sender === 'customer') {
+        hasChanges = true;
+        return { ...msg, readByStaff: true };
+      }
+      return msg;
+    });
+
+    if (!hasChanges) return;
+
+    // Dismiss active banner if it was for this order
+    setIncomingChatAlert((prev) => (prev && prev.order.id === targetOrder.id ? null : prev));
+
+    setOrders((prev) => {
+      const next = prev.map((ord) =>
+        ord.id === targetOrder.id ? { ...ord, chatMessages: updatedMessages } : ord
+      );
+      saveToStorage(STORAGE_KEYS.ORDERS, next);
+      return next;
+    });
+
+    try {
+      await setDoc(
+        doc(db, 'orders', targetOrder.id),
+        sanitizeForFirestore({ chatMessages: updatedMessages }),
+        { merge: true }
+      );
+    } catch (err: any) {
+      console.warn('Firestore chat read sync notice:', err);
     }
   };
 
@@ -3504,6 +3678,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         resolveDeliveryIssue,
         addInvestigationComment,
         sendOrderChatMessage,
+        markOrderChatMessagesAsRead,
+        customerUnreadChatCount,
+        staffUnreadChatCount,
+        incomingChatAlert,
+        dismissChatAlert,
+        activeAdminChatOrderId,
+        setActiveAdminChatOrderId,
+        activeCustomerChatOrderId,
+        setActiveCustomerChatOrderId,
         addCourierService,
         updateCourierService,
         deleteCourierService,

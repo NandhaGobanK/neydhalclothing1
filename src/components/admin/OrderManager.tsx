@@ -84,12 +84,25 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
     updateSettings,
     currentUser,
     currentPermissions,
+    activeAdminChatOrderId,
+    setActiveAdminChatOrderId,
   } = useStore();
   const isAdmin = currentUser?.type === 'admin';
   const currentUserName = currentUser?.name || (isAdmin ? 'Store Owner' : 'Staff Concierge');
   const currentUserId = currentUser?.staffId || (isAdmin ? 'admin' : '');
   const canEditOrders = isAdmin || currentPermissions?.orders?.canEdit !== false;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Auto-open live chat when deep linked from staff notification
+  useEffect(() => {
+    if (activeAdminChatOrderId) {
+      const match = orders.find((o) => o.id === activeAdminChatOrderId);
+      if (match) {
+        setLiveChatOrder(match);
+      }
+      setActiveAdminChatOrderId(null);
+    }
+  }, [activeAdminChatOrderId, orders, setActiveAdminChatOrderId]);
 
   // Dedicated Dispute Investigation & Resolution State
   const [investigationInputText, setInvestigationInputText] = useState<{ [orderId: string]: string }>({});

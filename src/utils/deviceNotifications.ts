@@ -7,6 +7,7 @@
  * 4. Web Audio API chime orchestration
  */
 import { playChatChimeSound } from './audio';
+import type { Order, OrderChatMessage } from '../types/store';
 
 export type NotificationPermissionStatus = 'granted' | 'denied' | 'default' | 'unsupported';
 
@@ -138,4 +139,48 @@ export async function sendDeviceNotification(options: DeviceNotificationOptions)
   }
 
   return false;
+}
+
+/**
+  * Dispatches instant alert to customer's device when boutique concierge replies
+  */
+export async function notifyCustomerOfConciergeMessage(
+  order: Order,
+  message: OrderChatMessage,
+  onClick?: () => void
+): Promise<boolean> {
+  const senderDisplay = message.senderName || 'Atelier Concierge';
+  const cleanSnippet = message.message.length > 110 ? `${message.message.slice(0, 107)}...` : message.message;
+
+  return sendDeviceNotification({
+    title: `💬 Atelier Concierge · Order #${order.orderNumber}`,
+    body: `${senderDisplay}: "${cleanSnippet}"`,
+    tag: `chat-cust-${order.id}-${message.id}`,
+    isCustomer: true,
+    sound: true,
+    vibrate: [200, 100, 200, 100, 300],
+    onClick,
+  });
+}
+
+/**
+  * Dispatches instant alert to staff/admin devices when customer replies on live chat
+  */
+export async function notifyStaffOfCustomerMessage(
+  order: Order,
+  message: OrderChatMessage,
+  onClick?: () => void
+): Promise<boolean> {
+  const customerName = order.customer?.name || message.senderName || 'Customer';
+  const cleanSnippet = message.message.length > 110 ? `${message.message.slice(0, 107)}...` : message.message;
+
+  return sendDeviceNotification({
+    title: `💬 Customer Reply · Order #${order.orderNumber}`,
+    body: `${customerName}: "${cleanSnippet}"`,
+    tag: `chat-staff-${order.id}-${message.id}`,
+    isCustomer: false,
+    sound: true,
+    vibrate: [250, 100, 250, 100, 250],
+    onClick,
+  });
 }

@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Order, OrderChatMessage } from '../../types/store';
 import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  triggerDeviceVibration,
+} from '../../utils/deviceNotifications';
+import { playChatChimeSound } from '../../utils/audio';
+import {
   MessageSquare,
   Send,
   Loader2,
@@ -14,6 +20,8 @@ import {
   Headphones,
   Check,
   Lock,
+  Bell,
+  Volume2,
 } from 'lucide-react';
 
 interface OrderLiveChatProps {
@@ -29,11 +37,17 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
   title,
   className = '',
 }) => {
-  const { sendOrderChatMessage, currentUser, settings } = useStore();
+  const { sendOrderChatMessage, markOrderChatMessagesAsRead, currentUser, settings } = useStore();
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendFeedback, setSendFeedback] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [notificationPermission, setNotificationPermission] = useState<string>(() => {
+    return getNotificationPermission();
+  });
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+  const [permissionNotice, setPermissionNotice] = useState<string | null>(null);
 
   const messages: OrderChatMessage[] = order.chatMessages || [];
 
@@ -44,6 +58,37 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages.length]);
+
+  // Automatically mark unread messages as read when viewing chat
+  useEffect(() => {
+    if (order.id) {
+      markOrderChatMessagesAsRead(order.id, mode === 'customer' ? 'customer' : 'staff');
+    }
+  }, [order.id, mode, messages.length]);
+
+  const handleEnableNotifications = async () => {
+    setIsRequestingPermission(true);
+    const granted = await requestNotificationPermission();
+    setNotificationPermission(getNotificationPermission());
+    setIsRequestingPermission(false);
+
+    if (granted) {
+      playChatChimeSound(mode === 'customer');
+      triggerDeviceVibration([150, 75, 150]);
+      setPermissionNotice('Device notifications active!');
+      setTimeout(() => setPermissionNotice(null), 3000);
+    } else {
+      setPermissionNotice('Notifications blocked in browser settings.');
+      setTimeout(() => setPermissionNotice(null), 3500);
+    }
+  };
+
+  const handleTestSound = () => {
+    playChatChimeSound(mode === 'customer');
+    triggerDeviceVibration(mode === 'customer' ? [180, 80, 180] : [220, 100, 220]);
+    setPermissionNotice('Notification sound & vibration tested!');
+    setTimeout(() => setPermissionNotice(null), 2500);
+  };
 
   const customerQuickChips = [
     'When will my saree be delivered?',
@@ -168,12 +213,78 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
           </div>
         </div>
 
-        <div className="text-right shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Notification Alert Controls */}
+          {notificationPermission === 'granted' ? (
+            <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-2 py-1 text-[10px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className={`font-semibold hidden sm:inline ${mode === 'customer' ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                Device Alerts On
+              </span>
+              <button
+                type="button"
+                onClick={handleTestSound}
+                className="ml-1 p-0.5 rounded text-neutral-400 hover:text-white transition cursor-pointer"
+                title="Test notification chime sound & haptic vibration"
+              >
+                <Volume2 className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleEnableNotifications}
+              disabled={isRequestingPermission}
+              className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 border transition cursor-pointer ${
+                mode === 'customer'
+                  ? 'bg-amber-500/20 text-amber-200 border-amber-500/40 hover:bg-amber-500/30'
+                  : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+              }`}
+              title="Click to turn on device alerts when new messages arrive"
+            >
+              <Bell className="w-3 h-3 animate-bounce shrink-0" />
+              <span className="hidden sm:inline">Turn on Alerts</span>
+            </button>
+          )}
+
           <span className="text-[10px] font-mono text-neutral-400">
             {messages.length} {messages.length === 1 ? 'msg' : 'msgs'}
           </span>
         </div>
       </div>
+
+      {/* Permission Feedback Toast */}
+      {permissionNotice && (
+        <div className="bg-amber-500 text-neutral-950 px-3 py-1 text-center font-bold text-[10px] transition animate-in fade-in">
+          {permissionNotice}
+        </div>
+      )}
+
+      {/* Notice Banner if Notifications are not yet enabled */}
+      {notificationPermission === 'default' && !permissionNotice && (
+        <div className={`px-3.5 py-1.5 border-b flex items-center justify-between gap-2 text-[10px] ${
+          mode === 'customer'
+            ? 'bg-amber-950/40 border-amber-500/20 text-amber-200'
+            : 'bg-blue-50/70 border-blue-200 text-blue-900'
+        }`}>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Bell className="w-3 h-3 text-amber-400 shrink-0" />
+            <span className="truncate">
+              {mode === 'customer'
+                ? 'Enable device alerts so you never miss concierge delivery updates'
+                : 'Enable device alerts for instant pings when customer replies'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleEnableNotifications}
+            disabled={isRequestingPermission}
+            className="px-2 py-0.5 rounded-md bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-[10px] shrink-0 transition shadow-2xs cursor-pointer"
+          >
+            {isRequestingPermission ? 'Enabling...' : 'Enable'}
+          </button>
+        </div>
+      )}
 
       {/* Messages Stream Container */}
       <div className="p-3.5 sm:p-4 space-y-3 max-h-72 min-h-48 overflow-y-auto bg-neutral-50/50">

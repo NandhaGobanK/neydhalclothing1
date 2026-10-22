@@ -12,6 +12,12 @@ import {
 } from '../../utils/disputeRedressals';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  triggerDeviceVibration,
+} from '../../utils/deviceNotifications';
+import { playChatChimeSound } from '../../utils/audio';
+import {
   Search,
   X,
   Package,
@@ -30,6 +36,8 @@ import {
   ExternalLink,
   ChevronDown,
   Lock,
+  Bell,
+  Volume2,
 } from 'lucide-react';
 
 interface TrackOrderModalProps {
@@ -37,10 +45,65 @@ interface TrackOrderModalProps {
 }
 
 export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => {
-  const { orders, requestOrderCancellation, reportCustomerDeliveryIssue, settings, lastPlacedOrder, recordCustomerOrder } = useStore();
+  const {
+    orders,
+    requestOrderCancellation,
+    reportCustomerDeliveryIssue,
+    settings,
+    lastPlacedOrder,
+    recordCustomerOrder,
+    activeCustomerChatOrderId,
+    setActiveCustomerChatOrderId,
+  } = useStore();
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const [notificationPermission, setNotificationPermission] = useState<string>(() => {
+    return getNotificationPermission();
+  });
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+  const [headerNotice, setHeaderNotice] = useState<string | null>(null);
+
+  const handleEnableNotifications = async () => {
+    setIsRequestingPermission(true);
+    const granted = await requestNotificationPermission();
+    setNotificationPermission(getNotificationPermission());
+    setIsRequestingPermission(false);
+    if (granted) {
+      playChatChimeSound(true);
+      triggerDeviceVibration([150, 75, 150]);
+      setHeaderNotice('Device notifications active!');
+      setTimeout(() => setHeaderNotice(null), 3000);
+    } else {
+      setHeaderNotice('Notifications blocked in browser settings.');
+      setTimeout(() => setHeaderNotice(null), 3500);
+    }
+  };
+
+  const handleTestSound = () => {
+    playChatChimeSound(true);
+    triggerDeviceVibration([180, 80, 180]);
+    setHeaderNotice('Sound & haptic vibration tested!');
+    setTimeout(() => setHeaderNotice(null), 2500);
+  };
+
+  // Deep-link live chat auto-expansion
+  useEffect(() => {
+    if (activeCustomerChatOrderId) {
+      const match = orders.find(
+        (o) =>
+          o.id === activeCustomerChatOrderId ||
+          o.orderNumber.toUpperCase() === activeCustomerChatOrderId.toUpperCase()
+      );
+      if (match) {
+        setQuery(match.orderNumber);
+        setSearchedQuery(match.orderNumber);
+        setExpandedChatOrderId(match.id);
+      }
+      setActiveCustomerChatOrderId(null);
+    }
+  }, [activeCustomerChatOrderId, orders, setActiveCustomerChatOrderId]);
 
   // Direct Firestore fallback state in case real-time snapshot is still in-flight
   const [firestoreOrders, setFirestoreOrders] = useState<Order[]>([]);
@@ -351,13 +414,49 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Device Notification Alert Control for Customer */}
+            {notificationPermission === 'granted' ? (
+              <div className="hidden sm:flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl px-2.5 py-1 text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="font-semibold text-emerald-300 text-[11px]">Alerts Active</span>
+                <button
+                  type="button"
+                  onClick={handleTestSound}
+                  className="ml-1 p-0.5 rounded text-neutral-400 hover:text-white transition cursor-pointer"
+                  title="Test notification sound & vibration"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEnableNotifications}
+                disabled={isRequestingPermission}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-[11px] font-bold transition cursor-pointer"
+                title="Enable device notifications for live updates from atelier concierge"
+              >
+                <Bell className="w-3.5 h-3.5 animate-bounce shrink-0" />
+                <span>{isRequestingPermission ? 'Enabling...' : 'Enable Alerts'}</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Header Alert Notification Feedback */}
+        {headerNotice && (
+          <div className="bg-amber-500 text-neutral-950 px-4 py-1.5 text-center font-bold text-xs transition animate-in fade-in">
+            {headerNotice}
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="p-4 sm:p-6 bg-neutral-50/70 border-b border-neutral-200 shrink-0">
@@ -1121,7 +1220,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                                     expandedChatOrderId === order.id ? null : order.id
                                   )
                                 }
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs ${
+                                className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs ${
                                   expandedChatOrderId === order.id
                                     ? 'bg-amber-700 text-white'
                                     : hasActiveDispute
@@ -1141,6 +1240,12 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                                     ? ` (${order.chatMessages.length})`
                                     : ''}
                                 </span>
+                                {order.chatMessages?.some((m) => !m.readByCustomer && m.sender !== 'customer') && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] bg-rose-500 text-white font-bold animate-pulse ml-0.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                                    <span>New Reply</span>
+                                  </span>
+                                )}
                               </button>
                             ) : (
                               <div className="flex items-center gap-1.5">

@@ -18,7 +18,17 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectWishlist,
   selectedCategory = 'all',
 }) => {
-  const { settings, cartCount, wishlist, setIsCartOpen, isAdminLoggedIn, setIsTrackOrderOpen, publicProducts, categories: boutiqueCategories } = useStore();
+  const {
+    settings,
+    cartCount,
+    wishlist,
+    setIsCartOpen,
+    isAdminLoggedIn,
+    setIsTrackOrderOpen,
+    publicProducts,
+    categories: boutiqueCategories,
+    customerUnreadChatCount,
+  } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoError, setLogoError] = React.useState(false);
 
@@ -149,10 +159,16 @@ export const Header: React.FC<HeaderProps> = ({
           {showTrackOrder && (
             <button
               onClick={() => setIsTrackOrderOpen(true)}
-              className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 text-neutral-300 flex items-center gap-1.5 cursor-pointer"
+              className="relative hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 text-neutral-300 flex items-center gap-1.5 cursor-pointer"
             >
               <Truck className="w-4 h-4 text-amber-400" />
               <span>Track Order</span>
+              {customerUnreadChatCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] bg-rose-600 text-white font-bold animate-pulse shadow-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                  <span>{customerUnreadChatCount} msg</span>
+                </span>
+              )}
             </button>
           )}
 
@@ -171,10 +187,13 @@ export const Header: React.FC<HeaderProps> = ({
           {showTrackOrder && (
             <button
               onClick={() => setIsTrackOrderOpen(true)}
-              className="lg:hidden p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-amber-200 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+              className="relative lg:hidden p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-amber-200 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
               title="Track Order Status"
             >
               <Truck className="w-4 h-4" />
+              {customerUnreadChatCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+              )}
             </button>
           )}
 

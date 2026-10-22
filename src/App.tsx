@@ -16,7 +16,8 @@ import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminAuthModal } from './components/admin/AdminAuthModal';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { getThemeColors } from './utils/theme';
-import { LogOut, Grid, Sparkles, ArrowRight } from 'lucide-react';
+import { LogOut, Grid, Sparkles, ArrowRight, MessageSquare, Volume2, X } from 'lucide-react';
+import { playChatChimeSound } from './utils/audio';
 import { useStaffIdleTracker } from './hooks/useStaffIdleTracker';
 import { CategoryBrowser } from './components/storefront/CategoryBrowser';
 import { WishlistBrowser } from './components/storefront/WishlistBrowser';
@@ -44,6 +45,9 @@ function MainAppContent() {
     clearRemoteLogoutNotice,
     customerActiveTab,
     setCustomerActiveTab,
+    incomingChatAlert,
+    dismissChatAlert,
+    setActiveCustomerChatOrderId,
   } = useStore();
 
   // Keep device activity & 15-minute idle detection active across the app
@@ -189,6 +193,59 @@ function MainAppContent() {
         <>
           {/* Public Storefront Announcement Bar */}
           <AnnouncementBar />
+
+          {/* Real-time Customer Live Chat Incoming Alert Banner (User Device Notification) */}
+          {incomingChatAlert && incomingChatAlert.recipient === 'customer' && (
+            <div className="sticky top-0 z-50 bg-gradient-to-r from-rose-950 via-neutral-900 to-rose-900 text-white px-4 py-3 shadow-xl border-b border-amber-500/40 animate-in slide-in-from-top duration-300">
+              <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <span className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center font-bold shrink-0 animate-bounce">
+                    <MessageSquare className="w-4 h-4 text-amber-300" />
+                  </span>
+                  <div>
+                    <p className="font-bold text-xs sm:text-sm text-amber-200 flex items-center gap-2">
+                      <span>💬 Atelier Concierge Replied</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono">
+                        Order #{incomingChatAlert.order.orderNumber}
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-neutral-200 max-w-xl truncate mt-0.5">
+                      <strong>{incomingChatAlert.message.senderName || 'Concierge'}:</strong> "{incomingChatAlert.message.message}"
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => playChatChimeSound(true)}
+                    className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-amber-200 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                    title="Replay concierge notification chime"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Replay Tone</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsTrackOrderOpen(true);
+                      setActiveCustomerChatOrderId(incomingChatAlert.order.id);
+                      dismissChatAlert();
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-xs transition shadow-sm cursor-pointer flex items-center gap-1.5"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>View & Reply &rarr;</span>
+                  </button>
+                  <button
+                    onClick={dismissChatAlert}
+                    className="p-1 rounded-lg text-white/70 hover:text-white cursor-pointer"
+                    title="Dismiss notification"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Public Storefront Header */}
           <Header

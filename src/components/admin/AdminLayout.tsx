@@ -7,7 +7,12 @@ import { StaffManager } from './StaffManager';
 import { StaffBucketManager } from './StaffBucketManager';
 import { SettingsManager } from './SettingsManager';
 import { CustomerIssuesManager } from './CustomerIssuesManager';
-import { playOrderNotificationSound } from '../../utils/audio';
+import { playOrderNotificationSound, playChatChimeSound } from '../../utils/audio';
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  triggerDeviceVibration,
+} from '../../utils/deviceNotifications';
 import { formatPrice } from '../../utils/upi';
 import {
   ShoppingBag,
@@ -26,6 +31,7 @@ import {
   AlertCircle,
   Clock,
   ArrowRight,
+  MessageSquare,
 } from 'lucide-react';
 import { useStaffIdleTracker } from '../../hooks/useStaffIdleTracker';
 import { hasActiveCustomerIssue } from '../../utils/disputeRedressals';
@@ -35,7 +41,20 @@ interface AdminLayoutProps {
 }
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => {
-  const { settings, adminLogout, orders, staffMembers, currentUser, currentPermissions, adminOnlineStatus, forceLogoutStaff } = useStore();
+  const {
+    settings,
+    adminLogout,
+    orders,
+    staffMembers,
+    currentUser,
+    currentPermissions,
+    adminOnlineStatus,
+    forceLogoutStaff,
+    staffUnreadChatCount,
+    incomingChatAlert,
+    dismissChatAlert,
+    setActiveAdminChatOrderId,
+  } = useStore();
   const isAdmin = currentUser?.type === 'admin';
 
   // 15-Minute Staff Inactivity & Idle Detection Tracker (User Request)
@@ -196,6 +215,23 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     prevCustomerIssuesCountRef.current = customerIssuesCount;
   }, [customerIssuesCount, orders]);
 
+  // Staff Device Notification Permission State
+  const [staffNotifPermission, setStaffNotifPermission] = useState<string>(() => {
+    return getNotificationPermission();
+  });
+  const [isStaffEnablingNotif, setIsStaffEnablingNotif] = useState(false);
+
+  const handleStaffEnableNotif = async () => {
+    setIsStaffEnablingNotif(true);
+    const granted = await requestNotificationPermission();
+    setStaffNotifPermission(getNotificationPermission());
+    setIsStaffEnablingNotif(false);
+    if (granted) {
+      playChatChimeSound(false);
+      triggerDeviceVibration([200, 100, 200]);
+    }
+  };
+
   const handleLogout = () => {
     adminLogout();
     onReturnToStore();
@@ -264,6 +300,33 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
 
             {/* Top Right Actions */}
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap ml-auto">
+              {staffNotifPermission === 'granted' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playChatChimeSound(false);
+                    triggerDeviceVibration([200, 100, 200]);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-medium hover:bg-emerald-900/60 transition cursor-pointer"
+                  title="Device notifications active for staff. Click to test sound & vibration."
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="hidden md:inline">Device Alerts On</span>
+                  <Volume2 className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStaffEnableNotif}
+                  disabled={isStaffEnablingNotif}
+                  className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-300 text-xs font-bold hover:bg-amber-900/60 transition cursor-pointer"
+                  title="Turn on device alerts for customer chat replies"
+                >
+                  <Bell className="w-3.5 h-3.5 animate-bounce" />
+                  <span className="hidden sm:inline">{isStaffEnablingNotif ? 'Enabling...' : 'Turn On Alerts'}</span>
+                </button>
+              )}
+
               <button
                 onClick={onReturnToStore}
                 className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white text-xs font-medium border border-neutral-800 transition whitespace-nowrap cursor-pointer"
@@ -303,6 +366,17 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                     {pendingRefundsCount}
                   </span>
                 )}
+              </button>
+            )}
+
+            {canSeeOrders && staffUnreadChatCount > 0 && (
+              <button
+                onClick={() => setActiveTab('orders')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap bg-blue-600 hover:bg-blue-500 text-white shadow-xs animate-pulse cursor-pointer"
+                title={`${staffUnreadChatCount} customer live chat message(s) awaiting reply`}
+              >
+                <MessageSquare className="w-3.5 h-3.5 fill-white" />
+                <span>Live Chat ({staffUnreadChatCount} unread)</span>
               </button>
             )}
 
@@ -434,6 +508,59 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
           </div>
         </div>
       </header>
+
+      {/* Real-time Staff Live Chat Incoming Customer Alert Banner (User Device Notification) */}
+      {incomingChatAlert && incomingChatAlert.recipient === 'staff' && (
+        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-neutral-900 text-white px-4 py-3 shadow-lg border-b border-blue-500/40 animate-in slide-in-from-top duration-300">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-500/20 border border-blue-400/40 text-blue-300 flex items-center justify-center font-bold shrink-0 animate-bounce">
+                <MessageSquare className="w-4 h-4 text-blue-300" />
+              </span>
+              <div>
+                <p className="font-bold text-xs sm:text-sm text-white flex items-center gap-2">
+                  <span>💬 New Customer Reply on Order #{incomingChatAlert.order.orderNumber}</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    Live
+                  </span>
+                </p>
+                <p className="text-[11px] text-blue-100 max-w-xl truncate mt-0.5">
+                  <strong>{incomingChatAlert.order.customer.name}:</strong> "{incomingChatAlert.message.message}"
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => playChatChimeSound(false)}
+                className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-blue-100 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                title="Replay alert chime"
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Replay Sound</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('orders');
+                  setActiveAdminChatOrderId(incomingChatAlert.order.id);
+                  dismissChatAlert();
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-400 text-white font-bold text-xs transition shadow-sm cursor-pointer flex items-center gap-1.5"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Open Chat & Reply &rarr;</span>
+              </button>
+              <button
+                onClick={dismissChatAlert}
+                className="p-1 rounded-lg text-white/70 hover:text-white cursor-pointer"
+                title="Dismiss notification"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Instant New Order Arrival Banner with Sound Trigger (Only displays on Orders page or redirects there) */}
       {incomingOrderAlert && activeTab !== 'orders' && (
