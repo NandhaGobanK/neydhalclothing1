@@ -42,6 +42,8 @@ import {
   Lock,
   Bell,
   Volume2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface TrackOrderModalProps {
@@ -58,10 +60,16 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
     recordCustomerOrder,
     activeCustomerChatOrderId,
     setActiveCustomerChatOrderId,
+    hideCustomerOrder,
+    unhideCustomerOrder,
+    hiddenCustomerOrders,
+    hiddenCustomerOrderIds,
   } = useStore();
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [showHiddenOrders, setShowHiddenOrders] = useState(false);
+  const [softClearNotice, setSoftClearNotice] = useState<string | null>(null);
 
   const [notificationPermission, setNotificationPermission] = useState<string>(() => {
     return getNotificationPermission();
@@ -126,6 +134,18 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
       return lastPlacedOrder ? [lastPlacedOrder.orderNumber] : [];
     }
   }, [lastPlacedOrder]);
+
+  const hiddenKeysSet = useMemo(() => {
+    return new Set(hiddenCustomerOrderIds.map((k) => k.trim().toUpperCase()));
+  }, [hiddenCustomerOrderIds]);
+
+  const activeCustomerSavedOrders = useMemo(() => {
+    return customerSavedOrders.filter((ordNum) => !hiddenKeysSet.has(ordNum.trim().toUpperCase()));
+  }, [customerSavedOrders, hiddenKeysSet]);
+
+  const hiddenCustomerSavedOrders = useMemo(() => {
+    return customerSavedOrders.filter((ordNum) => hiddenKeysSet.has(ordNum.trim().toUpperCase()));
+  }, [customerSavedOrders, hiddenKeysSet]);
 
   // Cancellation Request Form State
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
@@ -504,10 +524,28 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
             Enter the exact order number or contact phone used during checkout.
           </p>
 
-          {customerSavedOrders.length > 0 && (
+          {/* Customer Soft-Clear Feedback Notice */}
+          {softClearNotice && (
+            <div className="mt-2.5 p-3 rounded-xl bg-neutral-900 text-white text-xs flex items-center justify-between animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="leading-tight">{softClearNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSoftClearNotice(null)}
+                className="text-neutral-400 hover:text-white p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Active Placed Orders Chips + Hidden Orders Toggle */}
+          {(activeCustomerSavedOrders.length > 0 || hiddenCustomerSavedOrders.length > 0 || hiddenCustomerOrders.length > 0) && (
             <div className="flex items-center gap-1.5 flex-wrap mt-2 pt-2 border-t border-neutral-100">
               <span className="text-[11px] font-semibold text-neutral-600">Your Placed Orders:</span>
-              {customerSavedOrders.map((ordNum) => (
+              {activeCustomerSavedOrders.map((ordNum) => (
                 <button
                   key={ordNum}
                   type="button"
@@ -524,6 +562,104 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                   #{ordNum}
                 </button>
               ))}
+
+              {/* Toggle Hidden Orders View */}
+              {(hiddenCustomerSavedOrders.length > 0 || hiddenCustomerOrders.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => setShowHiddenOrders((prev) => !prev)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ml-auto sm:ml-0 ${
+                    showHiddenOrders
+                      ? 'bg-neutral-900 text-white shadow-2xs'
+                      : 'bg-neutral-200/80 hover:bg-neutral-300 text-neutral-700'
+                  }`}
+                  title="View completed or cancelled orders you cleared from your personal active dashboard"
+                >
+                  {showHiddenOrders ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 text-neutral-500" />}
+                  <span>
+                    Hidden Orders ({hiddenCustomerSavedOrders.length || hiddenCustomerOrders.length})
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Hidden Orders Collapsible Dashboard (Non-Permanent Soft Removal) */}
+          {showHiddenOrders && (
+            <div className="mt-3 p-3.5 rounded-2xl bg-neutral-100/90 border border-neutral-200 space-y-2.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between pb-1.5 border-b border-neutral-200">
+                <div className="flex items-center gap-1.5">
+                  <EyeOff className="w-4 h-4 text-neutral-600" />
+                  <span className="font-serif font-bold text-xs text-neutral-900">
+                    Personal Hidden Orders Dashboard
+                  </span>
+                </div>
+                <span className="text-[10px] text-neutral-500 font-medium">
+                  {hiddenCustomerSavedOrders.length || hiddenCustomerOrders.length} order(s) hidden
+                </span>
+              </div>
+
+              <p className="text-[11px] text-neutral-600 leading-relaxed">
+                These completed, cancelled, or closed orders are hidden from your active "My Orders" list to keep your personal dashboard clutter-free. <em>Workshop ledger records and warranties remain permanently intact with our boutique.</em>
+              </p>
+
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {(hiddenCustomerOrders.length > 0
+                  ? hiddenCustomerOrders
+                  : orders.filter((o) => hiddenCustomerSavedOrders.includes(o.orderNumber))
+                ).map((hiddenOrd) => (
+                  <div
+                    key={hiddenOrd.id}
+                    className="p-2.5 rounded-xl bg-white border border-neutral-200 flex items-center justify-between gap-2 text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-neutral-900">
+                          #{hiddenOrd.orderNumber}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-700">
+                          {hiddenOrd.status}
+                        </span>
+                        <span className="text-[10px] text-neutral-400">
+                          {new Date(hiddenOrd.createdAt).toLocaleDateString('en-IN')}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-neutral-600 font-serif font-bold">
+                        {formatPrice(hiddenOrd.totalAmount)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuery(hiddenOrd.orderNumber);
+                          setSearchedQuery(hiddenOrd.orderNumber);
+                          setShowHiddenOrders(false);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-semibold transition cursor-pointer"
+                        title="View order details"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          unhideCustomerOrder(hiddenOrd.id);
+                          unhideCustomerOrder(hiddenOrd.orderNumber);
+                          setSoftClearNotice(`Order #${hiddenOrd.orderNumber} restored to your active My Orders view.`);
+                          setTimeout(() => setSoftClearNotice(null), 4000);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                        title="Restore this order back to your active list"
+                      >
+                        <Eye className="w-3 h-3 text-emerald-600" />
+                        <span>Restore</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -576,6 +712,10 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                   isPendingOrConfirmed &&
                   !order.cancellationRequest?.requested;
 
+                const isThisOrderHidden =
+                  hiddenKeysSet.has(order.id.toUpperCase()) ||
+                  hiddenKeysSet.has(order.orderNumber.trim().toUpperCase());
+
                 return (
                   <div
                     key={order.id}
@@ -584,7 +724,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                     {/* Top Order Badge & Date */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-100">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono font-bold text-sm text-rose-950 bg-rose-50 px-2.5 py-0.5 rounded-md border border-rose-200">
                             #{order.orderNumber}
                           </span>
@@ -613,6 +753,45 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           >
                             Status: {order.status}
                           </span>
+
+                          {/* Customer Soft Clear / Hide Option */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isThisOrderHidden) {
+                                unhideCustomerOrder(order.id);
+                                unhideCustomerOrder(order.orderNumber);
+                                setSoftClearNotice(`Order #${order.orderNumber} restored to your active My Orders view.`);
+                              } else {
+                                hideCustomerOrder(order.id);
+                                hideCustomerOrder(order.orderNumber);
+                                setSoftClearNotice(`Order #${order.orderNumber} cleared from your view. Boutique records remain preserved.`);
+                              }
+                              setTimeout(() => setSoftClearNotice(null), 4000);
+                            }}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer ${
+                              isThisOrderHidden
+                                ? 'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300'
+                                : 'bg-neutral-100 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200 border border-neutral-200'
+                            }`}
+                            title={
+                              isThisOrderHidden
+                                ? 'Order is hidden from your active list. Click to restore.'
+                                : 'Clear order from your active view to keep order history clean (preserves store records)'
+                            }
+                          >
+                            {isThisOrderHidden ? (
+                              <>
+                                <Eye className="w-3 h-3 text-amber-700" />
+                                <span>Restore to Active</span>
+                              </>
+                            ) : (
+                              <>
+                                <EyeOff className="w-3 h-3 text-neutral-500" />
+                                <span>Clear from My View</span>
+                              </>
+                            )}
+                          </button>
                         </div>
                         <p className="text-neutral-600 text-[11px] mt-1 font-medium">
                           Customer: <strong className="text-neutral-900">{order.customer.name}</strong> ({order.customer.phone})
@@ -626,6 +805,30 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                         </p>
                       </div>
                     </div>
+
+                    {/* Notice if order is currently soft-cleared */}
+                    {isThisOrderHidden && (
+                      <div className="p-2.5 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <EyeOff className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                          <span className="text-[11px]">
+                            This order is currently <strong>hidden</strong> from your active personal view.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            unhideCustomerOrder(order.id);
+                            unhideCustomerOrder(order.orderNumber);
+                            setSoftClearNotice(`Order #${order.orderNumber} restored to your active My Orders view.`);
+                            setTimeout(() => setSoftClearNotice(null), 4000);
+                          }}
+                          className="text-rose-900 font-bold hover:underline text-[11px] cursor-pointer"
+                        >
+                          Restore to Active
+                        </button>
+                      </div>
+                    )}
 
                     {/* Payment & Customer Refund UPI Section */}
                     <div className={`grid gap-2.5 pt-1 text-xs ${

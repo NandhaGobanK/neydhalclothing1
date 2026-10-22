@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Order, OrderChatMessage } from '../../types/store';
 import {
@@ -7,6 +7,11 @@ import {
   triggerDeviceVibration,
 } from '../../utils/deviceNotifications';
 import { playChatChimeSound } from '../../utils/audio';
+import {
+  getOrderContextualTemplates,
+  OrderChatTemplate,
+  openWhatsApp,
+} from '../../utils/upi';
 import {
   MessageSquare,
   Send,
@@ -22,6 +27,16 @@ import {
   Lock,
   Bell,
   Volume2,
+  Layers,
+  ExternalLink,
+  FileText,
+  X,
+  Truck,
+  RotateCcw,
+  Ban,
+  CheckCircle2,
+  ChevronRight,
+  Copy,
 } from 'lucide-react';
 
 interface OrderLiveChatProps {
@@ -41,7 +56,20 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendFeedback, setSendFeedback] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Template Modal & Drawer State
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<
+    'all' | 'cancellation_dispute' | 'delivery_dispute' | 'refund_dispute' | 'order_milestone'
+  >('all');
+  const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+
+  // Retrieve dynamically prefilled templates matching this exact order state
+  const { templates: availableTemplates, topSuggestedTemplate } = useMemo(() => {
+    return getOrderContextualTemplates(order, settings);
+  }, [order, settings]);
 
   const [notificationPermission, setNotificationPermission] = useState<string>(() => {
     return getNotificationPermission();
@@ -90,12 +118,57 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
     setTimeout(() => setPermissionNotice(null), 2500);
   };
 
-  const customerQuickChips = [
-    'When will my saree be delivered?',
-    'Please confirm courier tracking number',
-    'Is safe gift packaging included?',
-    'I have special delivery instructions',
-  ];
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  // Dynamic context-aware chips for customers based on whether a dispute is active
+  const isDeliveryIssueActive = Boolean(
+    order.deliveryIssue?.reported &&
+      (order.deliveryIssue.issueType === 'delivery' || (!order.deliveryIssue.issueType && order.status === 'Delivered')) &&
+      order.deliveryIssue.status !== 'resolved'
+  );
+  const isRefundIssueActive = Boolean(
+    (order.deliveryIssue?.reported && order.deliveryIssue.issueType === 'refund') ||
+      order.status === 'Refunded'
+  );
+  const isCancelRequestActive = Boolean(
+    order.cancellationRequest?.requested && order.cancellationRequest.status === 'pending'
+  );
+
+  const customerQuickChips = useMemo(() => {
+    if (isDeliveryIssueActive) {
+      return [
+        'Any update from the courier delivery hub?',
+        'Please verify my delivery doorstep address',
+        'I have not received any courier delivery call',
+        'Please escalate with courier hub manager',
+      ];
+    }
+    if (isRefundIssueActive) {
+      return [
+        'Please share the 12-digit refund UTR number',
+        'Which UPI ID was my refund transferred to?',
+        'When will the refund reflect in my bank?',
+        'Please verify refund transaction settlement',
+      ];
+    }
+    if (isCancelRequestActive) {
+      return [
+        'What is the review status of my cancellation?',
+        'Please confirm approval and refund timeline',
+        'Please ensure item is auto-restocked',
+      ];
+    }
+    return [
+      'When will my saree be delivered?',
+      'Please confirm courier tracking number',
+      'Is safe tamper-proof gift box included?',
+      'I have special delivery instructions',
+    ];
+  }, [isDeliveryIssueActive, isRefundIssueActive, isCancelRequestActive]);
 
   const staffQuickChips = [
     'Your saree has been inspected and is packed for dispatch.',
@@ -370,12 +443,73 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
         </div>
       ) : (
         <>
-          {/* Suggested Quick Prompt Chips */}
+          {/* Staff/Admin Contextual Stage Template Suggestion Banner */}
+          {mode === 'admin' && topSuggestedTemplate && (
+            <div className="px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50/80 border-t border-amber-200/90 flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Sparkles className="w-3.5 h-3.5 text-amber-700 shrink-0 animate-pulse" />
+                <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider shrink-0 bg-amber-200/70 px-1.5 py-0.2 rounded">
+                  {topSuggestedTemplate.badge || 'Stage Match'}
+                </span>
+                <span className="font-bold text-neutral-900 truncate text-[11px]" title={topSuggestedTemplate.title}>
+                  {topSuggestedTemplate.title}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setInputText(topSuggestedTemplate.text)}
+                  className="px-2 py-1 rounded-md bg-white hover:bg-amber-100 text-amber-950 font-bold text-[10px] border border-amber-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="Prefill message input box with this template"
+                >
+                  <FileText className="w-3 h-3 text-amber-700" />
+                  <span>Prefill</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(topSuggestedTemplate.text)}
+                  disabled={isSending}
+                  className="px-2.5 py-1 rounded-md bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="Send this stage template directly in live chat"
+                >
+                  <Send className="w-2.5 h-2.5 text-amber-400" />
+                  <span>Send</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openWhatsApp(order.customer.phone, topSuggestedTemplate.text)}
+                  className="px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="Open customer WhatsApp with this template prefilled"
+                >
+                  <span>WhatsApp</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Suggested Quick Prompt Chips & Templates Button */}
           <div className="px-3 py-1.5 bg-neutral-100/70 border-t border-neutral-200 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {mode === 'admin' ? (
+              <button
+                type="button"
+                onClick={() => setIsTemplateModalOpen(true)}
+                className="px-2.5 py-1 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 font-bold text-[10px] flex items-center gap-1 shrink-0 transition cursor-pointer shadow-2xs"
+                title="Browse and insert automated dispute, milestone, and WhatsApp templates"
+              >
+                <Layers className="w-3 h-3 text-neutral-950" />
+                <span>Templates ({availableTemplates.length})</span>
+              </button>
+            ) : null}
+
             <span className="text-[10px] text-neutral-400 shrink-0 font-medium flex items-center gap-1">
               <HelpCircle className="w-3 h-3" />
               <span>Quick:</span>
             </span>
+
             {(mode === 'customer' ? customerQuickChips : staffQuickChips).map((chip, idx) => (
               <button
                 key={idx}
@@ -431,6 +565,215 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
               </button>
             </form>
           </div>
+
+          {/* Master Automated Templates Browser Modal for Staff/Admin */}
+          {isTemplateModalOpen && (
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
+              <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 flex flex-col max-h-[88vh]">
+                {/* Modal Header */}
+                <div className="p-4 sm:p-5 bg-neutral-900 text-white flex items-center justify-between border-b border-neutral-800 shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                      <Layers className="w-5 h-5" />
+                    </span>
+                    <div>
+                      <h3 className="font-serif font-bold text-base leading-tight">
+                        Order #{order.orderNumber} Concierge Templates
+                      </h3>
+                      <p className="text-[11px] text-neutral-400">
+                        Dispute stages, auto-restock, UTR verification, and milestone messages prefilled with order data.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsTemplateModalOpen(false)}
+                    className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Sub-Tabs: Categories */}
+                <div className="flex border-b border-neutral-200 bg-neutral-50 px-3 pt-2 overflow-x-auto no-scrollbar gap-1 shrink-0">
+                  <button
+                    onClick={() => setSelectedCategoryTab('all')}
+                    className={`px-3 py-2 text-xs font-bold border-b-2 transition cursor-pointer whitespace-nowrap ${
+                      selectedCategoryTab === 'all'
+                        ? 'border-neutral-900 text-neutral-900'
+                        : 'border-transparent text-neutral-500 hover:text-neutral-800'
+                    }`}
+                  >
+                    All Templates ({availableTemplates.length})
+                  </button>
+                  <button
+                    onClick={() => setSelectedCategoryTab('cancellation_dispute')}
+                    className={`px-3 py-2 text-xs font-bold border-b-2 transition cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                      selectedCategoryTab === 'cancellation_dispute'
+                        ? 'border-rose-800 text-rose-900'
+                        : 'border-transparent text-neutral-500 hover:text-neutral-800'
+                    }`}
+                  >
+                    <Ban className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Cancellation Dispute (3)</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedCategoryTab('delivery_dispute')}
+                    className={`px-3 py-2 text-xs font-bold border-b-2 transition cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                      selectedCategoryTab === 'delivery_dispute'
+                        ? 'border-blue-800 text-blue-900'
+                        : 'border-transparent text-neutral-500 hover:text-neutral-800'
+                    }`}
+                  >
+                    <Truck className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Delivery Dispute (3)</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedCategoryTab('refund_dispute')}
+                    className={`px-3 py-2 text-xs font-bold border-b-2 transition cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                      selectedCategoryTab === 'refund_dispute'
+                        ? 'border-emerald-800 text-emerald-900'
+                        : 'border-transparent text-neutral-500 hover:text-neutral-800'
+                    }`}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Refund Dispute (3)</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedCategoryTab('order_milestone')}
+                    className={`px-3 py-2 text-xs font-bold border-b-2 transition cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                      selectedCategoryTab === 'order_milestone'
+                        ? 'border-amber-800 text-amber-900'
+                        : 'border-transparent text-neutral-500 hover:text-neutral-800'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Milestones (4)</span>
+                  </button>
+                </div>
+
+                {/* Templates List */}
+                <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3.5 text-xs bg-neutral-50/50">
+                  {availableTemplates
+                    .filter((tmpl) => selectedCategoryTab === 'all' || tmpl.category === selectedCategoryTab)
+                    .map((tmpl) => {
+                      const isExpanded = expandedTemplateId === tmpl.id;
+                      return (
+                        <div
+                          key={tmpl.id}
+                          className={`p-4 rounded-2xl border transition bg-white shadow-2xs space-y-2.5 ${
+                            tmpl.isContextualMatch
+                              ? 'border-amber-400 ring-2 ring-amber-300/40'
+                              : 'border-neutral-200 hover:border-neutral-300'
+                          }`}
+                        >
+                          {/* Template Header */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                                  tmpl.category === 'cancellation_dispute'
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                    : tmpl.category === 'delivery_dispute'
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                    : tmpl.category === 'refund_dispute'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                {tmpl.badge || tmpl.categoryLabel}
+                              </span>
+                              <h4 className="font-serif font-bold text-neutral-900 text-sm">
+                                {tmpl.title}
+                              </h4>
+                            </div>
+
+                            {tmpl.isContextualMatch && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500 text-neutral-950 font-bold text-[10px] self-start sm:self-auto shadow-2xs">
+                                <Sparkles className="w-3 h-3" />
+                                <span>Recommended for Current Stage</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Message Preview */}
+                          <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-neutral-800 font-mono text-[11px] leading-relaxed whitespace-pre-wrap max-h-36 overflow-y-auto">
+                            {tmpl.text}
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(tmpl.text, tmpl.id)}
+                              className="inline-flex items-center gap-1 text-[11px] text-neutral-500 hover:text-neutral-900 font-medium cursor-pointer"
+                            >
+                              {copiedKey === tmpl.id ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-emerald-700 font-bold">Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>Copy Text</span>
+                                </>
+                              )}
+                            </button>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInputText(tmpl.text);
+                                  setIsTemplateModalOpen(false);
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-bold text-xs transition cursor-pointer flex items-center gap-1 border border-neutral-300 shadow-2xs"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-neutral-600" />
+                                <span>Insert in Chat</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setIsTemplateModalOpen(false);
+                                  await handleSendMessage(tmpl.text);
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-xs"
+                              >
+                                <Send className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Send to Chat</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => openWhatsApp(order.customer.phone, tmpl.text)}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-xs"
+                              >
+                                <span>WhatsApp</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-3 sm:p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-between text-xs text-neutral-500">
+                  <span>Customer Phone: <strong>{order.customer.phone}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => setIsTemplateModalOpen(false)}
+                    className="px-4 py-1.5 rounded-xl bg-white border border-neutral-300 font-bold text-neutral-800 hover:bg-neutral-100 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

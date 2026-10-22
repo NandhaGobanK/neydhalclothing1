@@ -115,6 +115,10 @@ interface StoreContextType {
     notes?: string;
     checkoutMethod: 'submit_order' | 'whatsapp';
   }) => Order;
+  deleteOrder: (
+    orderId: string,
+    options?: { restockItems?: boolean; reason?: string }
+  ) => Promise<void>;
   updateOrderStatus: (
     orderId: string,
     status: OrderStatus,
@@ -253,10 +257,14 @@ interface StoreContextType {
   toggleWishlist: (productId: string) => void;
   isInWishlist: (productId: string) => boolean;
 
-  // Customer Orders Count
+  // Customer Orders Count & Soft Clearing
   customerOrdersCount: number;
   customerOrders: Order[];
+  hiddenCustomerOrders: Order[];
+  hiddenCustomerOrderIds: string[];
   recordCustomerOrder: (orderNumber: string, phone?: string) => void;
+  hideCustomerOrder: (orderIdOrNumber: string) => void;
+  unhideCustomerOrder: (orderIdOrNumber: string) => void;
 
   // Dynamic Product Specifications / Custom Attributes
   productAttributes: ProductAttributeDefinition[];
@@ -599,7 +607,51 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
-  const customerOrders = useMemo(() => {
+  // Customer soft-cleared/hidden order IDs (stored on device to keep personal view clean)
+  const [hiddenCustomerOrderIds, setHiddenCustomerOrderIds] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = JSON.parse(localStorage.getItem('aara_hidden_customer_orders') || '[]');
+      return Array.isArray(stored) ? stored : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const hideCustomerOrder = (orderIdOrNumber: string) => {
+    if (!orderIdOrNumber) return;
+    const cleanKey = orderIdOrNumber.trim().toUpperCase();
+    setHiddenCustomerOrderIds((prev) => {
+      if (prev.includes(cleanKey)) return prev;
+      const next = [cleanKey, ...prev];
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('aara_hidden_customer_orders', JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  const unhideCustomerOrder = (orderIdOrNumber: string) => {
+    if (!orderIdOrNumber) return;
+    const cleanKey = orderIdOrNumber.trim().toUpperCase();
+    setHiddenCustomerOrderIds((prev) => {
+      const next = prev.filter((k) => k !== cleanKey);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('aara_hidden_customer_orders', JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  const hiddenOrderKeysSet = useMemo(() => {
+    return new Set(hiddenCustomerOrderIds.map((k) => k.trim().toUpperCase()));
+  }, [hiddenCustomerOrderIds]);
+
+  const allCustomerOrders = useMemo(() => {
     if (!orders || orders.length === 0) return [];
     const savedNumbers = new Set(customerOrderNumbers.map((n) => n.trim().toUpperCase()));
     if (lastPlacedOrder?.orderNumber) {
@@ -620,6 +672,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     return Array.from(distinctOrderMap.values());
   }, [orders, customerOrderNumbers, lastPlacedOrder]);
+
+  // Active customer orders visible in My Orders dashboard (excludes soft-hidden orders)
+  const customerOrders = useMemo(() => {
+    return allCustomerOrders.filter((o) => {
+      const idMatch = hiddenOrderKeysSet.has(o.id.toUpperCase());
+      const numMatch = hiddenOrderKeysSet.has(o.orderNumber.trim().toUpperCase());
+      return !idMatch && !numMatch;
+    });
+  }, [allCustomerOrders, hiddenOrderKeysSet]);
+
+  // Soft-hidden orders retained for customer inspection / restoration
+  const hiddenCustomerOrders = useMemo(() => {
+    return allCustomerOrders.filter((o) => {
+      const idMatch = hiddenOrderKeysSet.has(o.id.toUpperCase());
+      const numMatch = hiddenOrderKeysSet.has(o.orderNumber.trim().toUpperCase());
+      return idMatch || numMatch;
+    });
+  }, [allCustomerOrders, hiddenOrderKeysSet]);
 
   const customerOrdersCount = customerOrders.length;
 
@@ -2349,6 +2419,63 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const deleteOrder = async (
+    orderId: string,
+    options?: { restockItems?: boolean; reason?: string }
+  ): Promise<void> => {
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (!targetOrder) return;
+
+    // Optional inventory replenishment if requested and not already restocked
+    if (
+      options?.restockItems &&
+      !targetOrder.isRestocked &&
+      !restockedOrderIdsRef.current.has(targetOrder.id)
+    ) {
+      replenishOrderInventory(targetOrder);
+    }
+
+    // Remove from in-memory orders state & local storage
+    setOrders((prev) => {
+      const next = prev.filter((o) => o.id !== orderId);
+      saveToStorage(STORAGE_KEYS.ORDERS, next);
+      return next;
+    });
+
+    if (lastPlacedOrder?.id === orderId) {
+      setLastPlacedOrder(null);
+    }
+
+    if (activeAdminChatOrderId === orderId) {
+      setActiveAdminChatOrderId(null);
+    }
+    if (activeCustomerChatOrderId === orderId) {
+      setActiveCustomerChatOrderId(null);
+    }
+    if (incomingChatAlert?.order.id === orderId) {
+      setIncomingChatAlert(null);
+    }
+
+    // Clean from customer order numbers ledger
+    const cleanNum = targetOrder.orderNumber.trim().toUpperCase();
+    setCustomerOrderNumbers((prev) => {
+      const next = prev.filter((n) => n.trim().toUpperCase() !== cleanNum);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('aara_customer_orders', JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+
+    // Delete document from Firestore
+    try {
+      await deleteDoc(doc(db, 'orders', orderId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `orders/${orderId}`);
+    }
+  };
+
   // Customer Cancellation Request
   const requestOrderCancellation = (orderNumber: string, phone: string, reason: string) => {
     // Check if public cancellation is disabled
@@ -3857,6 +3984,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         clearCartStockWarning,
         orders,
         placeOrder,
+        deleteOrder,
         updateOrderStatus,
         updateOrderShipping,
         markRefundProcessed,
@@ -3929,7 +4057,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         isInWishlist,
         customerOrdersCount,
         customerOrders,
+        hiddenCustomerOrders,
+        hiddenCustomerOrderIds,
         recordCustomerOrder,
+        hideCustomerOrder,
+        unhideCustomerOrder,
         productAttributes,
         addProductAttribute,
         updateProductAttribute,

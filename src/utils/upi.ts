@@ -472,8 +472,510 @@ Warm regards,
 ${settings.boutiqueName} Concierge`;
 }
 
+/* =======================================================================
+ * EXPANDED AUTOMATED DISPUTE & CANCELLATION LIFECYCLE TEMPLATES
+ * ======================================================================= */
+
+/**
+ * Cancellation Dispute Stage: Acknowledging cancellation request
+ */
+export function formatWhatsAppCancellationRequestAck(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Attending Concierge:* ${order.assignedStaffName}`
+    : '';
+  const reasonText = order.cancellationRequest?.reason || order.cancellationReason || 'Customer requested';
+
+  return `Namaste ${order.customer.name},
+
+We have received your *CANCELLATION REQUEST* for order *#${order.orderNumber}*:
+• Order Reference: *#${order.orderNumber}*
+• Order Value: *${formatPrice(order.totalAmount)}*
+• Stated Reason: *${reasonText}*
+
+Our atelier concierge is reviewing the dispatch status with our workshop. If the saree has not left the packaging bay, your order will be cancelled, inventory restored, and refund processed promptly.
+
+You can monitor review status live:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName} Concierge`;
+}
+
+/**
+ * Cancellation Dispute Stage: Cancellation Approved & Auto-Restock Confirmation
+ */
+export function formatWhatsAppCancellationApproved(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Attending Concierge:* ${order.assignedStaffName}`
+    : '';
+  const utrText = order.refundDetails?.refundUtr
+    ? `\n• *Refund UTR Reference:* *${order.refundDetails.refundUtr}*`
+    : '';
+  const destinationUpi = order.refundDetails?.refundUpiId
+    ? `\n• *Destination UPI ID:* *${order.refundDetails.refundUpiId}*`
+    : '';
+
+  return `Namaste ${order.customer.name},
+
+Your cancellation request for order *#${order.orderNumber}* has been *APPROVED* by *${settings.boutiqueName}*.
+
+• Status: *CANCELLED & CLOSED*
+• Inventory Action: *Handloom piece auto-restocked to boutique ledger*
+• Refund Amount: *${formatPrice(order.totalAmount)}*${utrText}${destinationUpi}
+
+${order.refundDetails?.refundStatus === 'processed' ? 'Your refund has been completed directly to your UPI.' : 'Your refund transaction is being processed by our accounts desk.'}
+
+Order record:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName} Atelier`;
+}
+
+/**
+ * Cancellation Dispute Stage: Cancellation Declined Notice
+ */
+export function formatWhatsAppCancellationDeclined(
+  order: Order,
+  settings: StoreSettings,
+  declineReason?: string,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Attending Concierge:* ${order.assignedStaffName}`
+    : '';
+  const reason = declineReason || 'Parcel has already been dispatched with courier partner.';
+  const courier = order.shippingDetails?.courierName;
+  const trackingId = order.shippingDetails?.trackingNumber;
+
+  return `Namaste ${order.customer.name},
+
+Regarding your cancellation request for order *#${order.orderNumber}* at *${settings.boutiqueName}*:
+
+We are unable to approve cancellation at this stage:
+• *Notice:* ${reason}
+• Current Order Status: *${order.status}*
+${courier ? `• Courier Partner: *${courier}*` : ''}
+${trackingId ? `• Consignment ID: *${trackingId}*` : ''}
+
+Your authentic handloom saree remains safely on its way to your destination. Track live delivery:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName} Concierge`;
+}
+
+/**
+ * Delivery Dispute Stage: Acknowledging non-receipt reports
+ */
+export function formatWhatsAppDeliveryIssueAck(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Assigned Concierge:* ${order.assignedStaffName}`
+    : '';
+  const courier = order.shippingDetails?.courierName || 'Registered Express Courier';
+  const trackingId = order.shippingDetails?.trackingNumber || 'Assigned';
+  const issueText = order.deliveryIssue?.issueDescription || 'Parcel not received at doorstep';
+
+  return `Namaste ${order.customer.name},
+
+We have received your *DELIVERY DISPUTE REPORT* for order *#${order.orderNumber}*:
+• Reported Issue: *"${issueText}"*
+• Carrier Partner: *${courier}*
+• Consignment / Tracking ID: *${trackingId}*
+
+Our senior atelier concierge has escalated this case directly with the local ${courier} delivery hub manager to verify runner delivery sheets and pod signature records.
+
+We will keep you updated in real-time on live chat and WhatsApp:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName} Logistics Support`;
+}
+
+/**
+ * Delivery Dispute Stage: Courier investigation update
+ */
+export function formatWhatsAppDeliveryInvestigating(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Assigned Concierge:* ${order.assignedStaffName}`
+    : '';
+  const courier = order.shippingDetails?.courierName || 'the courier partner';
+  const trackingId = order.shippingDetails?.trackingNumber || '';
+
+  return `Namaste ${order.customer.name},
+
+Investigation Update on Order *#${order.orderNumber}*:
+
+Our concierge team is actively coordinating with the ${courier} dispatch desk${trackingId ? ` (Consignment: #${trackingId})` : ''}.
+• Action: *Field verification with local route executive & physical proof-of-delivery audit*
+• Investigation Status: *In Progress (High Priority)*
+
+We assure you of safe resolution. You may reply to this message or check updates here:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName} Concierge Desk`;
+}
+
+/**
+ * Delivery Dispute Stage: Resolution Notice
+ */
+export function formatWhatsAppDeliveryResolved(
+  order: Order,
+  settings: StoreSettings,
+  resolutionNote?: string,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Assigned Concierge:* ${order.assignedStaffName}`
+    : '';
+  const note = resolutionNote || order.deliveryIssue?.resolutionNotes || 'Dispute investigated and successfully resolved with customer.';
+
+  return `Namaste ${order.customer.name},
+
+Your delivery issue for order *#${order.orderNumber}* has been *OFFICIALLY RESOLVED* by *${settings.boutiqueName}*.
+
+• *Resolution Summary:* ${note}
+• Order Reference: *#${order.orderNumber}*
+
+We thank you for your patience and gracious cooperation. Please let us know if you need any styling or saree care guidance:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName}`;
+}
+
+/**
+ * Refund Dispute Stage: Acknowledging refund report issues
+ */
+export function formatWhatsAppRefundReportAck(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Finance Concierge:* ${order.assignedStaffName}`
+    : '';
+  const desc = order.deliveryIssue?.issueDescription || 'Customer submitted inquiry regarding refund settlement.';
+
+  return `Namaste ${order.customer.name},
+
+We have logged your *REFUND INQUIRY TICKET* for order *#${order.orderNumber}*:
+• Total Order Value: *${formatPrice(order.totalAmount)}*
+• Inquiry Detail: *"${desc}"*
+• Registered UPI ID: *${order.refundDetails?.refundUpiId || order.customer.phone}*
+
+Our finance concierge has initiated an audit of the bank transaction log and payment gateway records to confirm settlement.
+
+Track ticket status:
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName} Accounts Desk`;
+}
+
+/**
+ * Refund Dispute Stage: UTR verification status
+ */
+export function formatWhatsAppRefundInvestigating(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Finance Concierge:* ${order.assignedStaffName}`
+    : '';
+
+  return `Namaste ${order.customer.name},
+
+Refund Audit Update on Order *#${order.orderNumber}*:
+
+Our banking desk is verifying the payment settlement batch and 12-digit UTR reference with our nodal bank.
+• Amount: *${formatPrice(order.totalAmount)}*
+• Destination Account / UPI: *${order.refundDetails?.refundUpiId || order.customer.phone}*
+• Audit Status: *UTR Banking Verification In-Flight*
+
+We will post your verified bank UTR number as soon as the ledger cycle completes.
+🔗 ${trackingLink}${staffSignature}
+
+Warm regards,
+${settings.boutiqueName} Accounts`;
+}
+
+/**
+ * Refund Dispute Stage: Refund settlement confirmation
+ */
+export function formatWhatsAppRefundSettled(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): string {
+  const trackingLink = getTrackingLink(order, settings, storeUrl);
+  const staffSignature = order.assignedStaffName
+    ? `\n👤 *Finance Concierge:* ${order.assignedStaffName}`
+    : '';
+  const utr = order.refundDetails?.refundUtr || order.upiTransactionId || 'Verified';
+
+  return `Namaste ${order.customer.name},
+
+✨ Your refund for order *#${order.orderNumber}* has been *SETTLED & CONFIRMED*!
+
+• Refund Amount: *${formatPrice(order.totalAmount)}*
+• *Verified Bank UTR ID:* *${utr}*
+• Transferred To: *${order.refundDetails?.refundUpiId || 'Customer UPI'}* (${order.refundDetails?.refundUpiPhone || order.customer.phone})
+• Settlement Status: *Completed*
+
+The funds are credited to your UPI account. Please verify with your UPI / banking app.
+🔗 ${trackingLink}${staffSignature}
+
+Thank you for your understanding.
+Warm regards,
+${settings.boutiqueName} Atelier`;
+}
+
+/* =======================================================================
+ * MASTER CONTEXTUAL TEMPLATE RESOLVER FOR LIVE CHAT & WHATSAPP
+ * ======================================================================= */
+
+export interface OrderChatTemplate {
+  id: string;
+  title: string;
+  category: 'cancellation_dispute' | 'delivery_dispute' | 'refund_dispute' | 'order_milestone';
+  categoryLabel: string;
+  text: string;
+  isContextualMatch: boolean;
+  matchReason?: string;
+  badge?: string;
+}
+
+/**
+ * Returns all available templates for an order, dynamically prefilled with real order variables,
+ * with the exact stage-matching template flagged as top suggested.
+ */
+export function getOrderContextualTemplates(
+  order: Order,
+  settings: StoreSettings,
+  storeUrl?: string
+): {
+  templates: OrderChatTemplate[];
+  topSuggestedTemplate: OrderChatTemplate | null;
+} {
+  const isDeliveryIssue =
+    order.deliveryIssue?.reported === true &&
+    (order.deliveryIssue?.issueType === 'delivery' || (!order.deliveryIssue?.issueType && order.status === 'Delivered'));
+
+  const isRefundIssue =
+    order.deliveryIssue?.reported === true && order.deliveryIssue?.issueType === 'refund';
+
+  const isCancellationIssue =
+    (order.cancellationRequest?.requested === true && order.cancellationRequest?.status === 'pending') ||
+    order.deliveryIssue?.issueType === 'cancellation';
+
+  const isCancelledOrRejected = order.status === 'Cancelled' || order.status === 'Rejected';
+  const isRefundedStatus = order.status === 'Refunded' || order.refundDetails?.refundStatus === 'processed';
+
+  const templates: OrderChatTemplate[] = [
+    // -------------------------------------------------------------
+    // Cancellation Dispute Templates
+    // -------------------------------------------------------------
+    {
+      id: 'cancel_ack',
+      title: 'Cancellation Request Acknowledged',
+      category: 'cancellation_dispute',
+      categoryLabel: 'Cancellation Dispute',
+      badge: 'Ack Request',
+      text: formatWhatsAppCancellationRequestAck(order, settings, storeUrl),
+      isContextualMatch: Boolean(isCancellationIssue && order.cancellationRequest?.status === 'pending'),
+      matchReason: 'Customer submitted a pending cancellation request.',
+    },
+    {
+      id: 'cancel_approved',
+      title: 'Cancellation Approved & Restocked',
+      category: 'cancellation_dispute',
+      categoryLabel: 'Cancellation Dispute',
+      badge: 'Approved',
+      text: formatWhatsAppCancellationApproved(order, settings, storeUrl),
+      isContextualMatch: Boolean(
+        (isCancelledOrRejected || order.cancellationRequest?.status === 'approved') && !isRefundedStatus
+      ),
+      matchReason: 'Order is cancelled and stock auto-restored.',
+    },
+    {
+      id: 'cancel_declined',
+      title: 'Cancellation Declined Notice',
+      category: 'cancellation_dispute',
+      categoryLabel: 'Cancellation Dispute',
+      badge: 'Declined',
+      text: formatWhatsAppCancellationDeclined(
+        order,
+        settings,
+        order.cancellationRequest?.adminDecisionNotes || 'Saree already dispatched with express courier',
+        storeUrl
+      ),
+      isContextualMatch: Boolean(order.cancellationRequest?.status === 'rejected'),
+      matchReason: 'Cancellation request was declined by concierge.',
+    },
+
+    // -------------------------------------------------------------
+    // Delivery Dispute Templates
+    // -------------------------------------------------------------
+    {
+      id: 'delivery_ack',
+      title: 'Delivery Dispute Acknowledged',
+      category: 'delivery_dispute',
+      categoryLabel: 'Delivery Dispute',
+      badge: 'Ack Non-Receipt',
+      text: formatWhatsAppDeliveryIssueAck(order, settings, storeUrl),
+      isContextualMatch: Boolean(isDeliveryIssue && order.deliveryIssue?.status === 'open'),
+      matchReason: 'Active customer delivery issue reported (open).',
+    },
+    {
+      id: 'delivery_investigating',
+      title: 'Courier Hub Investigation In-Flight',
+      category: 'delivery_dispute',
+      categoryLabel: 'Delivery Dispute',
+      badge: 'Investigating',
+      text: formatWhatsAppDeliveryInvestigating(order, settings, storeUrl),
+      isContextualMatch: Boolean(isDeliveryIssue && order.deliveryIssue?.status === 'investigating'),
+      matchReason: 'Concierge is actively investigating with courier hub.',
+    },
+    {
+      id: 'delivery_resolved',
+      title: 'Delivery Dispute Resolved Notice',
+      category: 'delivery_dispute',
+      categoryLabel: 'Delivery Dispute',
+      badge: 'Resolved',
+      text: formatWhatsAppDeliveryResolved(order, settings, undefined, storeUrl),
+      isContextualMatch: Boolean(isDeliveryIssue && order.deliveryIssue?.status === 'resolved'),
+      matchReason: 'Delivery dispute is resolved and closed.',
+    },
+
+    // -------------------------------------------------------------
+    // Refund Dispute Templates
+    // -------------------------------------------------------------
+    {
+      id: 'refund_ack',
+      title: 'Refund Issue Report Acknowledged',
+      category: 'refund_dispute',
+      categoryLabel: 'Refund Dispute',
+      badge: 'Ack Refund',
+      text: formatWhatsAppRefundReportAck(order, settings, storeUrl),
+      isContextualMatch: Boolean(isRefundIssue && order.deliveryIssue?.status === 'open'),
+      matchReason: 'Customer submitted a refund inquiry / ticket.',
+    },
+    {
+      id: 'refund_investigating',
+      title: 'Refund UTR Banking Verification',
+      category: 'refund_dispute',
+      categoryLabel: 'Refund Dispute',
+      badge: 'UTR Verification',
+      text: formatWhatsAppRefundInvestigating(order, settings, storeUrl),
+      isContextualMatch: Boolean(
+        isRefundIssue && (order.deliveryIssue?.status === 'investigating' || order.refundDetails?.refundStatus === 'pending')
+      ),
+      matchReason: 'UTR banking verification in progress.',
+    },
+    {
+      id: 'refund_settled',
+      title: 'Refund Settled Confirmation',
+      category: 'refund_dispute',
+      categoryLabel: 'Refund Dispute',
+      badge: 'Settled',
+      text: formatWhatsAppRefundSettled(order, settings, storeUrl),
+      isContextualMatch: Boolean(isRefundedStatus || (isRefundIssue && order.deliveryIssue?.status === 'resolved')),
+      matchReason: 'Refund has been verified and settled to customer UPI.',
+    },
+
+    // -------------------------------------------------------------
+    // Standard Order Lifecycle Milestones
+    // -------------------------------------------------------------
+    {
+      id: 'stage_pending',
+      title: 'Order Received & UTR Verification',
+      category: 'order_milestone',
+      categoryLabel: 'Order Milestones',
+      badge: 'Pending',
+      text: formatWhatsAppStageUpdateMessage({ ...order, status: 'Pending' }, settings, storeUrl),
+      isContextualMatch: order.status === 'Pending' && !isCancellationIssue && !isDeliveryIssue && !isRefundIssue,
+      matchReason: 'Order is awaiting payment verification.',
+    },
+    {
+      id: 'stage_confirmed',
+      title: 'Order Confirmed & Atelier Inspection',
+      category: 'order_milestone',
+      categoryLabel: 'Order Milestones',
+      badge: 'Confirmed',
+      text: formatWhatsAppStageUpdateMessage({ ...order, status: 'Confirmed' }, settings, storeUrl),
+      isContextualMatch: order.status === 'Confirmed' && !isCancellationIssue && !isDeliveryIssue && !isRefundIssue,
+      matchReason: 'Order confirmed and handloom drape being prepared.',
+    },
+    {
+      id: 'stage_shipped',
+      title: 'Order Dispatched with Consignment ID',
+      category: 'order_milestone',
+      categoryLabel: 'Order Milestones',
+      badge: 'Shipped',
+      text: formatWhatsAppStageUpdateMessage({ ...order, status: 'Shipped' }, settings, storeUrl),
+      isContextualMatch: order.status === 'Shipped' && !isCancellationIssue && !isDeliveryIssue && !isRefundIssue,
+      matchReason: 'Order is in transit with courier partner.',
+    },
+    {
+      id: 'stage_delivered',
+      title: 'Order Delivered & Drape Appreciation',
+      category: 'order_milestone',
+      categoryLabel: 'Order Milestones',
+      badge: 'Delivered',
+      text: formatWhatsAppStageUpdateMessage({ ...order, status: 'Delivered' }, settings, storeUrl),
+      isContextualMatch: order.status === 'Delivered' && !isDeliveryIssue && !isRefundIssue,
+      matchReason: 'Order delivered to doorstep.',
+    },
+  ];
+
+  // Find top suggested template: first look for exact dispute contextual match, then milestone match
+  const topSuggestedTemplate =
+    templates.find(
+      (t) =>
+        t.isContextualMatch &&
+        (t.category === 'cancellation_dispute' ||
+          t.category === 'delivery_dispute' ||
+          t.category === 'refund_dispute')
+    ) ||
+    templates.find((t) => t.isContextualMatch) ||
+    null;
+
+  return {
+    templates,
+    topSuggestedTemplate,
+  };
+}
+
 export function openWhatsApp(phone: string, text: string) {
   const cleanPhone = phone.replace(/[^0-9]/g, '');
   const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
   window.open(url, '_blank', 'noopener,noreferrer');
 }
+

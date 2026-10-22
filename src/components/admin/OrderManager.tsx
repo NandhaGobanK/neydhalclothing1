@@ -51,6 +51,7 @@ import {
   MapPin,
   Phone,
   Mail,
+  Trash2,
 } from 'lucide-react';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 import { CourierLogisticsPanel } from '../common/CourierLogisticsPanel';
@@ -69,6 +70,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
 }) => {
   const {
     orders,
+    deleteOrder,
     updateOrderStatus,
     updateOrderShipping,
     markRefundProcessed,
@@ -93,6 +95,41 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   const currentUserId = currentUser?.staffId || (isAdmin ? 'admin' : '');
   const canEditOrders = isAdmin || currentPermissions?.orders?.canEdit !== false;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Dedicated Order Deletion / Removal State for Staff & Admins
+  const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+  const [deleteRestockItems, setDeleteRestockItems] = useState(false);
+  const [deleteReasonNote, setDeleteReasonNote] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteSuccessToast, setDeleteSuccessToast] = useState<{ orderNumber: string } | null>(null);
+
+  const handleConfirmDeleteOrder = async () => {
+    if (!deletingOrder) return;
+    setIsDeleting(true);
+    const ordNum = deletingOrder.orderNumber;
+    try {
+      await deleteOrder(deletingOrder.id, {
+        restockItems: deleteRestockItems,
+        reason: deleteReasonNote.trim() || undefined,
+      });
+      if (selectedDetailOrder?.id === deletingOrder.id) {
+        setSelectedDetailOrder(null);
+      }
+      setExpandedOrderIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deletingOrder.id);
+        return next;
+      });
+      setDeleteSuccessToast({ orderNumber: ordNum });
+      setTimeout(() => setDeleteSuccessToast(null), 4000);
+      setDeletingOrder(null);
+    } catch (err: any) {
+      console.error('Failed to delete order:', err);
+      alert('Failed to remove order record. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Auto-open live chat when deep linked from staff notification
   useEffect(() => {
@@ -975,6 +1012,33 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
         </div>
       )}
 
+      {/* Order Deletion Success Banner */}
+      {deleteSuccessToast && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-rose-950 via-neutral-900 to-rose-900 text-white text-xs font-medium shadow-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 border border-rose-500/30">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-300 shrink-0">
+              <Trash2 className="w-4 h-4 text-rose-400" />
+            </div>
+            <div>
+              <p className="font-bold text-white text-sm">
+                Order #{deleteSuccessToast.orderNumber} Deleted Successfully
+              </p>
+              <p className="text-rose-200 text-xs">
+                The order record has been permanently removed from the active order queue, staff buckets, and database.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteSuccessToast(null)}
+            className="text-white/80 hover:text-white font-bold p-1 cursor-pointer"
+            title="Dismiss notification"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {/* Multi-Parameter Global Search Bar & Dynamic Queue Routing Tabs */}
       <div className="bg-white rounded-2xl border border-neutral-300 p-3 sm:p-4 shadow-xs space-y-3">
         {/* Dynamic Queue Routing Tabs */}
@@ -1371,6 +1435,21 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                       <span>Open Order</span>
                       <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
                     </button>
+                    {canEditOrders && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingOrder(order);
+                          setDeleteRestockItems(order.status !== 'Cancelled' && order.status !== 'Delivered' && !order.isRestocked);
+                          setDeleteReasonNote(order.status === 'Delivered' || order.isClosed ? 'Clean up completed / closed order' : '');
+                        }}
+                        className="p-1.5 rounded-xl border border-neutral-200 hover:border-rose-300 hover:bg-rose-50 text-neutral-400 hover:text-rose-700 transition cursor-pointer"
+                        title={`Delete / Remove Order #${order.orderNumber}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <span className="text-[11px] font-semibold text-neutral-600 bg-neutral-100 px-2 py-1 rounded-md">
                       {isExpanded ? 'Hide ▲' : 'Inline ▼'}
                     </span>
@@ -1471,6 +1550,23 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                         )
                       )}
                     </div>
+                  )}
+
+                  {/* Dedicated Order Removal Button for Staff and Admins */}
+                  {canEditOrders && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeletingOrder(order);
+                        setDeleteRestockItems(order.status !== 'Cancelled' && order.status !== 'Delivered' && !order.isRestocked);
+                        setDeleteReasonNote(order.status === 'Delivered' || order.isClosed ? 'Clean up completed / closed order' : '');
+                      }}
+                      className="px-2.5 py-1 rounded-lg border border-rose-200 hover:border-rose-300 bg-rose-50/70 hover:bg-rose-100 text-rose-800 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      title="Remove this order record from active view and database"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Delete Order</span>
+                    </button>
                   )}
                 </div>
 
@@ -3527,6 +3623,29 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   <Send className="w-3.5 h-3.5" />
                   <span>WhatsApp Customer</span>
                 </button>
+                {canEditOrders && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeletingOrder(selectedDetailOrder);
+                      setDeleteRestockItems(
+                        selectedDetailOrder.status !== 'Cancelled' &&
+                          selectedDetailOrder.status !== 'Delivered' &&
+                          !selectedDetailOrder.isRestocked
+                      );
+                      setDeleteReasonNote(
+                        selectedDetailOrder.status === 'Delivered' || selectedDetailOrder.isClosed
+                          ? 'Clean up completed / closed order'
+                          : ''
+                      );
+                    }}
+                    className="px-3.5 py-2 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                    title="Remove this order record from active view and database"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-700" />
+                    <span>Delete Order</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setSelectedDetailOrder(null)}
@@ -3829,6 +3948,182 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Dedicated Order Deletion / Removal Modal for Staff & Admins */}
+      {deletingOrder && (
+        <div className="fixed inset-0 z-70 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-rose-950 via-neutral-900 to-rose-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  <Trash2 className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Remove / Delete Order Record
+                  </h3>
+                  <p className="text-[11px] text-rose-300">
+                    Order #{deletingOrder.orderNumber} · {deletingOrder.customer.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs text-neutral-700">
+              {/* Order Summary Snapshot */}
+              <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-xs text-neutral-900 bg-white px-2 py-0.5 rounded border border-neutral-200">
+                    #{deletingOrder.orderNumber}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      deletingOrder.status === 'Cancelled' || deletingOrder.status === 'Rejected'
+                        ? 'bg-rose-100 text-rose-800'
+                        : deletingOrder.status === 'Delivered'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : deletingOrder.status === 'Shipped'
+                        ? 'bg-blue-100 text-blue-800'
+                        : deletingOrder.status === 'Confirmed'
+                        ? 'bg-purple-100 text-purple-800'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    Stage: {deletingOrder.status} {deletingOrder.isClosed ? '(Closed)' : ''}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-200/80 text-[11px]">
+                  <div>
+                    <span className="text-neutral-500">Customer:</span>
+                    <p className="font-bold text-neutral-800 truncate">{deletingOrder.customer.name}</p>
+                    <p className="font-mono text-neutral-600">{deletingOrder.customer.phone}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-neutral-500">Total Value:</span>
+                    <p className="font-serif font-bold text-sm text-neutral-900">
+                      {formatPrice(deletingOrder.totalAmount)}
+                    </p>
+                    <p className="text-neutral-600">{deletingOrder.items.length} {deletingOrder.items.length === 1 ? 'saree item' : 'saree items'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warning Notice */}
+              <div className="p-3 bg-rose-50 rounded-2xl border border-rose-200 text-rose-950 space-y-1">
+                <p className="font-bold flex items-center gap-1.5 text-rose-900">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Permanent Order Record Removal</span>
+                </p>
+                <p className="text-[11px] text-rose-900 leading-relaxed">
+                  Removing this order will completely clean up the record from the active order queue, all staff handling buckets, and the persistent database.
+                </p>
+              </div>
+
+              {/* Optional Auto-Restock Sarees Option */}
+              {deletingOrder.items && deletingOrder.items.length > 0 && !deletingOrder.isRestocked && deletingOrder.status !== 'Cancelled' && (
+                <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200 text-amber-950 space-y-2">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={deleteRestockItems}
+                      onChange={(e) => setDeleteRestockItems(e.target.checked)}
+                      className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
+                    />
+                    <div>
+                      <span className="font-bold text-amber-900 text-xs block">
+                        Restock items back into boutique inventory
+                      </span>
+                      <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
+                        Automatically return the {deletingOrder.items.reduce((acc, it) => acc + it.quantity, 0)} saree pieces from this order back to available stock.
+                      </span>
+                    </div>
+                  </label>
+
+                  {deleteRestockItems && (
+                    <div className="pt-2 border-t border-amber-200/80 space-y-1">
+                      {deletingOrder.items.map((it, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-white/90 px-2.5 py-1 rounded-lg text-[10px] border border-amber-200">
+                          <span className="font-medium text-neutral-800 truncate max-w-[240px]">
+                            {it.product.title}
+                          </span>
+                          <span className="font-bold text-emerald-700">
+                            +{it.quantity} to stock
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Quick Reason Presets */}
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1.5">
+                  Reason for Removal (Optional Audit Log):
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {[
+                    'Clean up completed / closed order',
+                    'Test / duplicate order record',
+                    'Customer cancelled & requested removal',
+                    'Unwanted / abandoned record',
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setDeleteReasonNote(preset)}
+                      className={`text-[10px] px-2 py-1 rounded-lg border text-left transition cursor-pointer ${
+                        deleteReasonNote === preset
+                          ? 'bg-rose-100 text-rose-900 border-rose-300 font-bold'
+                          : 'bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border-neutral-200'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={deleteReasonNote}
+                  onChange={(e) => setDeleteReasonNote(e.target.value)}
+                  placeholder="Enter reason or note for deleting this order..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setDeletingOrder(null)}
+                  className="px-4 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleConfirmDeleteOrder}
+                  className="px-5 py-2.5 rounded-xl bg-rose-700 hover:bg-rose-600 disabled:opacity-50 text-white font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{isDeleting ? 'Deleting...' : 'Delete Order Record'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
