@@ -28,6 +28,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useStaffIdleTracker } from '../../hooks/useStaffIdleTracker';
+import { hasActiveCustomerIssue } from '../../utils/disputeRedressals';
 
 interface AdminLayoutProps {
   onReturnToStore: () => void;
@@ -53,7 +54,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     (o) => o.assignedStaffId === (currentUser?.staffId || (isAdmin ? 'admin' : ''))
   ).length;
   const adminBucketOrdersCount = orders.filter((o) => o.assignedStaffId === 'admin').length;
-  const unassignedOrdersCount = orders.filter((o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned').length;
+  const unassignedOrdersCount = orders.filter(
+    (o) => (!o.assignedStaffId || o.assignedStaffId === 'unassigned') && !hasActiveCustomerIssue(o)
+  ).length;
 
   // Determine allowed tabs based on permissions
   const canSeeOrders = isAdmin || currentPermissions?.orders?.canView !== false;
@@ -176,11 +179,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
       o.refundDetails?.refundStatus === 'pending'
   ).length;
 
-  const customerIssuesCount = orders.filter(
-    (o) =>
-      (o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved') ||
-      (o.cancellationRequest?.requested && o.cancellationRequest?.status === 'pending')
-  ).length;
+  const customerIssuesCount = orders.filter(hasActiveCustomerIssue).length;
 
   // Sound & banner notification when customer reports delivery dispute or cancellation request (User Request)
   const prevCustomerIssuesCountRef = useRef(customerIssuesCount);
@@ -188,11 +187,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
 
   useEffect(() => {
     if (customerIssuesCount > prevCustomerIssuesCountRef.current) {
-      const disputed = orders.find(
-        (o) =>
-          (o.deliveryIssue?.reported && o.deliveryIssue?.status !== 'resolved') ||
-          (o.cancellationRequest?.requested && o.cancellationRequest?.status === 'pending')
-      );
+      const disputed = orders.find(hasActiveCustomerIssue);
       if (disputed) {
         setIncomingDisputeAlert(disputed);
         playOrderNotificationSound();
@@ -411,10 +406,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                     ? 'bg-rose-600 text-white font-bold shadow-xs'
                     : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
                 }`}
-                title="Delivery dispute issues reported by customers"
+                title="Customer Issue: Cancellation Requests, Delivery Disputes, and Refund Reports"
               >
                 <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Customers Issue</span>
+                <span>Customer Issue</span>
                 {customerIssuesCount > 0 && (
                   <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-bold animate-pulse">
                     {customerIssuesCount}

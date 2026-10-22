@@ -63,6 +63,75 @@ export function playOrderNotificationSound(): boolean {
 }
 
 /**
+ * Synthesizes an elegant, distinct dual/triple chime for real-time live chat messages.
+ * @param forCustomer true if recipient is customer (warmer tone), false if staff (snappier alert)
+ */
+export function playChatChimeSound(forCustomer: boolean = false): boolean {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+
+    const now = ctx.currentTime;
+
+    if (forCustomer) {
+      // Warm, welcoming concierge chime: F5 (698Hz) -> A5 (880Hz) -> C6 (1046Hz)
+      const notes = [
+        { freq: 698.46, time: now + 0.0, dur: 0.22, gain: 0.26 },
+        { freq: 880.0, time: now + 0.12, dur: 0.28, gain: 0.28 },
+        { freq: 1046.5, time: now + 0.26, dur: 0.45, gain: 0.32 },
+      ];
+
+      notes.forEach(({ freq, time, dur, gain: noteGain }) => {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, time);
+
+        gainNode.gain.setValueAtTime(0.0001, time);
+        gainNode.gain.exponentialRampToValueAtTime(noteGain, time + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        osc.start(time);
+        osc.stop(time + dur + 0.05);
+      });
+    } else {
+      // Crisp staff triage ping: G5 (784Hz) -> D6 (1174Hz)
+      const notes = [
+        { freq: 783.99, time: now + 0.0, dur: 0.18, gain: 0.28 },
+        { freq: 1174.66, time: now + 0.12, dur: 0.35, gain: 0.32 },
+      ];
+
+      notes.forEach(({ freq, time, dur, gain: noteGain }) => {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, time);
+
+        gainNode.gain.setValueAtTime(0.0001, time);
+        gainNode.gain.exponentialRampToValueAtTime(noteGain, time + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        osc.start(time);
+        osc.stop(time + dur + 0.05);
+      });
+    }
+
+    return true;
+  } catch (err) {
+    console.warn('Unable to play chat notification sound:', err);
+    return false;
+  }
+}
+
+/**
  * Synthesizes an uplifting, sparkling chime for real-time saree restock notification
  * Notes: C5 (523Hz) -> E5 (659Hz) -> G5 (784Hz) -> C6 (1046Hz) with bright harmonics
  */

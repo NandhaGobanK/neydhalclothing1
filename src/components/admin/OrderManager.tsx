@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 import { CourierLogisticsPanel } from '../common/CourierLogisticsPanel';
+import { hasActiveCustomerIssue } from '../../utils/disputeRedressals';
 
 interface OrderManagerProps {
   onNavigateToTab?: (tab: string, staffId?: string) => void;
@@ -443,7 +444,9 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   } | null>(null);
 
   const unassignedOrders = useMemo(() => {
-    return orders.filter((o) => !o.assignedStaffId || o.assignedStaffId === 'unassigned');
+    return orders.filter(
+      (o) => (!o.assignedStaffId || o.assignedStaffId === 'unassigned') && !hasActiveCustomerIssue(o)
+    );
   }, [orders]);
 
   const myBucketOrders = useMemo(() => {

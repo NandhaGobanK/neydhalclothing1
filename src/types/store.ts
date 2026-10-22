@@ -175,6 +175,8 @@ export interface CustomerDeliveryIssue {
   resolutionNotes?: string;
   resolvedAt?: string;
   resolvedBy?: string;
+  assignedStaffId?: string; // Dedicated dispute handler
+  assignedStaffName?: string;
   investigationComments?: InvestigationComment[];
 }
 
@@ -294,6 +296,8 @@ export interface Order {
   cancellationRequest?: CancellationRequest; // Customer requested cancellation
   assignedStaffId?: string; // Staff member assigned to handle this order
   assignedStaffName?: string;
+  issueAssignedStaffId?: string; // Dedicated dispute / customer issue handler
+  issueAssignedStaffName?: string;
   lastUpdatedBy?: string; // Staff username who made the last change
   assignmentHistory?: StaffAssignmentLog[]; // Work and assignment tracking history
   isClosed?: boolean; // Order closed after delivery completion

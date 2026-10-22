@@ -139,3 +139,15 @@ export function isCustomerReportIssueVisibleForOrder(order: Order, settings?: St
 export function isCustomerReportIssueVisible(settings?: StoreSettings): boolean {
   return getActiveDisputeRedressals(settings).length > 0;
 }
+
+/**
+ * Checks if an order has an active, unresolved customer issue
+ * (delivery dispute, cancellation request, or refund inquiry).
+ * When true, the order is routed exclusively to the Customer Issue page
+ * and excluded from the unassigned orders bucket on the Order Page.
+ */
+export function hasActiveCustomerIssue(o: Order): boolean {
+  if (o.deliveryIssue?.reported === true && o.deliveryIssue.status !== 'resolved') return true;
+  if (o.cancellationRequest?.requested === true && o.cancellationRequest.status === 'pending') return true;
+  return false;
+}

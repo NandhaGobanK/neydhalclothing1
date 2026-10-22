@@ -122,6 +122,7 @@ interface StoreContextType {
   ) => void;
   markRefundProcessed: (orderId: string, refundUtr: string, refundTool?: string, notes?: string) => void;
   assignOrderStaff: (orderId: string, staffId: string, staffName: string, reasonOrNote?: string) => void;
+  assignCustomerIssueStaff: (orderId: string, staffId: string, staffName: string, reasonOrNote?: string) => void;
   addOrderWorkLog: (orderId: string, action: string, note?: string) => void;
   requestOrderCancellation: (
     orderNumber: string,
@@ -1916,6 +1917,94 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const assignCustomerIssueStaff = (
+    orderId: string,
+    staffId: string,
+    staffName: string,
+    reasonOrNote?: string
+  ) => {
+    let orderToSync: Partial<Order> | null = null;
+    const actorName =
+      currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+
+        const prevIssueStaffName =
+          ord.issueAssignedStaffName || ord.deliveryIssue?.assignedStaffName || 'Unassigned';
+        const isReassignment = Boolean(
+          ord.issueAssignedStaffId &&
+            ord.issueAssignedStaffId !== 'unassigned' &&
+            ord.issueAssignedStaffId !== staffId
+        );
+
+        const actionText =
+          !staffId || staffId === 'unassigned'
+            ? `Customer Issue unassigned by ${actorName}`
+            : isReassignment
+            ? `Customer Issue reassigned from ${prevIssueStaffName} to ${staffName}`
+            : `Customer Issue assigned to ${staffName}`;
+
+        const noteText =
+          reasonOrNote?.trim() ||
+          (isReassignment
+            ? 'Issue reassigned for investigation & redressal'
+            : 'Claimed issue for investigation & redressal');
+
+        const newLogEntry: StaffAssignmentLog = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          staffId,
+          staffName,
+          assignedBy: actorName,
+          action: actionText,
+          note: noteText,
+        };
+
+        const updatedDeliveryIssue: CustomerDeliveryIssue = {
+          ...(ord.deliveryIssue || {
+            reported: true,
+            reportedAt: new Date().toISOString(),
+            customerPhone: ord.customer.phone,
+            issueType: ord.cancellationRequest ? 'cancellation' : 'delivery',
+            issueDescription: ord.cancellationRequest?.reason || 'Customer issue',
+            status: 'investigating',
+          }),
+          assignedStaffId: staffId,
+          assignedStaffName: staffName,
+          status: ord.deliveryIssue?.status === 'resolved' ? 'resolved' : 'investigating',
+          investigationComments: [
+            ...(ord.deliveryIssue?.investigationComments || []),
+            {
+              id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              timestamp: new Date().toISOString(),
+              author: actorName,
+              comment: `${actionText}. Note: ${noteText}`,
+            },
+          ],
+        };
+
+        const updated: Order = {
+          ...ord,
+          issueAssignedStaffId: staffId,
+          issueAssignedStaffName: staffName,
+          deliveryIssue: updatedDeliveryIssue,
+          lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
+          assignmentHistory: [...(ord.assignmentHistory || []), newLogEntry],
+        };
+        orderToSync = updated;
+        return updated;
+      })
+    );
+
+    if (orderToSync) {
+      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      );
+    }
+  };
+
   const addOrderWorkLog = (orderId: string, action: string, note?: string) => {
     let orderToSync: Partial<Order> | null = null;
     const actorName = currentUser?.name || 'Staff';
@@ -2113,12 +2202,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       issueType: 'cancellation',
       issueDescription: `Order Cancellation Request: ${reason.trim()}`,
       status: 'open',
+      assignedStaffId: 'unassigned',
+      assignedStaffName: 'Unassigned',
       investigationComments: [
         {
           id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           timestamp: new Date().toISOString(),
           author: 'Customer Storefront',
-          comment: `Customer submitted cancellation request: "${reason.trim()}"`,
+          comment: `Customer submitted cancellation request: "${reason.trim()}". Routed exclusively to Customer Issues triage queue.`,
         },
       ],
     };
@@ -2130,7 +2221,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       staffName: 'Storefront Customer',
       assignedBy: 'Customer Storefront',
       action: 'Cancellation Request Initiated',
-      note: `Customer submitted cancellation: "${reason.trim()}". Routed to Unassigned Bucket Queue in Customer Issues.`,
+      note: `Customer submitted cancellation: "${reason.trim()}". Routed to Unassigned Queue in Customer Issues.`,
     };
 
     setOrders((prev) =>
@@ -2138,8 +2229,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (ord.id !== targetOrder.id) return ord;
         return {
           ...ord,
-          assignedStaffId: 'unassigned',
-          assignedStaffName: 'Unassigned',
+          issueAssignedStaffId: 'unassigned',
+          issueAssignedStaffName: 'Unassigned',
           isClosed: false,
           cancellationRequest: cancellationPayload,
           deliveryIssue: cancellationIssuePayload,
@@ -2152,8 +2243,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     updateDoc(
       doc(db, 'orders', targetOrder.id),
       sanitizeForFirestore({
-        assignedStaffId: 'unassigned',
-        assignedStaffName: 'Unassigned',
+        issueAssignedStaffId: 'unassigned',
+        issueAssignedStaffName: 'Unassigned',
         isClosed: false,
         cancellationRequest: cancellationPayload,
         deliveryIssue: cancellationIssuePayload,
@@ -2166,8 +2257,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       message: 'Cancellation request recorded successfully. Our atelier team will review and process your refund.',
       order: {
         ...targetOrder,
-        assignedStaffId: 'unassigned',
-        assignedStaffName: 'Unassigned',
+        issueAssignedStaffId: 'unassigned',
+        issueAssignedStaffName: 'Unassigned',
         isClosed: false,
         cancellationRequest: cancellationPayload,
         deliveryIssue: cancellationIssuePayload,
@@ -2343,6 +2434,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       issueType,
       issueDescription: issueDescription.trim() || defaultDesc,
       status: 'open',
+      assignedStaffId: 'unassigned',
+      assignedStaffName: 'Unassigned',
+      investigationComments: [
+        {
+          id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          author: 'Customer Storefront',
+          comment: `Customer submitted ${issueType} issue: "${issueDescription.trim()}". Routed exclusively to Customer Issues triage queue.`,
+        },
+      ],
     };
 
     const actionTitle = issueType === 'refund' ? 'Refund Issue Reported' : 'Delivery Issue Reported';
@@ -2350,10 +2451,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const disputeLog: StaffAssignmentLog = {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       timestamp: new Date().toISOString(),
-      staffId: targetOrder.assignedStaffId || 'unassigned',
+      staffId: 'unassigned',
       staffName: 'Storefront Patron',
       action: actionTitle,
-      note: `Customer reported (${issueType}): "${issueDescription.trim()}"`,
+      note: `Customer reported (${issueType}): "${issueDescription.trim()}". Routed to Customer Issues.`,
     };
 
     let updatedOrder: Order | null = null;
@@ -2362,8 +2463,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (ord.id !== targetOrder.id) return ord;
         updatedOrder = {
           ...ord,
-          assignedStaffId: 'unassigned',
-          assignedStaffName: 'Unassigned',
+          issueAssignedStaffId: 'unassigned',
+          issueAssignedStaffName: 'Unassigned',
           isClosed: false,
           deliveryIssue: issuePayload,
           assignmentHistory: [...(ord.assignmentHistory || []), disputeLog],
@@ -2378,8 +2479,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       updateDoc(
         doc(db, 'orders', targetOrder.id),
         sanitizeForFirestore({
-          assignedStaffId: 'unassigned',
-          assignedStaffName: 'Unassigned',
+          issueAssignedStaffId: 'unassigned',
+          issueAssignedStaffName: 'Unassigned',
           isClosed: false,
           deliveryIssue: issuePayload,
           assignmentHistory: (updatedOrder as Order).assignmentHistory,
@@ -3390,6 +3491,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateOrderShipping,
         markRefundProcessed,
         assignOrderStaff,
+        assignCustomerIssueStaff,
         addOrderWorkLog,
         requestOrderCancellation,
         resolveCancellationRequest,

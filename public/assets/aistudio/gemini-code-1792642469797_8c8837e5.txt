@@ -1,0 +1,42 @@
+[ Customer Places Order ]
+          │
+          ├────────────────────────────────┬────────────────────────────────┐
+          │ (Request Cancellation)         │ (Delivery Issue / Non-Receipt) │ (Refund Not Received)
+          ▼                                ▼                                ▼
+[ 1. Order Cancellation Request ]   [ 2. Delivery Dispute Issue ]    [ 3. Refund Report Issue ]
+          │                                │                                │
+          └────────────────────────────────┴────────────────────────────────┘
+                                           │
+                                           ▼
+                     [ Routed to Admin Panel: "Customer Issue" Section ]
+                                           │
+                                           ▼
+                            [ Lands in Unassigned Queue ]
+                                           │
+                                           ▼
+                   [ Staff / Admin Clicks "Assign" or "Reassign" ]
+                                           │
+                                           ▼
+           [ Order Moves to Concerned Staff / Admin's "Customer Issue" Bucket ]
+                                           │
+                                           ▼
+              [ Staff / Admin Searches & Clicks to Open Original Order Page ]
+                                           │
+          ┌────────────────────────────────┼────────────────────────────────┐
+          │ (For Cancellation Request)     │ (For Delivery Dispute)         │ (For Refund Report)
+          ▼                                ▼                                ▼
+• View "Approve Cancellation     • View associated courier details.   • View associated refund details.
+  & Issue Refund (Auto-Restock)" • Access investigation log section.  • Access investigation log section.
+• View "Decline request" option.
+• Access investigation log section.
+          │                                │                                │
+          └────────────────────────────────┴────────────────────────────────┘
+                                           │
+                                           ▼
+       [ Staff / Admin Investigates, Logs Notes, & Resolves the Issue ]
+                                           │
+                                           ▼
+                   [ State Order as Resolved and Closed ]
+                                           │
+                                           ▼
+           [ Order Automatically Moves to Staff / Admin's "Closed" Bucket ]
