@@ -224,9 +224,19 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
           if (!isRef) return false;
           break;
         }
-        case 'Customer Issue':
-          if (!o.deliveryIssue?.reported && !o.cancellationRequest?.requested) return false;
+        case 'Customer Issue': {
+          const isDispute = Boolean(o.deliveryIssue?.reported) || Boolean(o.cancellationRequest?.requested);
+          if (!isDispute) return false;
+          if (
+            o.isClosed ||
+            o.deliveryIssue?.status === 'resolved' ||
+            o.cancellationRequest?.status === 'approved' ||
+            o.cancellationRequest?.status === 'rejected'
+          ) {
+            return false;
+          }
           break;
+        }
         case 'Closed':
           if (!o.isClosed) return false;
           break;
@@ -309,7 +319,12 @@ export const StaffBucketManager: React.FC<StaffBucketManagerProps> = ({
         (o.deliveryIssue?.reported && o.deliveryIssue?.issueType === 'refund')
     ).length;
     const customerIssues = bucketOrders.filter(
-      (o) => Boolean(o.deliveryIssue?.reported) || Boolean(o.cancellationRequest?.requested)
+      (o) =>
+        (Boolean(o.deliveryIssue?.reported) || Boolean(o.cancellationRequest?.requested)) &&
+        !o.isClosed &&
+        o.deliveryIssue?.status !== 'resolved' &&
+        o.cancellationRequest?.status !== 'approved' &&
+        o.cancellationRequest?.status !== 'rejected'
     ).length;
     const closed = bucketOrders.filter((o) => Boolean(o.isClosed)).length;
     const totalValue = bucketOrders.reduce((sum, o) => sum + o.totalAmount, 0);

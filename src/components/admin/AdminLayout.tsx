@@ -118,6 +118,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
   };
 
   const [activeTab, setActiveTab] = useState<AdminTab>(getInitialTab);
+  const [focusedOrderId, setFocusedOrderId] = useState<string | null>(null);
   const [selectedStaffBucketId, setSelectedStaffBucketId] = useState<string | undefined>(() => {
     try {
       return localStorage.getItem('boutique_admin_bucket_id') || undefined;
@@ -585,6 +586,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'orders' && (
           <OrderManager
+            initialOrderId={focusedOrderId}
+            onClearInitialOrder={() => setFocusedOrderId(null)}
             onNavigateToTab={(t, staffId) => {
               if (staffId) {
                 setSelectedStaffBucketId(staffId);
@@ -618,11 +621,19 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
         {activeTab === 'settings' && <SettingsManager />}
         {activeTab === 'customers_issue' && (
           <CustomerIssuesManager
-            onNavigateToTab={(tab, bucketStaffId) => {
-              if (bucketStaffId) {
-                setSelectedStaffBucketId(bucketStaffId);
+            onNavigateToTab={(tab, param) => {
+              if (tab === 'orders') {
+                if (param) {
+                  setFocusedOrderId(param);
+                }
+                setActiveTab('orders');
+              } else if (tab === 'staff_buckets') {
+                if (param) setSelectedStaffBucketId(param);
+                setActiveTab('staff_buckets');
+              } else {
+                if (param) setSelectedStaffBucketId(param);
+                setActiveTab(tab as any);
               }
-              setActiveTab(tab as any);
             }}
           />
         )}

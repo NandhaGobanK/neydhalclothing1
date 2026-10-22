@@ -72,11 +72,15 @@ export const DISPUTE_REDRESSALS: DisputeRedressalDefinition[] = [
       const refundTxStatus = (order.refundDetails?.refundStatus || '').trim().toLowerCase();
       const hasRefundUtr = Boolean(order.refundDetails?.refundUtr && order.refundDetails.refundUtr.trim());
 
-      // Rule: Check that the order is officially marked as Cancelled / Rejected (or moved to terminal Refunded status)
-      const isCancelled =
+      // Rule: Check that the order is officially marked as Cancelled / Rejected or moved to Refunded status
+      const isCancelledOrRefunded =
         orderStage === 'cancelled' ||
         orderStage === 'rejected' ||
         orderStage === 'refunded' ||
+        refundTxStatus === 'processed' ||
+        refundTxStatus === 'pending' ||
+        refundTxStatus === 'completed' ||
+        hasRefundUtr ||
         Boolean(order.cancellationReason) ||
         Boolean(order.cancellationRequest?.requested) ||
         Boolean(
@@ -86,19 +90,7 @@ export const DISPUTE_REDRESSALS: DisputeRedressalDefinition[] = [
           })
         );
 
-      // Rule: Check that the order is updated with a Refunded status on the customer's order
-      // (checking both order stage or refund transaction status matching 'refunded', 'processed', 'completed', or valid refund UTR)
-      const isRefunded =
-        orderStage === 'refunded' ||
-        refundTxStatus === 'refunded' ||
-        refundTxStatus === 'processed' ||
-        refundTxStatus === 'completed' ||
-        hasRefundUtr ||
-        Boolean(
-          order.statusHistory?.some((h) => (h.status || '').trim().toLowerCase() === 'refunded')
-        );
-
-      return isCancelled && isRefunded;
+      return isCancelledOrRefunded;
     },
   },
 ];

@@ -2103,13 +2103,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       ],
     };
 
+    const cancellationAuditLog: StaffAssignmentLog = {
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      staffId: 'unassigned',
+      staffName: 'Storefront Customer',
+      assignedBy: 'Customer Storefront',
+      action: 'Cancellation Request Initiated',
+      note: `Customer submitted cancellation: "${reason.trim()}". Routed to Unassigned Bucket Queue in Customer Issues.`,
+    };
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== targetOrder.id) return ord;
         return {
           ...ord,
+          assignedStaffId: 'unassigned',
+          assignedStaffName: 'Unassigned',
+          isClosed: false,
           cancellationRequest: cancellationPayload,
           deliveryIssue: cancellationIssuePayload,
+          assignmentHistory: [...(ord.assignmentHistory || []), cancellationAuditLog],
         };
       })
     );
@@ -2118,8 +2132,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     updateDoc(
       doc(db, 'orders', targetOrder.id),
       sanitizeForFirestore({
+        assignedStaffId: 'unassigned',
+        assignedStaffName: 'Unassigned',
+        isClosed: false,
         cancellationRequest: cancellationPayload,
         deliveryIssue: cancellationIssuePayload,
+        assignmentHistory: [...(targetOrder.assignmentHistory || []), cancellationAuditLog],
       })
     ).catch((err) => handleFirestoreError(err, OperationType.UPDATE, `orders/${targetOrder.id}`));
 
@@ -2128,6 +2146,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       message: 'Cancellation request recorded successfully. Our atelier team will review and process your refund.',
       order: {
         ...targetOrder,
+        assignedStaffId: 'unassigned',
+        assignedStaffName: 'Unassigned',
+        isClosed: false,
         cancellationRequest: cancellationPayload,
         deliveryIssue: cancellationIssuePayload,
       },
@@ -2141,6 +2162,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     refundUtr?: string
   ) => {
     let orderToSync: Partial<Order> | null = null;
+    const actorName = currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+    const nowIso = new Date().toISOString();
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
@@ -2148,21 +2172,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const resolvedIssuePayload: CustomerDeliveryIssue = {
           ...(ord.deliveryIssue || {
             reported: true,
-            reportedAt: ord.cancellationRequest?.requestedAt || new Date().toISOString(),
+            reportedAt: ord.cancellationRequest?.requestedAt || nowIso,
             customerPhone: ord.customer.phone,
             issueType: 'cancellation',
             issueDescription: ord.cancellationRequest?.reason || 'Cancellation request',
           }),
           status: 'resolved',
           resolutionNotes: adminNotes || (action === 'approve' ? 'Cancellation request approved by concierge' : 'Cancellation request declined by concierge'),
-          resolvedAt: new Date().toISOString(),
-          resolvedBy: currentUser?.name || 'Concierge Admin',
+          resolvedAt: nowIso,
+          resolvedBy: actorName,
           investigationComments: [
             ...(ord.deliveryIssue?.investigationComments || []),
             {
               id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              timestamp: new Date().toISOString(),
-              author: currentUser?.name || 'Concierge Admin',
+              timestamp: nowIso,
+              author: actorName,
               comment: action === 'approve'
                 ? `Cancellation approved. ${refundUtr ? `Refund UTR: ${refundUtr}. ` : ''}${adminNotes || ''}`
                 : `Cancellation request declined: ${adminNotes || 'No notes'}`,
@@ -2178,11 +2202,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             ...ord,
             status: 'Cancelled',
             isRestocked: true,
+            isClosed: true,
+            closedAt: nowIso,
+            closedBy: actorName,
             cancellationReason: ord.cancellationRequest?.reason || 'Customer requested cancellation approved',
             cancellationRequest: {
               ...(ord.cancellationRequest || {
                 requested: true,
-                requestedAt: new Date().toISOString(),
+                requestedAt: nowIso,
                 reason: 'Customer requested',
                 customerPhone: ord.customer.phone,
               }),
@@ -2194,7 +2221,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               ...ord.refundDetails,
               refundStatus: refundUtr ? 'processed' : 'pending',
               refundUtr: refundUtr || ord.refundDetails?.refundUtr,
-              processedAt: refundUtr ? new Date().toISOString() : undefined,
+              processedAt: refundUtr ? nowIso : undefined,
               notes: adminNotes || 'Approved customer cancellation request',
             },
             lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
@@ -2207,7 +2234,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             cancellationRequest: {
               ...(ord.cancellationRequest || {
                 requested: true,
-                requestedAt: new Date().toISOString(),
+                requestedAt: nowIso,
                 reason: 'Customer requested',
                 customerPhone: ord.customer.phone,
               }),
@@ -2310,20 +2337,34 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     let updatedOrder: Order | null = null;
-    setOrders((prev) =>
-      prev.map((ord) => {
+    setOrders((prev) => {
+      const next = prev.map((ord) => {
         if (ord.id !== targetOrder.id) return ord;
         updatedOrder = {
           ...ord,
+          assignedStaffId: 'unassigned',
+          assignedStaffName: 'Unassigned',
+          isClosed: false,
           deliveryIssue: issuePayload,
           assignmentHistory: [...(ord.assignmentHistory || []), disputeLog],
         };
         return updatedOrder;
-      })
-    );
+      });
+      saveToStorage(STORAGE_KEYS.ORDERS, next);
+      return next;
+    });
 
     if (updatedOrder) {
-      updateDoc(doc(db, 'orders', targetOrder.id), sanitizeForFirestore(updatedOrder)).catch((err) =>
+      updateDoc(
+        doc(db, 'orders', targetOrder.id),
+        sanitizeForFirestore({
+          assignedStaffId: 'unassigned',
+          assignedStaffName: 'Unassigned',
+          isClosed: false,
+          deliveryIssue: issuePayload,
+          assignmentHistory: (updatedOrder as Order).assignmentHistory,
+        })
+      ).catch((err) =>
         handleFirestoreError(err, OperationType.UPDATE, `orders/${targetOrder.id}`)
       );
     }
@@ -2389,7 +2430,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           deliveryIssue: updatedIssue,
           disputeResolvedAt: isResolved ? nowIso : ord.disputeResolvedAt,
           disputeResolvedBy: isResolved ? actorName : ord.disputeResolvedBy,
-          isClosed: action === 'reopen' ? false : ord.isClosed,
+          isClosed: action === 'reopen' ? false : (isResolved ? true : ord.isClosed),
+          closedAt: isResolved ? (ord.closedAt || nowIso) : ord.closedAt,
+          closedBy: isResolved ? (ord.closedBy || actorName) : ord.closedBy,
           reopenedAt: action === 'reopen' ? nowIso : ord.reopenedAt,
           reopenedBy: action === 'reopen' ? actorName : ord.reopenedBy,
           reopenReason:

@@ -46,14 +46,25 @@ import {
   Maximize2,
   Minimize2,
   Globe,
+  Ban,
+  MapPin,
+  Phone,
+  Mail,
 } from 'lucide-react';
 import { OrderLiveChat } from '../common/OrderLiveChat';
+import { CourierLogisticsPanel } from '../common/CourierLogisticsPanel';
 
 interface OrderManagerProps {
   onNavigateToTab?: (tab: string, staffId?: string) => void;
+  initialOrderId?: string | null;
+  onClearInitialOrder?: () => void;
 }
 
-export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) => {
+export const OrderManager: React.FC<OrderManagerProps> = ({
+  onNavigateToTab,
+  initialOrderId,
+  onClearInitialOrder,
+}) => {
   const {
     orders,
     updateOrderStatus,
@@ -62,6 +73,11 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
     assignOrderStaff,
     addOrderWorkLog,
     resolveCancellationRequest,
+    resolveDeliveryIssue,
+    addInvestigationComment,
+    closeOrder,
+    reopenOrder,
+    replenishOrderInventory,
     staffMembers,
     settings,
     updateSettings,
@@ -69,8 +85,196 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
     currentPermissions,
   } = useStore();
   const isAdmin = currentUser?.type === 'admin';
+  const currentUserName = currentUser?.name || (isAdmin ? 'Store Owner' : 'Staff Concierge');
+  const currentUserId = currentUser?.staffId || (isAdmin ? 'admin' : '');
   const canEditOrders = isAdmin || currentPermissions?.orders?.canEdit !== false;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Dedicated Dispute Investigation & Resolution State
+  const [investigationInputText, setInvestigationInputText] = useState<{ [orderId: string]: string }>({});
+  const [resolvingDisputeOrder, setResolvingDisputeOrder] = useState<Order | null>(null);
+  const [disputeResolutionNote, setDisputeResolutionNote] = useState('');
+  const [cancellationApproveOrder, setCancellationApproveOrder] = useState<Order | null>(null);
+  const [cancellationApproveUtr, setCancellationApproveUtr] = useState('');
+  const [cancellationApproveTool, setCancellationApproveTool] = useState('UPI Banking');
+  const [cancellationApproveNotes, setCancellationApproveNotes] = useState('');
+  const [cancellationApproveUpiTarget, setCancellationApproveUpiTarget] = useState('');
+  const [cancellationDeclineOrder, setCancellationDeclineOrder] = useState<Order | null>(null);
+  const [cancellationDeclineReason, setCancellationDeclineReason] = useState(
+    'Saree has already been packed and handed over to courier dispatch'
+  );
+  const [refundVerificationOrder, setRefundVerificationOrder] = useState<Order | null>(null);
+  const [refundVerifyUtr, setRefundVerifyUtr] = useState('');
+  const [refundVerifyTool, setRefundVerifyTool] = useState('UPI Banking');
+  const [refundVerifyNotes, setRefundVerifyNotes] = useState('');
+
+  const handleConfirmCancellationApproval = (order: Order) => {
+    const utr = cancellationApproveUtr.trim() || `UTR${Date.now().toString().slice(-8)}`;
+    const notes = cancellationApproveNotes.trim() || 'Cancellation approved by concierge. Saree auto-restocked to inventory.';
+
+    // 1. Trigger context resolution (handles status, stock replenishment, isClosed, refundDetails)
+    resolveCancellationRequest(order.id, 'approve', notes, utr);
+
+    // 2. Explicitly ensure inventory replenishment occurs
+    if (!order.isRestocked) {
+      replenishOrderInventory(order);
+    }
+
+    // 3. Immediately update selectedDetailOrder in place so modal view reflects changes without refresh
+    if (selectedDetailOrder && selectedDetailOrder.id === order.id) {
+      const nowIso = new Date().toISOString();
+      setSelectedDetailOrder({
+        ...selectedDetailOrder,
+        status: 'Cancelled',
+        isRestocked: true,
+        isClosed: true,
+        closedAt: nowIso,
+        closedBy: currentUserName,
+        cancellationReason: order.cancellationRequest?.reason || 'Customer cancellation approved',
+        cancellationRequest: {
+          ...(selectedDetailOrder.cancellationRequest || {
+            requested: true,
+            requestedAt: nowIso,
+            reason: 'Customer requested',
+            customerPhone: selectedDetailOrder.customer.phone,
+          }),
+          status: 'approved',
+          adminDecisionNotes: notes,
+        },
+        deliveryIssue: selectedDetailOrder.deliveryIssue
+          ? {
+              ...selectedDetailOrder.deliveryIssue,
+              status: 'resolved',
+              resolvedAt: nowIso,
+              resolvedBy: currentUserName,
+              resolutionNotes: notes,
+            }
+          : undefined,
+        refundDetails: {
+          ...selectedDetailOrder.refundDetails,
+          refundStatus: 'processed',
+          refundUtr: utr,
+          refundTool: cancellationApproveTool,
+          refundAmount: selectedDetailOrder.totalAmount,
+          refundUpiId: cancellationApproveUpiTarget || selectedDetailOrder.refundDetails?.refundUpiId,
+          processedAt: nowIso,
+          notes: notes,
+        },
+      });
+    }
+
+    setCancellationApproveOrder(null);
+  };
+
+  const handleConfirmCancellationDecline = (order: Order) => {
+    const reason = cancellationDeclineReason.trim() || 'Cancellation request declined by concierge.';
+    resolveCancellationRequest(order.id, 'reject', reason);
+
+    if (selectedDetailOrder && selectedDetailOrder.id === order.id) {
+      const nowIso = new Date().toISOString();
+      setSelectedDetailOrder({
+        ...selectedDetailOrder,
+        cancellationRequest: {
+          ...(selectedDetailOrder.cancellationRequest || {
+            requested: true,
+            requestedAt: nowIso,
+            reason: 'Customer requested',
+            customerPhone: selectedDetailOrder.customer.phone,
+          }),
+          status: 'rejected',
+          adminDecisionNotes: reason,
+        },
+        deliveryIssue: selectedDetailOrder.deliveryIssue
+          ? {
+              ...selectedDetailOrder.deliveryIssue,
+              status: 'resolved',
+              resolvedAt: nowIso,
+              resolvedBy: currentUserName,
+              resolutionNotes: `Cancellation request declined: ${reason}`,
+            }
+          : undefined,
+      });
+    }
+
+    setCancellationDeclineOrder(null);
+  };
+
+  // Handle initialOrderId navigation from Customer Issues tab
+  useEffect(() => {
+    if (initialOrderId && orders.length > 0) {
+      const cleanTarget = initialOrderId.trim().toUpperCase().replace(/^[#\s]+/, '');
+      const found = orders.find(
+        (o) =>
+          o.id === initialOrderId ||
+          o.orderNumber.toUpperCase() === initialOrderId.toUpperCase() ||
+          o.orderNumber.toUpperCase().replace(/^[#\s]+/, '') === cleanTarget
+      );
+      if (found) {
+        setSelectedDetailOrder(found);
+        setGlobalOrderSearch(found.orderNumber);
+        setExpandedOrderIds((prev) => new Set([...prev, found.id]));
+        onClearInitialOrder?.();
+      }
+    }
+  }, [initialOrderId, orders, onClearInitialOrder]);
+
+  const getCourierDetails = (name?: string) =>
+    (settings.courierServices || []).find(
+      (c) => c.name.toLowerCase().trim() === (name || '').toLowerCase().trim()
+    );
+
+  // Dispute Categorization Helpers (Cleanly separates refund reports, cancellations, and delivery disputes)
+  const isRefundCase = (o: Order): boolean => {
+    // If explicitly reported as a refund issue, it is ALWAYS a refund case!
+    if (o.deliveryIssue?.reported === true && o.deliveryIssue?.issueType === 'refund') return true;
+
+    const desc = (o.deliveryIssue?.issueDescription || '').toLowerCase();
+    if (
+      desc.includes('refund inquiry') ||
+      desc.includes('refund report') ||
+      desc.includes('refund dispute') ||
+      desc.includes('settlement inquiry') ||
+      desc.includes('funds not received') ||
+      desc.includes('refund not received')
+    ) {
+      return true;
+    }
+
+    // Customer reported an issue on an already Cancelled or Refunded order (and not a pending cancellation request)
+    if (
+      o.deliveryIssue?.reported === true &&
+      (o.status === 'Refunded' || o.status === 'Cancelled' || o.status === 'Rejected' || o.refundDetails?.refundStatus === 'processed') &&
+      o.cancellationRequest?.status !== 'pending' &&
+      o.deliveryIssue?.issueType !== 'delivery'
+    ) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const isCancellationCase = (o: Order): boolean => {
+    // A refund dispute is NEVER a cancellation case
+    if (isRefundCase(o)) return false;
+
+    // Active cancellation request pending review
+    if (o.cancellationRequest?.requested === true && o.cancellationRequest.status === 'pending') return true;
+    if (o.deliveryIssue?.issueType === 'cancellation') return true;
+
+    const desc = (o.deliveryIssue?.issueDescription || '').toLowerCase();
+    if (desc.includes('cancellation request') || desc.includes('order cancellation')) return true;
+
+    // Historical cancellation request if no other dispute reported
+    if (o.cancellationRequest?.requested === true && !o.deliveryIssue?.reported) return true;
+
+    return false;
+  };
+
+  const isDeliveryCase = (o: Order): boolean => {
+    if (isRefundCase(o)) return false;
+    if (isCancellationCase(o)) return false;
+    return Boolean(o.deliveryIssue?.reported === true);
+  };
 
   // Clickable / expandable order cards (User Request: each Item ordered display is too lengthy, make orders in clickable format)
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
@@ -230,8 +434,8 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // Dynamic Queue Filter (All Orders vs Unassigned Queue vs My Bucket)
-  const [activeQueueFilter, setActiveQueueFilter] = useState<'all' | 'unassigned' | 'mine'>('all');
+  // Dynamic Queue Filter: Defaults to 'unassigned' so assigned orders clear from the Order Page and move to staff/admin buckets
+  const [activeQueueFilter, setActiveQueueFilter] = useState<'unassigned' | 'all' | 'mine'>('unassigned');
   const [assignmentToast, setAssignmentToast] = useState<{
     orderNumber: string;
     staffName: string;
@@ -253,7 +457,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
 
   // Streamlined Multi-Parameter Global Order Search
   // Searches across ALL buckets regardless of queue filter:
-  // 1. Order Number (e.g., #NC-2481, NC-2481, 2481)
+  // 1. Order Number (e.g., #NC-2481, NC-2481, 2481, nc2481)
   // 2. Customer Name (e.g., Ananya, Priya)
   // 3. Mobile Number (e.g., 9876543210, partial digits)
   // 4. UTR Number (Prepaid Transaction UTR or Refund Bank UTR)
@@ -263,15 +467,21 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
       const q = raw.toLowerCase();
       const cleanNum = q.replace(/^[#\s]+/, '').trim();
       const searchDigits = raw.replace(/\D/g, '');
+      const cleanAlphanumeric = raw.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
       return orders.filter((o) => {
-        // 1. Order Number matching
+        // 1. Order Number matching (matches with or without hash, dash, spaces, partial digits)
         const oNum = o.orderNumber.toLowerCase().replace(/^[#\s]+/, '').trim();
+        const oNumDigits = o.orderNumber.replace(/\D/g, '');
+        const orderAlphanumeric = o.orderNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
         const matchesOrderNumber =
           oNum === cleanNum ||
           oNum.includes(cleanNum) ||
           o.orderNumber.toLowerCase().includes(q) ||
-          (`#${o.orderNumber.toLowerCase()}`).includes(q);
+          (`#${o.orderNumber.toLowerCase()}`).includes(q) ||
+          (cleanAlphanumeric.length >= 2 && orderAlphanumeric.includes(cleanAlphanumeric)) ||
+          (searchDigits.length >= 2 && oNumDigits.includes(searchDigits));
 
         // 2. Customer Name matching
         const matchesCustomerName = o.customer.name.toLowerCase().includes(q);
@@ -312,13 +522,14 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
       });
     }
 
-    if (activeQueueFilter === 'unassigned') {
-      return unassignedOrders;
+    if (activeQueueFilter === 'all') {
+      return orders;
     }
     if (activeQueueFilter === 'mine') {
       return myBucketOrders;
     }
-    return orders;
+    // Default is 'unassigned' queue: Once assigned, order clears from the order page and moves to assigned staff/admin bucket
+    return unassignedOrders;
   }, [orders, globalOrderSearch, activeQueueFilter, unassignedOrders, myBucketOrders]);
 
   const handleStatusChange = (order: Order, newStatus: OrderStatus) => {
@@ -704,15 +915,25 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
             </div>
             <div>
               <p className="font-bold text-white text-sm">
-                Order #{assignmentToast.orderNumber} Assigned & Dynamically Routed!
+                Order #{assignmentToast.orderNumber} Assigned to {assignmentToast.staffName}!
               </p>
               <p className="text-emerald-100 text-xs">
-                Moved out of unassigned queue and routed directly into <strong>{assignmentToast.staffName}</strong>'s personal bucket/view.
+                Cleared from the Order Page intake queue and moved into <strong>{assignmentToast.staffName}</strong>'s bucket. Search <strong>#{assignmentToast.orderNumber}</strong> anytime on this page to open it.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              type="button"
+              onClick={() => {
+                setGlobalOrderSearch(assignmentToast.orderNumber);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-white font-bold transition shadow-xs cursor-pointer text-xs flex items-center gap-1"
+            >
+              <Search className="w-3 h-3 text-amber-300" />
+              <span>Search #{assignmentToast.orderNumber} Here</span>
+            </button>
             {onNavigateToTab && (
               <button
                 type="button"
@@ -753,34 +974,20 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
             <button
               type="button"
               onClick={() => {
-                setActiveQueueFilter('all');
-                setGlobalOrderSearch('');
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                activeQueueFilter === 'all' && !globalOrderSearch
-                  ? 'bg-neutral-950 text-white shadow-xs'
-                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
-              }`}
-            >
-              All Orders ({orders.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
                 setActiveQueueFilter('unassigned');
                 setGlobalOrderSearch('');
               }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
                 activeQueueFilter === 'unassigned' && !globalOrderSearch
-                  ? 'bg-amber-600 text-white shadow-xs'
+                  ? 'bg-amber-500 text-neutral-950 font-bold shadow-xs'
                   : unassignedOrders.length > 0
                   ? 'bg-amber-100 text-amber-950 border border-amber-300 font-bold hover:bg-amber-200'
                   : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
               }`}
             >
-              <span>⚠️ Unassigned Queue</span>
+              <span>📥 Unassigned Orders</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                activeQueueFilter === 'unassigned' && !globalOrderSearch ? 'bg-white text-amber-900' : 'bg-amber-200 text-amber-950'
+                activeQueueFilter === 'unassigned' && !globalOrderSearch ? 'bg-neutral-950 text-amber-300' : 'bg-amber-200 text-amber-950'
               }`}>
                 {unassignedOrders.length}
               </span>
@@ -793,7 +1000,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
               }}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
                 activeQueueFilter === 'mine' && !globalOrderSearch
-                  ? 'bg-neutral-950 text-white shadow-xs'
+                  ? 'bg-neutral-950 text-white shadow-xs font-bold'
                   : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
               }`}
             >
@@ -802,6 +1009,25 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                 activeQueueFilter === 'mine' && !globalOrderSearch ? 'bg-neutral-800 text-white' : 'bg-neutral-200 text-neutral-800'
               }`}>
                 {myBucketOrders.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveQueueFilter('all');
+                setGlobalOrderSearch('');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                activeQueueFilter === 'all' && !globalOrderSearch
+                  ? 'bg-neutral-950 text-white shadow-xs font-bold'
+                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+              }`}
+            >
+              <span>📋 All Orders Archive</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                activeQueueFilter === 'all' && !globalOrderSearch ? 'bg-neutral-800 text-white' : 'bg-neutral-200 text-neutral-700'
+              }`}>
+                {orders.length}
               </span>
             </button>
           </div>
@@ -836,7 +1062,12 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
             type="text"
             value={globalOrderSearch}
             onChange={(e) => setGlobalOrderSearch(e.target.value)}
-            placeholder={`Search across ALL staff buckets by Order # (e.g. #${getBoutiqueOrderPrefix(settings.boutiqueName)}-2481), Customer Name, Mobile Number, or UTR...`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && displayOrders.length > 0) {
+                setSelectedDetailOrder(displayOrders[0]);
+              }
+            }}
+            placeholder={`Search across ALL staff buckets by Order # (e.g. #${getBoutiqueOrderPrefix(settings.boutiqueName)}-2481 or 2481), Customer Name, Mobile Number, or UTR... [Press Enter to Open]`}
             className="w-full pl-10 pr-24 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/70 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 transition"
           />
           {globalOrderSearch && (
@@ -853,7 +1084,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
         {/* Multi-Parameter Search Tags & Count */}
         <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-500 flex-wrap pt-0.5">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-semibold text-neutral-600">Global search parameters:</span>
+            <span className="font-semibold text-neutral-600">Search all buckets:</span>
             <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 font-mono">Order #</span>
             <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700">Customer Name</span>
             <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 font-mono">Mobile Number</span>
@@ -863,43 +1094,133 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
           <div className="text-right">
             {globalOrderSearch.trim() ? (
               <span className="font-semibold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-                Found <strong>{displayOrders.length}</strong> {displayOrders.length === 1 ? 'order' : 'orders'} across all buckets
+                Found <strong>{displayOrders.length}</strong> {displayOrders.length === 1 ? 'order' : 'orders'} across all staff & admin buckets
               </span>
             ) : activeQueueFilter === 'unassigned' ? (
               <span className="font-semibold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-                Showing <strong>{displayOrders.length}</strong> unassigned {displayOrders.length === 1 ? 'order' : 'orders'} awaiting claim
+                Showing <strong>{displayOrders.length}</strong> unassigned {displayOrders.length === 1 ? 'order' : 'orders'} in intake queue
               </span>
             ) : activeQueueFilter === 'mine' ? (
               <span className="font-semibold text-blue-900 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
                 Showing <strong>{displayOrders.length}</strong> {displayOrders.length === 1 ? 'order' : 'orders'} in your bucket
               </span>
             ) : (
-              <span className="text-neutral-400">
-                Showing all <strong>{displayOrders.length}</strong> orders (newest first)
+              <span className="text-neutral-500 font-medium">
+                Showing all <strong>{displayOrders.length}</strong> orders history (newest first)
               </span>
             )}
           </div>
         </div>
+
+        {/* Quick Open Match Banner on Search */}
+        {globalOrderSearch.trim() && displayOrders.length > 0 && (
+          <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-50 via-white to-amber-50/50 border border-amber-300 flex items-center justify-between gap-3 flex-wrap animate-in fade-in">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-amber-500 text-neutral-950 shrink-0">
+                <Search className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono font-bold text-xs text-neutral-950 bg-white px-2 py-0.5 rounded border border-amber-200">
+                    #{displayOrders[0].orderNumber}
+                  </span>
+                  <span className="font-bold text-neutral-900 text-xs">{displayOrders[0].customer.name}</span>
+                  {displayOrders[0].assignedStaffName ? (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      👤 In {displayOrders[0].assignedStaffName}'s Bucket ({displayOrders[0].assignedStaffId === 'admin' ? 'Store Owner / Admin' : 'Staff'})
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                      ⚠️ Unassigned (Intake Queue)
+                    </span>
+                  )}
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">
+                    Stage: {displayOrders[0].status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  Mobile: {displayOrders[0].customer.phone} · Amount: {formatPrice(displayOrders[0].totalAmount)} · {displayOrders[0].items.length} {displayOrders[0].items.length === 1 ? 'saree' : 'sarees'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedDetailOrder(displayOrders[0])}
+              className="px-4 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer ml-auto"
+            >
+              <span>Open Order #{displayOrders[0].orderNumber} Workspace</span>
+              <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Orders List */}
       {displayOrders.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center">
-          <p className="font-serif text-lg font-bold text-neutral-800">
-            {globalOrderSearch.trim() ? `No orders match "${globalOrderSearch}"` : 'No orders in system'}
-          </p>
-          <p className="text-xs text-neutral-500 mt-1">
-            {globalOrderSearch.trim()
-              ? 'Check the order number (#NC-...), customer name, 10-digit mobile, or 12-digit UTR.'
-              : 'Customer orders will appear here in real-time as they are placed.'}
-          </p>
-          {globalOrderSearch.trim() && (
-            <button
-              onClick={() => setGlobalOrderSearch('')}
-              className="mt-3 px-3.5 py-1.5 rounded-xl bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 transition cursor-pointer"
-            >
-              Clear Search
-            </button>
+        <div className="bg-white rounded-2xl border border-neutral-200 p-10 text-center space-y-3">
+          {globalOrderSearch.trim() ? (
+            <>
+              <div className="w-12 h-12 rounded-full bg-neutral-100 text-neutral-500 flex items-center justify-center mx-auto">
+                <Search className="w-6 h-6" />
+              </div>
+              <p className="font-serif text-lg font-bold text-neutral-800">
+                No orders match "{globalOrderSearch}"
+              </p>
+              <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                Check the order number (e.g. #{getBoutiqueOrderPrefix(settings.boutiqueName)}-4925 or 4925), customer name, 10-digit mobile, or 12-digit UTR.
+              </p>
+              <button
+                onClick={() => setGlobalOrderSearch('')}
+                className="mt-2 px-3.5 py-1.5 rounded-xl bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 transition cursor-pointer"
+              >
+                Clear Search
+              </button>
+            </>
+          ) : activeQueueFilter === 'unassigned' ? (
+            <>
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <p className="font-serif text-lg font-bold text-neutral-900">
+                All Orders Assigned to Staff & Admin Buckets!
+              </p>
+              <p className="text-xs text-neutral-600 max-w-md mx-auto leading-relaxed">
+                Once orders are assigned, they are automatically cleared from this Order Page intake queue and moved into their assigned staff or admin buckets.
+                You can search by Order # above to open any assigned order here anytime.
+              </p>
+              <div className="flex items-center justify-center gap-2 pt-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setActiveQueueFilter('all')}
+                  className="px-3.5 py-1.5 rounded-xl border border-neutral-300 text-neutral-800 text-xs font-semibold hover:bg-neutral-100 transition cursor-pointer"
+                >
+                  Browse All Orders Archive ({orders.length})
+                </button>
+                {onNavigateToTab && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToTab('admin_bucket')}
+                      className="px-3.5 py-1.5 rounded-xl bg-neutral-950 text-white text-xs font-bold hover:bg-neutral-800 transition shadow-xs cursor-pointer"
+                    >
+                      View Admin Bucket ({adminBucketCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToTab('staff_buckets')}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-neutral-950 text-xs font-bold hover:bg-amber-400 transition shadow-xs cursor-pointer"
+                    >
+                      View Staff Buckets
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="font-serif text-lg font-bold text-neutral-800">No orders in this view</p>
+              <p className="text-xs text-neutral-500 mt-1">Customer orders will appear here as they are placed.</p>
+            </>
           )}
         </div>
       ) : (
@@ -967,7 +1288,14 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                     >
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </span>
-                    <span className="font-mono text-xs font-bold text-rose-950 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDetailOrder(order);
+                      }}
+                      className="font-mono text-xs font-bold text-rose-950 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-md border border-rose-200 transition cursor-pointer"
+                      title="Click to open this order workspace"
+                    >
                       #{order.orderNumber}
                     </span>
                     <span className="text-xs font-bold text-neutral-900">{order.customer.name}</span>
@@ -995,7 +1323,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
                     {order.assignedStaffName ? (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        👤 {order.assignedStaffName}
+                        👤 Moved to: {order.assignedStaffName} ({order.assignedStaffId === 'admin' ? 'Admin' : 'Staff'})
                       </span>
                     ) : (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
@@ -1025,11 +1353,11 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                         e.stopPropagation();
                         setSelectedDetailOrder(order);
                       }}
-                      className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-[11px] transition shadow-2xs cursor-pointer flex items-center gap-1"
-                      title="Direct Access: Inspect complete status, customer profile, UTR, and items"
+                      className="px-3 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                      title="Open complete Order Workspace"
                     >
-                      <span>Inspect Status</span>
-                      <ChevronRight className="w-3 h-3" />
+                      <span>Open Order</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
                     </button>
                     <span className="text-[11px] font-semibold text-neutral-600 bg-neutral-100 px-2 py-1 rounded-md">
                       {isExpanded ? 'Hide ▲' : 'Inline ▼'}
@@ -2501,16 +2829,30 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
       {/* Selected Order Details Modal (Cross-Bucket Clickable Results) */}
       {selectedDetailOrder && (
         <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto max-h-[90vh] flex flex-col">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto max-h-[92vh] flex flex-col">
             {/* Modal Header */}
-            <div className="p-5 bg-gradient-to-r from-neutral-900 to-neutral-800 text-white flex items-center justify-between shrink-0">
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-neutral-950 via-neutral-900 to-rose-950 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <span className="font-mono font-bold text-sm text-amber-200 bg-neutral-800/80 px-2.5 py-1 rounded-lg border border-neutral-700">
+                <span className="font-mono font-bold text-sm text-rose-300 bg-rose-950/80 px-2.5 py-1 rounded-lg border border-rose-500/40">
                   #{selectedDetailOrder.orderNumber}
                 </span>
                 <div>
-                  <h3 className="font-serif text-lg font-bold text-white flex items-center gap-2">
-                    <span>Order Details</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-serif text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      <span>Order Workspace</span>
+                    </h3>
+                    {(isCancellationCase(selectedDetailOrder) || isRefundCase(selectedDetailOrder) || isDeliveryCase(selectedDetailOrder)) && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-rose-500 text-white flex items-center gap-1 shadow-2xs">
+                        <AlertCircle className="w-3 h-3 text-white" />
+                        <span>
+                          {isCancellationCase(selectedDetailOrder)
+                            ? 'Cancellation Request'
+                            : isRefundCase(selectedDetailOrder)
+                            ? 'Refund Dispute'
+                            : 'Delivery Dispute'}
+                        </span>
+                      </span>
+                    )}
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                       selectedDetailOrder.status === 'Refunded'
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
@@ -2524,42 +2866,457 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                         : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                     }`}>
-                      {selectedDetailOrder.status}
+                      Stage: {selectedDetailOrder.status}
                     </span>
-                  </h3>
-                  <p className="text-[11px] text-neutral-400">
-                    Placed: {new Date(selectedDetailOrder.createdAt).toLocaleString('en-IN')}
+                    {selectedDetailOrder.deliveryIssue?.status && (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                        selectedDetailOrder.deliveryIssue.status === 'open'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : selectedDetailOrder.deliveryIssue.status === 'investigating'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      }`}>
+                        Dispute: {selectedDetailOrder.deliveryIssue.status}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Customer: {selectedDetailOrder.customer.name} ({selectedDetailOrder.customer.phone}) · Placed: {new Date(selectedDetailOrder.createdAt).toLocaleString('en-IN')}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedDetailOrder(null)}
-                className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+                className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal Scrollable Body */}
-            <div className="p-5 space-y-4 overflow-y-auto text-xs text-neutral-700">
-              {/* Handling Concierge / Bucket Info */}
-              <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-between flex-wrap gap-2">
-                <span className="font-semibold text-neutral-600">Handling Bucket:</span>
-                <span className="font-bold text-neutral-900 bg-white px-2.5 py-1 rounded-lg border border-neutral-200">
-                  {!selectedDetailOrder.assignedStaffId || selectedDetailOrder.assignedStaffId === 'unassigned'
-                    ? 'Unassigned Intake Queue'
-                    : selectedDetailOrder.assignedStaffId === 'admin'
-                    ? 'Store Owner / Admin Bucket'
-                    : `Staff Bucket: ${selectedDetailOrder.assignedStaffName || 'Specialist'}`}
-                </span>
+            <div className="p-5 sm:p-6 space-y-5 overflow-y-auto text-xs text-neutral-700 flex-1">
+              {/* Handling Concierge / Bucket Info & Claim/Reassign Bar */}
+              <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-between flex-wrap gap-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-neutral-600">Handling Bucket:</span>
+                  <span className="font-bold text-neutral-900 bg-white px-2.5 py-1 rounded-lg border border-neutral-200 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                    <span>
+                      {!selectedDetailOrder.assignedStaffId || selectedDetailOrder.assignedStaffId === 'unassigned'
+                        ? 'Unassigned Intake Queue (Needs Owner)'
+                        : selectedDetailOrder.assignedStaffId === 'admin'
+                        ? 'Store Owner / Admin Bucket'
+                        : `Staff Bucket: ${selectedDetailOrder.assignedStaffName || 'Specialist'}`}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Claim Button */}
+                  {selectedDetailOrder.assignedStaffId !== currentUserId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        assignOrderStaff(
+                          selectedDetailOrder.id,
+                          currentUserId,
+                          currentUserName,
+                          'Claimed order into personal handling bucket'
+                        );
+                        setSelectedDetailOrder({
+                          ...selectedDetailOrder,
+                          assignedStaffId: currentUserId,
+                          assignedStaffName: currentUserName,
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      <span>Assign to Me</span>
+                    </button>
+                  )}
+
+                  {/* Reassign Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssignModalOrder(selectedDetailOrder);
+                      setTargetStaffId(selectedDetailOrder.assignedStaffId || 'admin');
+                      setAssignmentReason('');
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-neutral-100 text-neutral-800 border border-neutral-300 font-semibold text-xs transition cursor-pointer"
+                  >
+                    <span>Reassign</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Customer Profile & Address */}
+              {/* SECTION: TAILORED DISPUTE WORKFLOWS */}
+              {/* 1. Cancellation Request Workflow */}
+              {isCancellationCase(selectedDetailOrder) && (
+                <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200 text-rose-950 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-rose-900">
+                        Customer Cancellation Request Workflow
+                      </h4>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      selectedDetailOrder.cancellationRequest?.status === 'approved'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : selectedDetailOrder.cancellationRequest?.status === 'rejected'
+                        ? 'bg-neutral-100 text-neutral-700'
+                        : 'bg-rose-100 text-rose-900 border border-rose-300 animate-pulse'
+                    }`}>
+                      Request Status: {selectedDetailOrder.cancellationRequest?.status || 'Pending Review'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/90 p-3 rounded-xl border border-rose-200/80 space-y-1.5">
+                    <p className="text-neutral-700">
+                      <strong>Cancellation Reason:</strong> "{selectedDetailOrder.cancellationRequest?.reason || selectedDetailOrder.cancellationReason || 'Customer requested cancellation'}"
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-neutral-600 pt-1">
+                      <p>Customer Phone: <strong className="text-neutral-900">{selectedDetailOrder.customer.phone}</strong></p>
+                      <p>Refund Target UPI: <strong className="text-neutral-900">{selectedDetailOrder.refundDetails?.refundUpiId || selectedDetailOrder.customer.phone}</strong></p>
+                      <p>Amount to Settle: <strong className="text-rose-900">{formatPrice(selectedDetailOrder.totalAmount)}</strong></p>
+                    </div>
+                  </div>
+
+                  {/* Actions for Cancellation: Approve & Restock or Reject */}
+                  {selectedDetailOrder.status !== 'Cancelled' && selectedDetailOrder.status !== 'Refunded' && (
+                    <div className="pt-2 border-t border-rose-200 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancellationApproveOrder(selectedDetailOrder);
+                            setCancellationApproveUtr(
+                              selectedDetailOrder.refundDetails?.refundUtr ||
+                                `UTR${Math.floor(100000000000 + Math.random() * 900000000000)}`
+                            );
+                            setCancellationApproveTool(selectedDetailOrder.refundDetails?.refundTool || 'UPI Banking');
+                            setCancellationApproveUpiTarget(
+                              selectedDetailOrder.refundDetails?.refundUpiId || selectedDetailOrder.customer.phone
+                            );
+                            setCancellationApproveNotes(
+                              'Cancellation approved by concierge. Saree auto-restocked to inventory.'
+                            );
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Approve Cancellation & Issue Refund (Auto-Restock)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancellationDeclineOrder(selectedDetailOrder);
+                            setCancellationDeclineReason(
+                              'Saree has already been packed and handed over to courier dispatch'
+                            );
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-semibold text-xs transition cursor-pointer flex items-center gap-1"
+                        >
+                          <Ban className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Decline Request</span>
+                        </button>
+                      </div>
+
+                      <span className="text-[11px] text-neutral-500 italic">
+                        * Approving automatically returns sarees to live inventory pool and flags them as Restocked.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 2. Delivery Dispute Workflow */}
+              {isDeliveryCase(selectedDetailOrder) && (() => {
+                const courier = getCourierDetails(selectedDetailOrder.shippingDetails?.courierName);
+                return (
+                  <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200 text-rose-950 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Truck className="w-4 h-4 text-rose-600 shrink-0" />
+                        <h4 className="font-bold text-xs uppercase tracking-wider text-rose-900">
+                          Customer Non-Delivery Dispute & Courier Coordination
+                        </h4>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 uppercase">
+                        Dispute Status: {selectedDetailOrder.deliveryIssue?.status || 'open'}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/90 p-3 rounded-xl border border-rose-200/80 space-y-1">
+                      <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">Customer Grievance Statement:</span>
+                      <p className="text-xs font-medium text-rose-950 leading-relaxed italic">
+                        "{selectedDetailOrder.deliveryIssue?.issueDescription || 'Customer dispute logged for concierge investigation.'}"
+                      </p>
+                    </div>
+
+                    {/* Integrated Courier Logistics Panel (Address, Phone, Email, Consignment #, Maps Link, and Tracking Link) */}
+                    <CourierLogisticsPanel
+                      courierName={selectedDetailOrder.shippingDetails?.courierName}
+                      trackingNumber={selectedDetailOrder.shippingDetails?.trackingNumber}
+                      configuredCouriers={settings.courierServices}
+                      customerCity={selectedDetailOrder.customer.city}
+                      customerState={selectedDetailOrder.customer.state}
+                      customerName={selectedDetailOrder.customer.name}
+                      orderNumber={selectedDetailOrder.orderNumber}
+                      variant="dispute"
+                    />
+                  </div>
+                );
+              })()}
+
+              {/* 3. Refund Dispute Workflow */}
+              {isRefundCase(selectedDetailOrder) && (
+                <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-300 text-amber-950 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-amber-900">
+                      <RotateCcw className="w-4 h-4 text-amber-700" />
+                      <span>Bank Refund Settlement Verification & UTR Details</span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      selectedDetailOrder.refundDetails?.refundStatus === 'processed'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-amber-200 text-amber-950'
+                    }`}>
+                      {selectedDetailOrder.refundDetails?.refundStatus === 'processed' ? 'Refund Processed ✓' : 'Settlement In Queue'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-amber-200 text-xs">
+                    <div>
+                      <span className="text-[11px] text-neutral-500 font-medium block">Target Refund UPI:</span>
+                      <span className="font-mono font-bold text-neutral-900">
+                        {selectedDetailOrder.refundDetails?.refundUpiId || selectedDetailOrder.customer.phone}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-neutral-500 font-medium block">Bank UTR Reference:</span>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="font-mono font-bold text-emerald-800">
+                          {selectedDetailOrder.refundDetails?.refundUtr || 'Pending UTR'}
+                        </span>
+                        {selectedDetailOrder.refundDetails?.refundUtr && (
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(selectedDetailOrder.refundDetails!.refundUtr!, `utr-copy-${selectedDetailOrder.id}`)}
+                            className="p-0.5 hover:text-emerald-900"
+                            title="Copy UTR"
+                          >
+                            {copiedKey === `utr-copy-${selectedDetailOrder.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-neutral-500 font-medium block">Refund Settlement Amount:</span>
+                      <span className="font-serif font-bold text-neutral-900 text-sm">
+                        {formatPrice(selectedDetailOrder.refundDetails?.refundAmount || selectedDetailOrder.totalAmount)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Verify / Update UTR button */}
+                  <div className="pt-2 border-t border-amber-200 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRefundVerificationOrder(selectedDetailOrder);
+                        setRefundVerifyUtr(selectedDetailOrder.refundDetails?.refundUtr || '');
+                        setRefundVerifyTool(selectedDetailOrder.refundDetails?.refundTool || 'UPI Banking');
+                        setRefundVerifyNotes(selectedDetailOrder.refundDetails?.notes || '');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Verify / Update Bank Refund UTR</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* DEDICATED INVESTIGATION COLUMNS (Requirement: Dedicated columns for staff/admins to save investigation logs/notes) */}
+              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-amber-600" />
+                    <h4 className="font-bold text-xs text-neutral-900 uppercase tracking-wider">
+                      Dedicated Investigation Columns & Logs Thread ({selectedDetailOrder.deliveryIssue?.investigationComments?.length || 0})
+                    </h4>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Left Column: Previous Investigation Logs */}
+                  <div className="md:col-span-7 space-y-2">
+                    <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">
+                      Investigation History & Courier Updates:
+                    </span>
+                    {(!selectedDetailOrder.deliveryIssue?.investigationComments || selectedDetailOrder.deliveryIssue.investigationComments.length === 0) ? (
+                      <p className="text-xs text-neutral-400 italic bg-white p-3 rounded-xl border border-neutral-200">
+                        No investigation notes logged yet. Use the column on the right to log courier coordination notes.
+                      </p>
+                    ) : (
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {selectedDetailOrder.deliveryIssue.investigationComments.map((comm) => (
+                          <div
+                            key={comm.id}
+                            className="p-2.5 rounded-xl bg-white border border-neutral-200 text-xs space-y-1 shadow-2xs"
+                          >
+                            <div className="flex items-center justify-between text-[11px] text-neutral-500">
+                              <span className="font-bold text-neutral-900 flex items-center gap-1">
+                                <UserCheck className="w-3 h-3 text-amber-600" />
+                                <span>{comm.author}</span>
+                              </span>
+                              <span>{new Date(comm.timestamp).toLocaleString('en-IN')}</span>
+                            </div>
+                            <p className="text-neutral-800 leading-relaxed font-medium">{comm.comment}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: New Investigation Log Entry Form */}
+                  <div className="md:col-span-5 space-y-2">
+                    <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">
+                      Log New Finding / Update:
+                    </span>
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const note = investigationInputText[selectedDetailOrder.id]?.trim();
+                        if (!note) return;
+                        await addInvestigationComment(selectedDetailOrder.id, note, currentUserName, 'investigating');
+                        setInvestigationInputText((prev) => ({ ...prev, [selectedDetailOrder.id]: '' }));
+                        // Update local modal state
+                        setSelectedDetailOrder({
+                          ...selectedDetailOrder,
+                          deliveryIssue: {
+                            ...(selectedDetailOrder.deliveryIssue || {
+                              reported: true,
+                              reportedAt: new Date().toISOString(),
+                              customerPhone: selectedDetailOrder.customer.phone,
+                              issueDescription: 'Dispute log',
+                              status: 'investigating',
+                            }),
+                            status: 'investigating',
+                            investigationComments: [
+                              ...(selectedDetailOrder.deliveryIssue?.investigationComments || []),
+                              {
+                                id: `comm-${Date.now()}`,
+                                timestamp: new Date().toISOString(),
+                                author: currentUserName,
+                                comment: note,
+                              },
+                            ],
+                          },
+                        });
+                      }}
+                      className="space-y-2"
+                    >
+                      <textarea
+                        rows={3}
+                        value={investigationInputText[selectedDetailOrder.id] || ''}
+                        onChange={(e) => setInvestigationInputText({ ...investigationInputText, [selectedDetailOrder.id]: e.target.value })}
+                        placeholder="Type courier branch finding, handover check, or customer phone notes..."
+                        className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!investigationInputText[selectedDetailOrder.id]?.trim()}
+                        className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-neutral-950 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Save Investigation Log Entry</span>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+
+              {/* DISPUTE CLOSURE ACTION (Requirement: Formally resolve and close the dispute once investigation and processing are complete) */}
+              {selectedDetailOrder.deliveryIssue?.reported && selectedDetailOrder.deliveryIssue.status !== 'resolved' && (
+                <div className="p-4 rounded-2xl bg-neutral-900 text-white space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-emerald-400" />
+                      <div>
+                        <h4 className="font-serif font-bold text-sm text-white">Dispute Closure & Settlement</h4>
+                        <p className="text-[11px] text-neutral-400">
+                          Formally resolve this dispute once courier investigation or refund processing is finished
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!disputeResolutionNote.trim()) return;
+                      await resolveDeliveryIssue(selectedDetailOrder.id, disputeResolutionNote.trim(), 'resolve');
+                      setDisputeResolutionNote('');
+                      setSelectedDetailOrder({
+                        ...selectedDetailOrder,
+                        disputeResolvedAt: new Date().toISOString(),
+                        disputeResolvedBy: currentUserName,
+                        deliveryIssue: {
+                          ...(selectedDetailOrder.deliveryIssue || {
+                            reported: true,
+                            reportedAt: new Date().toISOString(),
+                            customerPhone: selectedDetailOrder.customer.phone,
+                            issueDescription: 'Dispute',
+                            status: 'resolved',
+                          }),
+                          status: 'resolved',
+                          resolutionNotes: disputeResolutionNote.trim(),
+                          resolvedAt: new Date().toISOString(),
+                          resolvedBy: currentUserName,
+                        },
+                      });
+                    }}
+                    className="space-y-2 pt-1 border-t border-neutral-800"
+                  >
+                    <label className="block text-xs font-semibold text-emerald-300">
+                      Official Resolution Summary & Findings *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={disputeResolutionNote}
+                      onChange={(e) => setDisputeResolutionNote(e.target.value)}
+                      placeholder="e.g. Courier hub re-attempted delivery; package verified handed over to customer."
+                      className="w-full p-2.5 rounded-xl bg-neutral-800 border border-neutral-700 text-white text-xs focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="submit"
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Formally Resolve & Close Dispute</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Standard Details: Customer Profile & Delivery Address */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-1.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block">
-                    Customer Profile
+                    Customer Profile & Contact
                   </span>
                   <p className="font-bold text-neutral-900 text-sm">{selectedDetailOrder.customer.name}</p>
                   <p className="font-mono text-neutral-700">{selectedDetailOrder.customer.phone}</p>
@@ -2570,7 +3327,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
 
                 <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-1.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block">
-                    Shipping Address
+                    Delivery Shipping Address
                   </span>
                   <p className="text-neutral-800 leading-relaxed font-medium">
                     {selectedDetailOrder.customer.address}, {selectedDetailOrder.customer.city},{' '}
@@ -2579,7 +3336,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                 </div>
               </div>
 
-              {/* Items Ordered */}
+              {/* Items Ordered with SKU Code */}
               <div className="space-y-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block">
                   Items Ordered ({selectedDetailOrder.items.length})
@@ -2596,7 +3353,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                         <div>
                           <p className="font-bold text-neutral-900">{item.product.title}</p>
                           <p className="text-[11px] text-neutral-500 font-mono">
-                            SKU: {item.product.productCode || item.product.id} · Qty: {item.quantity}
+                            SKU: {item.product.productCode || item.product.id} · Qty: {item.quantity} · {item.product.fabric || 'Pure Silk'}
                           </p>
                         </div>
                       </div>
@@ -2635,28 +3392,6 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                   </code>
                 </div>
               </div>
-
-              {/* Courier Tracking if Shipped */}
-              {selectedDetailOrder.shippingDetails?.trackingNumber && (
-                <div className="p-3.5 bg-blue-50 rounded-2xl border border-blue-200 space-y-1">
-                  <span className="font-bold text-blue-950 text-xs block">Consignment Tracking Details</span>
-                  <p className="text-blue-900">
-                    Courier: <strong>{selectedDetailOrder.shippingDetails.courierName}</strong> · Consignment #:{' '}
-                    <strong className="font-mono">{selectedDetailOrder.shippingDetails.trackingNumber}</strong>
-                  </p>
-                </div>
-              )}
-
-              {/* Refund Info if processed */}
-              {selectedDetailOrder.refundDetails?.refundUtr && (
-                <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-1">
-                  <span className="font-bold text-emerald-950 text-xs block">Refund Record</span>
-                  <p className="text-emerald-900">
-                    Bank Refund UTR: <strong className="font-mono">{selectedDetailOrder.refundDetails.refundUtr}</strong> · Tool:{' '}
-                    <strong>{selectedDetailOrder.refundDetails.refundTool || 'UPI'}</strong>
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Modal Footer Actions */}
@@ -2707,6 +3442,276 @@ export const OrderManager: React.FC<OrderManagerProps> = ({ onNavigateToTab }) =
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Cancellation Approval & Refund Modal (Auto-Restock) */}
+      {cancellationApproveOrder && (
+        <div className="fixed inset-0 z-70 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-emerald-950 via-neutral-900 to-emerald-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <RotateCcw className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Approve Cancellation & Issue Refund
+                  </h3>
+                  <p className="text-[11px] text-emerald-300">
+                    Order #{cancellationApproveOrder.orderNumber} · {cancellationApproveOrder.customer.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancellationApproveOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleConfirmCancellationApproval(cancellationApproveOrder);
+              }}
+              className="p-6 space-y-4 text-xs text-neutral-700"
+            >
+              {/* Order & Cancellation Details Card */}
+              <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200 text-emerald-950 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-neutral-600">Refund Settlement Amount:</span>
+                  <span className="font-serif font-bold text-base text-rose-900">
+                    {formatPrice(cancellationApproveOrder.totalAmount)}
+                  </span>
+                </div>
+                <div className="text-[11px] text-neutral-600 pt-1 border-t border-emerald-200/80">
+                  <p>
+                    <strong>Customer Stated Reason:</strong> "{cancellationApproveOrder.cancellationRequest?.reason || 'Customer requested cancellation'}"
+                  </p>
+                  <p className="mt-0.5">
+                    <strong>Customer Mobile:</strong> {cancellationApproveOrder.customer.phone}
+                  </p>
+                </div>
+              </div>
+
+              {/* Auto-Restock Indicator */}
+              <div className="p-3 bg-blue-50 rounded-2xl border border-blue-200 text-blue-950 flex items-start gap-2.5">
+                <Package className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div className="text-[11px] space-y-0.5">
+                  <p className="font-bold text-blue-900">Auto-Restock to Inventory Active</p>
+                  <p className="text-blue-800 leading-relaxed">
+                    Confirming this will automatically replenish stock count by returning all ordered sarees back into the live boutique stock pool.
+                  </p>
+                </div>
+              </div>
+
+              {/* Refund Target UPI ID */}
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Customer Refund Target UPI ID / Mobile *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={cancellationApproveUpiTarget}
+                  onChange={(e) => setCancellationApproveUpiTarget(e.target.value)}
+                  placeholder="e.g. customer@okhdfcbank or 9876543210"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                />
+              </div>
+
+              {/* Payment Tool & UTR Number */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Refund Payout Mode *
+                  </label>
+                  <select
+                    value={cancellationApproveTool}
+                    onChange={(e) => setCancellationApproveTool(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium"
+                  >
+                    <option value="UPI Banking">UPI Banking</option>
+                    <option value="PhonePe">PhonePe</option>
+                    <option value="Google Pay">Google Pay</option>
+                    <option value="Paytm">Paytm</option>
+                    <option value="IMPS / NEFT">IMPS / NEFT</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-neutral-800">
+                      Bank Refund UTR *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCancellationApproveUtr(
+                          `UTR${Math.floor(100000000000 + Math.random() * 900000000000)}`
+                        )
+                      }
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer"
+                    >
+                      Generate UTR
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={cancellationApproveUtr}
+                    onChange={(e) => setCancellationApproveUtr(e.target.value)}
+                    placeholder="12-digit Bank UTR / Ref"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Admin Decision Notes */}
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Concierge Audit / Resolution Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={cancellationApproveNotes}
+                  onChange={(e) => setCancellationApproveNotes(e.target.value)}
+                  placeholder="e.g. Cancellation approved per patron request. Saree restored to inventory."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden resize-none"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setCancellationApproveOrder(null)}
+                  className="px-4 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Confirm Approval & Settle Refund</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Cancellation Decline Modal */}
+      {cancellationDeclineOrder && (
+        <div className="fixed inset-0 z-70 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-rose-950 via-neutral-900 to-rose-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  <Ban className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white">
+                    Decline Cancellation Request
+                  </h3>
+                  <p className="text-[11px] text-rose-300">
+                    Order #{cancellationDeclineOrder.orderNumber} · {cancellationDeclineOrder.customer.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancellationDeclineOrder(null)}
+                className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleConfirmCancellationDecline(cancellationDeclineOrder);
+              }}
+              className="p-6 space-y-4 text-xs text-neutral-700"
+            >
+              <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-amber-950 space-y-1">
+                <p className="font-bold">Active Order Preservation</p>
+                <p className="text-[11px] text-amber-900 leading-relaxed">
+                  Declining will mark the cancellation request as rejected. The order will remain active in{' '}
+                  <strong className="text-neutral-900 font-bold">{cancellationDeclineOrder.status}</strong> stage.
+                </p>
+              </div>
+
+              {/* Quick reason presets */}
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1.5">
+                  Quick Reason Presets:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'Saree already packed & handed over to courier dispatch',
+                    'Custom fall, pico & tassel stitching already completed',
+                    'Cancellation window has expired for this order',
+                    'Customer agreed to proceed with delivery',
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setCancellationDeclineReason(preset)}
+                      className={`text-[10px] px-2 py-1 rounded-lg border text-left transition cursor-pointer ${
+                        cancellationDeclineReason === preset
+                          ? 'bg-rose-100 text-rose-900 border-rose-300 font-bold'
+                          : 'bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border-neutral-200'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Reason Input */}
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Reason for Declining *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={cancellationDeclineReason}
+                  onChange={(e) => setCancellationDeclineReason(e.target.value)}
+                  placeholder="State the official reason for declining cancellation..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setCancellationDeclineOrder(null)}
+                  className="px-4 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 font-semibold hover:bg-neutral-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Ban className="w-4 h-4" />
+                  <span>Confirm Decline Request</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
