@@ -281,8 +281,8 @@ export const StaffPerformanceBoard: React.FC<StaffPerformanceBoardProps> = ({
                   </strong>
                 </p>
                 <p className="text-[11px] text-neutral-500 font-medium">
-                  Value Handled:{' '}
-                  <strong className="text-amber-900">
+                  Realized Sales (Closed):{' '}
+                  <strong className="text-amber-900 font-serif font-bold">
                     {formatPrice(winners.allRounderStar.totalRevenue)}
                   </strong>
                 </p>
@@ -443,7 +443,7 @@ export const StaffPerformanceBoard: React.FC<StaffPerformanceBoardProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] pt-1">
-                  <span className="text-neutral-500">Value handled:</span>
+                  <span className="text-neutral-500">Realized Sales (Closed):</span>
                   <span className="font-bold text-neutral-900 font-serif">
                     {formatPrice(item.totalRevenue)}
                   </span>

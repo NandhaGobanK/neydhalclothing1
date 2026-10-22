@@ -140,15 +140,21 @@ export const OrderLiveChat: React.FC<OrderLiveChatProps> = ({
 
   // Live Chat Availability rules:
   // Customers and staff can communicate in real time directly on each order.
-  // Chat is only disabled if the order is permanently closed by admin.
+  // In accordance with store rules: once a dispute is resolved, or if the order is closed,
+  // the order-specific live chat facility automatically becomes unavailable and disabled for the customer.
+  const isDisputeResolved = Boolean(
+    order.deliveryIssue?.reported && order.deliveryIssue.status === 'resolved'
+  );
   const isOrderClosed = Boolean(order.isClosed);
-  const isCustomerChatDisabled = mode === 'customer' && isOrderClosed;
+  const isCustomerChatDisabled = mode === 'customer' && (isOrderClosed || isDisputeResolved);
   const hasActiveDispute = Boolean(
     (order.deliveryIssue?.reported && order.deliveryIssue?.status !== 'resolved') ||
     (order.cancellationRequest?.requested && order.cancellationRequest?.status === 'pending')
   );
 
-  const chatDisabledReason = isOrderClosed
+  const chatDisabledReason = isDisputeResolved
+    ? 'This dispute has been officially resolved and closed by boutique concierge. In accordance with store rules, live chat is now disabled for this order.'
+    : isOrderClosed
     ? 'This order has been officially closed by the boutique atelier. Live chat is now closed, but previous conversation history is preserved.'
     : 'Live chat is currently unavailable.';
 

@@ -100,8 +100,17 @@ export function calculateStaffPerformance(
     const assignedOrders = orders.filter((o) => o.assignedStaffId === staff.id);
     const totalOrders = assignedOrders.length;
     const deliveredOrders = assignedOrders.filter((o) => o.status === 'Delivered').length;
-    const closedOrders = assignedOrders.filter((o) => o.isClosed).length;
-    const totalRevenue = assignedOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    const closedOrders = assignedOrders.filter((o) => Boolean(o.isClosed)).length;
+    // Realized revenue strictly from Delivered & Closed orders; deducts processed refunds or refund disputes in real time
+    const totalRevenue = assignedOrders
+      .filter(
+        (o) =>
+          o.status === 'Delivered' &&
+          Boolean(o.isClosed) &&
+          o.refundDetails?.refundStatus !== 'processed' &&
+          !(Boolean(o.deliveryIssue?.reported) && o.deliveryIssue?.issueType === 'refund')
+      )
+      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
     // 1. Calculate Order Completion Speeds
     const completionDurations: Array<{ hours: number; orderNumber: string }> = [];

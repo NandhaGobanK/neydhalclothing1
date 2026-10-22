@@ -57,6 +57,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
     toggleWishlist,
     isInWishlist,
     setIsCheckoutOpen,
+    settings,
   } = useStore();
 
   const [activeCategory, setActiveCategory] = useState<string | null>(
@@ -263,14 +264,19 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
             <div className="relative z-10 max-w-xl space-y-1.5">
               <span className="text-[10px] sm:text-xs uppercase tracking-widest text-amber-300 font-bold flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>Handloom Specialty Category</span>
+                <span>
+                  {activeCategoryObj?.bannerTagline ||
+                    settings.storefrontDisplay?.categoryBannerTagline ||
+                    'Featured Specialty Category'}
+                </span>
               </span>
               <h2 className="text-xl sm:text-2xl font-serif font-bold text-white tracking-wide">
-                {activeCategory}
+                {activeCategoryObj?.bannerTitle || activeCategory}
               </h2>
               <p className="text-xs text-neutral-300 leading-relaxed">
-                {activeCategoryObj?.description ||
-                  `Explore our curated heirloom ${activeCategory} collection woven with tested zari and certified silk mark quality.`}
+                {activeCategoryObj?.bannerDescription ||
+                  activeCategoryObj?.description ||
+                  `Explore our curated premium ${activeCategory} catalog handcrafted with authentic materials and exceptional artisan quality.`}
               </p>
             </div>
             {activeCategoryObj?.imageUrl && (
@@ -622,10 +628,11 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
             </span>
             <div>
               <h1 className="font-serif font-bold text-base sm:text-lg text-neutral-900">
-                All Saree & Apparel Categories
+                {settings.storefrontDisplay?.categorySectionTitle || 'All Collections & Categories'}
               </h1>
               <p className="text-[11px] text-neutral-500">
-                Browse our exclusive handloom collections grouped by style & occasion
+                {settings.storefrontDisplay?.categorySectionSubtitle ||
+                  'Browse our exclusive catalog grouped by style, fabric & occasion'}
               </p>
             </div>
           </div>

@@ -151,3 +151,120 @@ export function hasActiveCustomerIssue(o: Order): boolean {
   if (o.cancellationRequest?.requested === true && o.cancellationRequest.status === 'pending') return true;
   return false;
 }
+
+/**
+ * Checks if a specific dispute category (e.g. 'cancellation' | 'delivery' | 'refund')
+ * has already been officially resolved for this order.
+ */
+export function isDisputeResolvedForType(
+  order: Order,
+  type: 'delivery' | 'refund' | 'cancellation'
+): boolean {
+  if (!order) return false;
+
+  if (type === 'cancellation') {
+    if (order.cancellationRequest?.status === 'approved' || order.cancellationRequest?.status === 'rejected') {
+      return true;
+    }
+    if (order.deliveryIssue?.issueType === 'cancellation' && order.deliveryIssue.status === 'resolved') {
+      return true;
+    }
+    if (order.resolvedIssuesHistory?.some((h) => h.issueType === 'cancellation' && h.status === 'resolved')) {
+      return true;
+    }
+    return false;
+  }
+
+  if (type === 'delivery') {
+    if (order.deliveryIssue?.issueType === 'delivery' && order.deliveryIssue.status === 'resolved') {
+      return true;
+    }
+    if (order.resolvedIssuesHistory?.some((h) => h.issueType === 'delivery' && h.status === 'resolved')) {
+      return true;
+    }
+    if (order.disputeResolvedAt && order.status === 'Delivered') {
+      return true;
+    }
+    return false;
+  }
+
+  if (type === 'refund') {
+    if (order.deliveryIssue?.issueType === 'refund' && order.deliveryIssue.status === 'resolved') {
+      return true;
+    }
+    if (order.resolvedIssuesHistory?.some((h) => h.issueType === 'refund' && h.status === 'resolved')) {
+      return true;
+    }
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * Checks if a specific dispute category is currently active (open or investigating).
+ */
+export function isDisputeActiveForType(
+  order: Order,
+  type: 'delivery' | 'refund' | 'cancellation'
+): boolean {
+  if (!order) return false;
+
+  if (type === 'cancellation') {
+    return Boolean(
+      order.cancellationRequest?.requested === true &&
+      order.cancellationRequest.status === 'pending'
+    );
+  }
+
+  if (type === 'delivery') {
+    return Boolean(
+      order.deliveryIssue?.reported === true &&
+      order.deliveryIssue.status !== 'resolved' &&
+      order.deliveryIssue.issueType === 'delivery'
+    );
+  }
+
+  if (type === 'refund') {
+    return Boolean(
+      order.deliveryIssue?.reported === true &&
+      order.deliveryIssue.status !== 'resolved' &&
+      order.deliveryIssue.issueType === 'refund'
+    );
+  }
+
+  return false;
+}
+
+/**
+ * Returns dispute redressals that are actively available to be reported right now for this order.
+ * Strictly excludes:
+ * 1. Dispute types already in active investigation (prevents duplicate concurrent submissions).
+ * 2. Dispute types already officially resolved (strictly prevents multiple requests for the same dispute category).
+ */
+export function getAvailableRedressalsForOrder(
+  order: Order,
+  settings?: StoreSettings
+): DisputeRedressalDefinition[] {
+  if (!order) return [];
+  const eligible = getOrderEligibleRedressals(order, settings);
+  return eligible.filter((r) => {
+    const t = r.type as 'delivery' | 'refund';
+    if (isDisputeActiveForType(order, t)) return false;
+    if (isDisputeResolvedForType(order, t)) return false;
+    return true;
+  });
+}
+
+/**
+ * Checks if all dispute categories eligible for this order have been officially resolved.
+ */
+export function areAllEligibleDisputesResolved(
+  order: Order,
+  settings?: StoreSettings
+): boolean {
+  if (!order) return false;
+  const eligible = getOrderEligibleRedressals(order, settings);
+  if (eligible.length === 0) return false;
+  return eligible.every((r) => isDisputeResolvedForType(order, r.type as any));
+}

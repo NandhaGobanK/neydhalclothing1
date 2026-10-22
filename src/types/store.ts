@@ -73,6 +73,9 @@ export interface SareeCategory {
   description?: string;
   imageUrl?: string;
   displayOrder?: number;
+  bannerTagline?: string;
+  bannerTitle?: string;
+  bannerDescription?: string;
 }
 
 export interface SkuRecord {
@@ -313,6 +316,7 @@ export interface Order {
   assignedAt?: string; // Dedicated timestamp when order claimed/assigned to staff
   claimedAt?: string;
   deliveryIssue?: CustomerDeliveryIssue; // Customer delivery non-receipt report / dispute
+  resolvedIssuesHistory?: CustomerDeliveryIssue[]; // Archive of previously resolved dispute issues across distinct categories
   chatMessages?: OrderChatMessage[]; // Direct real-time chat between customer and staff
   isRestocked?: boolean; // Set to true once purchased items have been restocked upon cancellation
 }
@@ -374,6 +378,10 @@ export interface StorefrontDisplaySettings {
   footerCertifications?: string[];
   footerPolicies?: string[];
   heroKickerTags?: string[];
+  categoryBannerTagline?: string;
+  categorySectionBadge?: string;
+  categorySectionTitle?: string;
+  categorySectionSubtitle?: string;
 }
 
 export interface AdminOnlineStatus {

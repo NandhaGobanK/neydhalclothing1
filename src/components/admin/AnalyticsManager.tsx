@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
+import { Order } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
 import { syncAnalyticsToGoogleSheet } from '../../utils/googleSheets';
 import { getAccessToken } from '../../utils/firebaseAuth';
@@ -31,46 +32,76 @@ export const AnalyticsManager: React.FC = () => {
   const [sheetSyncSuccess, setSheetSyncSuccess] = useState<{ url: string; count: number } | null>(null);
   const [sheetSyncError, setSheetSyncError] = useState<string | null>(null);
   const [isConfirmSyncOpen, setIsConfirmSyncOpen] = useState(false);
+  const [isRefreshingLive, setIsRefreshingLive] = useState(false);
 
-  // Financial & Order KPIs
+  // Helper: check if an order has been refunded, cancelled, or rejected
+  const isOrderRefundedOrCancelled = (o: Order): boolean => {
+    return (
+      o.status === 'Cancelled' ||
+      o.status === 'Rejected' ||
+      o.status === 'Refunded' ||
+      o.refundDetails?.refundStatus === 'processed' ||
+      (Boolean(o.deliveryIssue?.reported) && o.deliveryIssue?.issueType === 'refund')
+    );
+  };
+
+  // Strict Trigger Condition: Sales analytics (units sold & revenue) update ONLY after
+  // an order has been successfully marked as Delivered AND Closed.
+  // Exclude Received, Placed (Pending/Confirmed), and In-Transit (Shipped) orders.
+  // Real-time automatic deduction: If an order was previously counted and is subsequently
+  // cancelled, refunded, rejected, or reopened, it is immediately deducted in real time.
+  const isQualifyingDeliveredAndClosedOrder = (o: Order): boolean => {
+    if (isOrderRefundedOrCancelled(o)) return false;
+    return o.status === 'Delivered' && Boolean(o.isClosed);
+  };
+
+  // Financial & Order KPIs (Finalized Delivered & Closed sales analytics)
   const stats = useMemo(() => {
     const totalOrders = orders.length;
-    const grossRevenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const grossRevenue = orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
 
-    const successfulOrders = orders.filter(
-      (o) => o.status === 'Confirmed' || o.status === 'Shipped' || o.status === 'Delivered'
-    );
-    const netRevenue = successfulOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const refundedOrders = orders.filter(isOrderRefundedOrCancelled);
+    const refundedRevenue = refundedOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
 
-    const cancelledOrders = orders.filter(
-      (o) => o.status === 'Cancelled' || o.status === 'Rejected'
-    );
-    const refundedRevenue = cancelledOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    // Finalized sales: strictly Delivered AND Closed orders
+    const qualifyingOrders = orders.filter(isQualifyingDeliveredAndClosedOrder);
+    const finalizedRevenue = qualifyingOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
 
-    const totalSareesSold = orders.reduce((sum, o) => {
-      if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-        return sum + o.items.reduce((iSum, item) => iSum + item.quantity, 0);
-      }
-      return sum;
+    const totalUnitsSold = qualifyingOrders.reduce((sum, o) => {
+      return sum + (o.items || []).reduce((iSum, item) => iSum + (Number(item?.quantity) || 0), 0);
     }, 0);
 
-    const aov = successfulOrders.length > 0 ? netRevenue / successfulOrders.length : 0;
+    const aov = qualifyingOrders.length > 0 ? finalizedRevenue / qualifyingOrders.length : 0;
+
+    // Pipeline orders: received/placed/in-transit/unclosed orders (not yet counted in finalized sales)
+    const pipelineOrders = orders.filter(
+      (o) => !isOrderRefundedOrCancelled(o) && !(o.status === 'Delivered' && Boolean(o.isClosed))
+    );
+    const pipelineRevenue = pipelineOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    const pipelineUnits = pipelineOrders.reduce((sum, o) => {
+      return sum + (o.items || []).reduce((iSum, item) => iSum + (Number(item?.quantity) || 0), 0);
+    }, 0);
 
     return {
       totalOrders,
       grossRevenue,
-      netRevenue,
+      netRevenue: finalizedRevenue,
+      finalizedRevenue,
       refundedRevenue,
-      cancelledCount: cancelledOrders.length,
-      totalSareesSold,
+      cancelledCount: refundedOrders.length,
+      totalUnitsSold,
+      totalSareesSold: totalUnitsSold,
       aov,
-      successfulCount: successfulOrders.length,
+      successfulCount: qualifyingOrders.length,
+      pipelineCount: pipelineOrders.length,
+      pipelineRevenue,
+      pipelineUnits,
     };
   }, [orders]);
 
-  // Product-wise & Color-wise Sales Tracker and Sales Rating
+  // Product-wise & Color-wise Sales Tracker and Sales Rating (Trigger: Delivered & Closed Only)
   const productAnalytics = useMemo(() => {
-    // Tally sales by product and color
+    // Tally sales strictly for Delivered & Closed orders
     const salesMap: Record<
       string,
       {
@@ -93,12 +124,16 @@ export const AnalyticsManager: React.FC = () => {
       });
 
     orders.forEach((o) => {
-      if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-        o.items.forEach((item) => {
-          if (salesMap[item.product.id]) {
-            salesMap[item.product.id].unitsSold += item.quantity;
-            salesMap[item.product.id].revenue += item.product.price * item.quantity;
-            salesMap[item.product.id].orderCount += 1;
+      // Strictly require Delivered & Closed status; automatically deducted if refunded/cancelled
+      if (isQualifyingDeliveredAndClosedOrder(o)) {
+        (o.items || []).forEach((item) => {
+          if (!item || !item.product) return;
+          const pId = item.product.id;
+          if (salesMap[pId]) {
+            const qty = Number(item.quantity) || 0;
+            salesMap[pId].unitsSold += qty;
+            salesMap[pId].revenue += (Number(item.product.price) || 0) * qty;
+            salesMap[pId].orderCount += 1;
           }
         });
       }
@@ -111,7 +146,7 @@ export const AnalyticsManager: React.FC = () => {
 
     return list
       .map((item) => {
-        // Calculate Rating (1.0 to 5.0 stars) based on sales volume and revenue
+        // Calculate Rating (1.0 to 5.0 stars) based on delivered & closed sales volume and revenue
         const salesScore = item.unitsSold / maxSold;
         let rating = 1.0 + salesScore * 4.0;
         rating = Math.round(rating * 10) / 10;
@@ -144,7 +179,7 @@ export const AnalyticsManager: React.FC = () => {
       .sort((a, b) => b.unitsSold - a.unitsSold || b.revenue - a.revenue);
   }, [products, orders]);
 
-  // Dynamic Category-Based Sales Record & Performance Ranking Board (Replacing Fabric Contribution)
+  // Dynamic Category-Based Sales Record & Performance Ranking Board (Trigger: Delivered & Closed Only)
   const categorySalesAnalytics = useMemo(() => {
     const categoryStatsMap: Record<
       string,
@@ -161,7 +196,8 @@ export const AnalyticsManager: React.FC = () => {
 
     // 1. Seed from registered store categories
     (categories || []).forEach((cat) => {
-      const key = cat.name.trim();
+      const key = (cat.name || '').trim();
+      if (!key) return;
       if (!categoryStatsMap[key]) {
         categoryStatsMap[key] = {
           categoryName: key,
@@ -196,14 +232,16 @@ export const AnalyticsManager: React.FC = () => {
       }
     });
 
-    // 3. Aggregate confirmed/delivered order sales volume & revenue
+    // 3. Aggregate realized Delivered & Closed order sales volume & revenue (refunded/pending excluded)
     let totalCatRevenue = 0;
     let totalCatUnits = 0;
 
     orders.forEach((o) => {
-      if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+      // Trigger: Counted strictly when order is marked Delivered & Closed
+      if (isQualifyingDeliveredAndClosedOrder(o)) {
         const orderCats = new Set<string>();
-        o.items.forEach((item) => {
+        (o.items || []).forEach((item) => {
+          if (!item || !item.product) return;
           const cat = item.product.category?.trim() || 'General Collection';
           if (!categoryStatsMap[cat]) {
             categoryStatsMap[cat] = {
@@ -215,11 +253,12 @@ export const AnalyticsManager: React.FC = () => {
               activeCatalogCount: 0,
             };
           }
-          const itemRev = item.product.price * item.quantity;
-          categoryStatsMap[cat].unitsSold += item.quantity;
+          const itemQty = Number(item.quantity) || 0;
+          const itemRev = (Number(item.product.price) || 0) * itemQty;
+          categoryStatsMap[cat].unitsSold += itemQty;
           categoryStatsMap[cat].revenue += itemRev;
           totalCatRevenue += itemRev;
-          totalCatUnits += item.quantity;
+          totalCatUnits += itemQty;
           orderCats.add(cat);
         });
         orderCats.forEach((catKey) => {
@@ -278,11 +317,11 @@ export const AnalyticsManager: React.FC = () => {
     });
   }, [orders, products, categories]);
 
-  // Staff order attribution
+  // Staff order attribution (Delivered & Closed Sales Attribution)
   const staffAttribution = useMemo(() => {
     const staffMap: Record<
       string,
-      { name: string; username: string; handledCount: number; revenue: number }
+      { name: string; username: string; handledCount: number; closedCount: number; revenue: number }
     > = {};
 
     (settings.staffMembers || []).forEach((s) => {
@@ -290,6 +329,7 @@ export const AnalyticsManager: React.FC = () => {
         name: s.name,
         username: s.username,
         handledCount: 0,
+        closedCount: 0,
         revenue: 0,
       };
     });
@@ -297,13 +337,15 @@ export const AnalyticsManager: React.FC = () => {
     orders.forEach((o) => {
       if (o.assignedStaffId && staffMap[o.assignedStaffId]) {
         staffMap[o.assignedStaffId].handledCount += 1;
-        if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+        // Strictly attribute revenue only from Delivered & Closed orders
+        if (isQualifyingDeliveredAndClosedOrder(o)) {
+          staffMap[o.assignedStaffId].closedCount += 1;
           staffMap[o.assignedStaffId].revenue += o.totalAmount;
         }
       }
     });
 
-    return Object.values(staffMap).sort((a, b) => b.handledCount - a.handledCount);
+    return Object.values(staffMap).sort((a, b) => b.revenue - a.revenue || b.handledCount - a.handledCount);
   }, [orders, settings.staffMembers]);
 
   const handleConfirmSyncSheets = async () => {
@@ -392,6 +434,20 @@ export const AnalyticsManager: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              setIsRefreshingLive(true);
+              setTimeout(() => setIsRefreshingLive(false), 800);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold shadow-2xs transition cursor-pointer"
+            title="Force refresh analytics from live database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-neutral-600 ${isRefreshingLive ? 'animate-spin' : ''}`} />
+            <span>{isRefreshingLive ? 'Syncing DB...' : 'Live Sync'}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+          </button>
+
           {settings.analyticsSpreadsheetUrl && (
             <a
               href={settings.analyticsSpreadsheetUrl}
@@ -409,7 +465,7 @@ export const AnalyticsManager: React.FC = () => {
           <button
             onClick={() => setIsConfirmSyncOpen(true)}
             disabled={isSyncingSheets}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition disabled:opacity-50 cursor-pointer"
           >
             {isSyncingSheets ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -451,14 +507,14 @@ export const AnalyticsManager: React.FC = () => {
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={handleAuthorizeAndSync}
-              className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition shadow-xs flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span>Authorize Google & Retry</span>
             </button>
             <button
               onClick={() => setSheetSyncError(null)}
-              className="text-rose-700 font-bold hover:underline px-2"
+              className="text-rose-700 font-bold hover:underline px-2 cursor-pointer"
             >
               Dismiss
             </button>
@@ -466,64 +522,103 @@ export const AnalyticsManager: React.FC = () => {
         </div>
       )}
 
+      {/* Sales Analytics Delivered & Closed Trigger Policy Banner */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50/50 to-amber-50/40 border border-emerald-200/90 shadow-2xs space-y-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-lg bg-emerald-600 text-white shrink-0 shadow-2xs">
+              <CheckCircle2 className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-serif font-bold text-xs sm:text-sm text-neutral-900 flex items-center gap-1.5 flex-wrap">
+                <span>Sales Analytics Policy: Delivered & Closed Status Trigger</span>
+                <span className="text-[10px] font-sans px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 font-extrabold uppercase tracking-wide">
+                  Realized Sales Only
+                </span>
+              </h3>
+              <p className="text-[11px] text-neutral-600 mt-0.5">
+                Units sold and revenue calculations update exclusively after an order has reached <strong>Delivered</strong> stage and is formally <strong>Closed</strong>.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-900 bg-emerald-100/90 border border-emerald-300 px-2.5 py-1 rounded-xl">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{stats.successfulCount} Closed & Realized</span>
+            </span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-900 bg-blue-100/90 border border-blue-300 px-2.5 py-1 rounded-xl">
+              <Truck className="w-3.5 h-3.5 text-blue-700" />
+              <span>{stats.pipelineCount} In Pipeline (Pending/Transit)</span>
+            </span>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-neutral-600 leading-relaxed border-t border-emerald-200/60 pt-2">
+          Orders that are received, placed, or in-transit are excluded from units sold and revenue figures until verified delivery and file closure. If a previously counted order is subsequently cancelled or refunded, units and revenue are automatically deducted in real time.
+        </p>
+      </div>
+
       {/* 4 KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Gross Sales */}
+        {/* Realized Sales (Delivered & Closed) */}
         <div className="p-5 rounded-2xl bg-white border border-neutral-200 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-neutral-500 text-xs font-semibold">
-            <span>Net Confirmed Sales</span>
+            <span>Realized Sales (Delivered & Closed)</span>
             <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
           <p className="text-2xl font-serif font-bold text-neutral-950 tabular-nums">
             {formatPrice(stats.netRevenue)}
           </p>
           <p className="text-[11px] text-emerald-700 font-medium">
-            From {stats.successfulCount} active orders
+            From {stats.successfulCount} closed orders (Gross booked: {formatPrice(stats.grossRevenue)})
           </p>
         </div>
 
-        {/* Total Sarees Sold */}
+        {/* Total Units Sold */}
         <div className="p-5 rounded-2xl bg-white border border-neutral-200 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-neutral-500 text-xs font-semibold">
-            <span>Handlooms Sold</span>
+            <span>Units Sold (Closed)</span>
             <ShoppingBag className="w-4 h-4 text-amber-600" />
           </div>
           <p className="text-2xl font-serif font-bold text-neutral-950 tabular-nums">
-            {stats.totalSareesSold} <span className="text-sm font-sans font-normal text-neutral-500">pieces</span>
+            {stats.totalUnitsSold} <span className="text-sm font-sans font-normal text-neutral-500">pieces</span>
           </p>
           <p className="text-[11px] text-neutral-600">
-            Across {products.length} catalog designs
+            Delivered & Closed items only
           </p>
         </div>
 
-        {/* Average Order Value */}
+        {/* Pipeline Value (Unclosed / In-Transit) */}
         <div className="p-5 rounded-2xl bg-white border border-neutral-200 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-neutral-500 text-xs font-semibold">
-            <span>Average Order Value</span>
-            <Award className="w-4 h-4 text-purple-600" />
+            <span>Pipeline Value (Unclosed)</span>
+            <Truck className="w-4 h-4 text-blue-600" />
           </div>
           <p className="text-2xl font-serif font-bold text-neutral-950 tabular-nums">
-            {formatPrice(stats.aov)}
+            {formatPrice(stats.pipelineRevenue)}
           </p>
-          <p className="text-[11px] text-neutral-600">Per verified checkout</p>
+          <p className="text-[11px] text-blue-700 font-medium">
+            {stats.pipelineCount} orders ({stats.pipelineUnits} units) awaiting delivery/closure
+          </p>
         </div>
 
         {/* Refunds / Cancellations */}
         <div className="p-5 rounded-2xl bg-white border border-neutral-200 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-neutral-500 text-xs font-semibold">
-            <span>Refunded Orders</span>
+            <span>Refund Deductions</span>
             <RotateCcw className="w-4 h-4 text-rose-600" />
           </div>
           <p className="text-2xl font-serif font-bold text-rose-950 tabular-nums">
             {formatPrice(stats.refundedRevenue)}
           </p>
           <p className="text-[11px] text-rose-800">
-            {stats.cancelledCount} orders cancelled / rejected
+            {stats.cancelledCount} orders deducted in real time
           </p>
         </div>
       </div>
 
-      {/* Main Section: Product Sales Tracker & Sales Rating (Prompt Request) */}
+      {/* Main Section: Product Sales Tracker & Sales Rating (Prompt Request: Delivered & Closed Only) */}
       <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
@@ -532,7 +627,7 @@ export const AnalyticsManager: React.FC = () => {
               <span>Product Sales Performance & Demand Rating</span>
             </h3>
             <p className="text-xs text-neutral-500">
-              Unique product & color SKU tracking, sales volume, and dynamic performance ratings
+              Unique product SKU tracking, sales volume, and dynamic performance ratings (Delivered & Closed orders only)
             </p>
           </div>
         </div>
@@ -542,7 +637,7 @@ export const AnalyticsManager: React.FC = () => {
             <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-600 uppercase font-semibold text-[11px]">
               <tr>
                 <th className="py-3 px-3">Unique Code / SKU</th>
-                <th className="py-3 px-3">Saree Product</th>
+                <th className="py-3 px-3">Product Item</th>
                 <th className="py-3 px-3">Fabric & Color</th>
                 <th className="py-3 px-3 text-right">Units Sold</th>
                 <th className="py-3 px-3 text-right">Revenue</th>
@@ -636,7 +731,7 @@ export const AnalyticsManager: React.FC = () => {
                 <span>Category-Based Sales Tracking & Ranking</span>
               </h4>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Dynamic sales volume, revenue, and store rankings across all active boutique categories
+                Dynamic sales volume, revenue, and store rankings across all active boutique categories (Delivered & Closed orders only)
               </p>
             </div>
             <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-700 border border-neutral-200 shrink-0 self-start sm:self-center">
@@ -730,8 +825,11 @@ export const AnalyticsManager: React.FC = () => {
         <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-xs space-y-3">
           <h4 className="font-serif text-base font-bold text-neutral-900 flex items-center gap-2">
             <Users className="w-4 h-4 text-amber-600" />
-            <span>Concierge Staff Workload & Order Attribution</span>
+            <span>Concierge Staff Workload & Realized Sales Attribution</span>
           </h4>
+          <p className="text-[11px] text-neutral-500">
+            Realized revenue and units credited strictly upon verified Delivered & Closed fulfillment
+          </p>
 
           <div className="space-y-2.5 pt-1">
             {staffAttribution.length === 0 ? (
@@ -744,12 +842,16 @@ export const AnalyticsManager: React.FC = () => {
                 >
                   <div>
                     <p className="font-bold text-neutral-900">{staff.name}</p>
-                    <p className="text-[11px] text-neutral-500 font-mono">@{staff.username}</p>
+                    <p className="text-[11px] text-neutral-500 font-mono">
+                      @{staff.username} · {staff.closedCount} delivered & closed ({staff.handledCount} total assigned)
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-neutral-900">{staff.handledCount} orders handled</p>
-                    <p className="text-[11px] text-emerald-800 font-medium">
-                      {formatPrice(staff.revenue)} gross
+                    <p className="font-bold text-neutral-900 font-serif tabular-nums">
+                      {formatPrice(staff.revenue)}
+                    </p>
+                    <p className="text-[11px] text-emerald-800 font-semibold">
+                      Realized Sales
                     </p>
                   </div>
                 </div>

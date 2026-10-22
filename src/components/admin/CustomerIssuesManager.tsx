@@ -394,13 +394,10 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
       `Cancellation approved via ${cancellationApproveTool}. Saree auto-restocked to inventory.`;
 
     resolveCancellationRequest(order.id, 'approve', notes, utr);
-    if (!order.isRestocked) {
-      replenishOrderInventory(order);
-    }
 
     showToast(
       `Cancellation Approved & Restocked`,
-      `Order #${order.orderNumber} marked Cancelled. Saree stock replenished and moved to Closed Bucket.`
+      `Order #${order.orderNumber} marked Cancelled. Exact physical stock restored and issue moved to Closed Bucket.`
     );
 
     setCancellationApproveOrder(null);
@@ -1966,8 +1963,29 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
             </div>
 
             <p className="text-xs text-neutral-600 leading-relaxed">
-              Order #{cancellationApproveOrder.orderNumber} for {cancellationApproveOrder.customer.name} will be marked as Cancelled. The pure handloom saree will be <strong>automatically restocked</strong> to active inventory, and the issue will be moved to the <strong>Closed Bucket</strong>.
+              Order #{cancellationApproveOrder.orderNumber} for {cancellationApproveOrder.customer.name} will be marked as Cancelled. Physical inventory will be <strong>restored by the exact quantity purchased</strong>, and the issue will be moved to the <strong>Closed Bucket</strong>.
             </p>
+
+            {/* Exact Restocked Items Breakdown */}
+            {cancellationApproveOrder.items && cancellationApproveOrder.items.length > 0 && (
+              <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-xs space-y-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-900">
+                  Exact Items & Physical Quantities to Restore:
+                </p>
+                <div className="space-y-1">
+                  {cancellationApproveOrder.items.map((it, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-white/80 px-2.5 py-1.5 rounded-lg text-[11px] border border-blue-200">
+                      <span className="font-medium text-neutral-800 truncate max-w-[220px]">
+                        {it.product.title}
+                      </span>
+                      <span className="font-bold text-emerald-700 shrink-0">
+                        +{it.quantity} {it.quantity > 1 ? 'items' : 'item'} to stock
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs space-y-1">
               <div className="flex justify-between font-bold text-neutral-900">

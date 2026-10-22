@@ -117,6 +117,20 @@ export const SettingsManager: React.FC = () => {
   const [storyTitle, setStoryTitle] = useState(defaultDisplay.storyTitle);
   const [storyContent, setStoryContent] = useState(defaultDisplay.storyContent);
 
+  // Dynamic Category Banner & Storefront Headings Configuration (Multi-Category Retail)
+  const [categoryBannerTagline, setCategoryBannerTagline] = useState(
+    defaultDisplay.categoryBannerTagline || 'Featured Specialty Category'
+  );
+  const [categorySectionBadge, setCategorySectionBadge] = useState(
+    defaultDisplay.categorySectionBadge || 'Featured Collections'
+  );
+  const [categorySectionTitle, setCategorySectionTitle] = useState(
+    defaultDisplay.categorySectionTitle || 'Explore Categories'
+  );
+  const [categorySectionSubtitle, setCategorySectionSubtitle] = useState(
+    defaultDisplay.categorySectionSubtitle || 'Discover curated collections grouped by artisan craft, style & occasion'
+  );
+
   // Dynamic Courier Services Configuration State (User Request 6)
   const [isCourierModalOpen, setIsCourierModalOpen] = useState(false);
   const [editingCourierId, setEditingCourierId] = useState<string | null>(null);
@@ -221,6 +235,10 @@ export const SettingsManager: React.FC = () => {
         if (disp.showCraftsmanshipStory !== undefined) setShowCraftsmanshipStory(disp.showCraftsmanshipStory);
         if (disp.storyTitle !== undefined) setStoryTitle(disp.storyTitle);
         if (disp.storyContent !== undefined) setStoryContent(disp.storyContent);
+        if (disp.categoryBannerTagline !== undefined) setCategoryBannerTagline(disp.categoryBannerTagline);
+        if (disp.categorySectionBadge !== undefined) setCategorySectionBadge(disp.categorySectionBadge);
+        if (disp.categorySectionTitle !== undefined) setCategorySectionTitle(disp.categorySectionTitle);
+        if (disp.categorySectionSubtitle !== undefined) setCategorySectionSubtitle(disp.categorySectionSubtitle);
       }
 
       if (settings.announcement) {
@@ -476,6 +494,10 @@ export const SettingsManager: React.FC = () => {
         allowCustomerRefundDisputes: allowPublicRefunds ? allowCustomerRefundDisputes : false,
         allowLiveChat,
         freeShippingText: freeShippingText.trim(),
+        categoryBannerTagline: categoryBannerTagline.trim(),
+        categorySectionBadge: categorySectionBadge.trim(),
+        categorySectionTitle: categorySectionTitle.trim(),
+        categorySectionSubtitle: categorySectionSubtitle.trim(),
       },
       announcement: {
         enabled: announcementEnabled,
@@ -1104,6 +1126,77 @@ export const SettingsManager: React.FC = () => {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Dynamic Category Banner & Storefront Headings Customization (User Request) */}
+              <div className="pt-3 border-t border-neutral-200 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-600" />
+                  <span className="font-bold text-neutral-800 text-xs">
+                    Category Banner & Section Headings Customization (Multi-Category Retail)
+                  </span>
+                </div>
+                <p className="text-[11px] text-neutral-500">
+                  Adapt the store layout for multi-category retail (e.g. blouses, dhotis, readymades, accessories) by customizing category kicker labels and section headings without hardcoded saree-only terms.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">
+                      Storefront Section Badge / Kicker
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditStorefront}
+                      value={categorySectionBadge}
+                      onChange={(e) => setCategorySectionBadge(e.target.value)}
+                      placeholder="e.g. Featured Collections"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">
+                      Storefront Section Main Title
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditStorefront}
+                      value={categorySectionTitle}
+                      onChange={(e) => setCategorySectionTitle(e.target.value)}
+                      placeholder="e.g. Explore Categories"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">
+                      Storefront Section Subtitle
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditStorefront}
+                      value={categorySectionSubtitle}
+                      onChange={(e) => setCategorySectionSubtitle(e.target.value)}
+                      placeholder="e.g. Discover curated collections grouped by artisan craft, style & occasion"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-neutral-700 mb-1">
+                      Category Detail Banner Default Tagline
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditStorefront}
+                      value={categoryBannerTagline}
+                      onChange={(e) => setCategoryBannerTagline(e.target.value)}
+                      placeholder="e.g. Featured Specialty Category"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 text-xs"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

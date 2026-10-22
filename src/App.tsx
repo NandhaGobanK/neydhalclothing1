@@ -292,13 +292,14 @@ function MainAppContent() {
                     <div>
                       <span className="text-[10px] sm:text-xs uppercase tracking-widest text-amber-700 font-bold flex items-center gap-1.5 mb-1">
                         <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Handloom Weaves</span>
+                        <span>{settings.storefrontDisplay?.categorySectionBadge || 'Featured Collections'}</span>
                       </span>
                       <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 tracking-tight">
-                        Explore Saree Categories
+                        {settings.storefrontDisplay?.categorySectionTitle || 'Explore Categories'}
                       </h2>
                       <p className="text-xs text-neutral-500 mt-0.5">
-                        Discover heirloom weaves grouped by regional artisan craft and occasion
+                        {settings.storefrontDisplay?.categorySectionSubtitle ||
+                          'Discover curated collections grouped by artisan craft, style & occasion'}
                       </p>
                     </div>
 

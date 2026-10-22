@@ -383,12 +383,12 @@ export async function syncAnalyticsToGoogleSheet(
     ['Metric', 'Value', 'Notes / Description'],
     ['Last Report Generation', nowStr, 'Auto-synced from Boutique Console'],
     ['Total Orders', data.kpiStats.totalOrders, 'All orders recorded in store'],
-    ['Net Confirmed Sales (₹)', `₹${data.kpiStats.netRevenue.toLocaleString('en-IN')}`, 'Confirmed, Shipped & Delivered orders'],
+    ['Net Realized Sales (₹)', `₹${data.kpiStats.netRevenue.toLocaleString('en-IN')}`, 'Finalized sales from Delivered & Closed orders only'],
     ['Gross Invoiced Total (₹)', `₹${data.kpiStats.grossRevenue.toLocaleString('en-IN')}`, 'Includes all reservations before refunds'],
-    ['Refunded / Cancelled (₹)', `₹${data.kpiStats.refundedRevenue.toLocaleString('en-IN')}`, 'Processed & pending customer refunds'],
-    ['Average Order Value (AOV)', `₹${Math.round(data.kpiStats.aov).toLocaleString('en-IN')}`, 'Average ticket size per successful order'],
-    ['Total Handloom Sarees Sold', data.kpiStats.totalSareesSold, 'Cumulative units delivered or dispatched'],
-    ['Completed Orders Count', data.kpiStats.successfulCount, 'Verified and fulfilled'],
+    ['Refunded / Cancelled (₹)', `₹${data.kpiStats.refundedRevenue.toLocaleString('en-IN')}`, 'Deducted customer refunds and cancellations'],
+    ['Average Order Value (AOV)', `₹${Math.round(data.kpiStats.aov).toLocaleString('en-IN')}`, 'Average ticket size per Delivered & Closed order'],
+    ['Total Handloom Sarees Sold', data.kpiStats.totalSareesSold, 'Cumulative units from Delivered & Closed orders only'],
+    ['Delivered & Closed Orders Count', data.kpiStats.successfulCount, 'Verified delivered and closed orders'],
     ['Cancelled / Rejected Count', data.kpiStats.cancelledCount, 'Refund initiated or completed'],
   ];
 

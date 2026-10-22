@@ -117,13 +117,13 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         <div>
           <div className="flex items-center gap-2 text-xs text-amber-700 font-semibold tracking-wider uppercase mb-1">
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>Handloom Masterpieces</span>
+            <span>Featured Collections</span>
           </div>
           <h2 className={`text-2xl sm:text-3xl font-serif font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-            Search Saree Catalog
+            Explore Catalog
           </h2>
           <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
-            Showing {filteredProducts.length} of {publicProducts.length} available handlooms
+            Showing {filteredProducts.length} of {publicProducts.length} available items
           </p>
         </div>
 

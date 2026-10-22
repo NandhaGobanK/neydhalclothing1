@@ -58,6 +58,8 @@ import {
 import {
   isCustomerReportIssueVisible,
   isDisputeRedressalEnabled,
+  isDisputeActiveForType,
+  isDisputeResolvedForType,
 } from '../utils/disputeRedressals';
 
 const STORAGE_KEYS = {
@@ -99,6 +101,8 @@ interface StoreContextType {
   isFreeDeliveryUnlocked: boolean;
   amountNeededForFreeDelivery: number;
   cartGrandTotal: number;
+  cartStockWarning: string | null;
+  clearCartStockWarning: () => void;
 
   // Orders
   orders: Order[];
@@ -479,6 +483,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [cart, setCart] = useState<CartItem[]>(() =>
     loadFromStorage(STORAGE_KEYS.CART, [])
   );
+  const [cartStockWarning, setCartStockWarning] = useState<string | null>(null);
+  const clearCartStockWarning = () => setCartStockWarning(null);
 
   const [currentUser, setCurrentUser] = useState<ActiveUser | null>(() =>
     loadFromStorage(STORAGE_KEYS.CURRENT_USER, null)
@@ -602,12 +608,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const savedPhone = typeof window !== 'undefined' ? (localStorage.getItem('aara_customer_phone') || '').trim() : '';
     const cleanSavedPhone = savedPhone.replace(/\D/g, '').slice(-10);
 
-    return orders.filter((o) => {
+    const distinctOrderMap = new Map<string, Order>();
+    orders.forEach((o) => {
       const matchNumber = savedNumbers.has(o.orderNumber.trim().toUpperCase());
       const orderPhone = (o.customer?.phone || '').replace(/\D/g, '').slice(-10);
       const matchPhone = cleanSavedPhone && orderPhone && orderPhone === cleanSavedPhone;
-      return matchNumber || matchPhone;
+      if (matchNumber || matchPhone) {
+        distinctOrderMap.set(o.id, o);
+      }
     });
+
+    return Array.from(distinctOrderMap.values());
   }, [orders, customerOrderNumbers, lastPlacedOrder]);
 
   const customerOrdersCount = customerOrders.length;
@@ -659,6 +670,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Real-time Live Chat Notification Monitor across Customer and Staff Devices
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const isInitialChatMountRef = useRef<boolean>(true);
+
+  // In-memory registry to guarantee idempotency and prevent stock inflation on order cancellation
+  const restockedOrderIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    orders.forEach((ord) => {
+      if (ord.isRestocked || ord.status === 'Cancelled') {
+        restockedOrderIdsRef.current.add(ord.id);
+      }
+    });
+  }, [orders]);
 
   const [currentView, setCurrentView] = useState<'store' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
@@ -1137,31 +1159,74 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Cart operations
   const addToCart = (product: Product, quantity = 1) => {
+    const liveProd = products.find((p) => p.id === product.id) || product;
+    const availableStock = Math.max(0, liveProd.stockCount ?? 99);
+
     // Prevent adding out of stock items
-    if (product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0)) {
+    if (liveProd.stockStatus === 'out_of_stock' || availableStock <= 0) {
+      setCartStockWarning('Cannot add item; this product is currently out of stock.');
       return;
     }
 
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
-      const availableStock = product.stockCount ?? 99;
       if (existing) {
+        if (existing.quantity >= availableStock) {
+          setCartStockWarning(
+            `Cannot add more items; stock limit reached (${availableStock} ${availableStock === 1 ? 'item' : 'items'} available in stock)`
+          );
+          return prev;
+        }
         const nextQty = Math.min(existing.quantity + quantity, availableStock);
+        if (existing.quantity + quantity > availableStock) {
+          setCartStockWarning(
+            `Cannot add more items; stock limit reached (${availableStock} ${availableStock === 1 ? 'item' : 'items'} available in stock)`
+          );
+        } else {
+          setCartStockWarning(null);
+        }
         return prev.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: nextQty }
             : item
         );
       }
-      return [...prev, { product, quantity: Math.min(quantity, availableStock) }];
+      const initialQty = Math.min(quantity, availableStock);
+      if (quantity > availableStock) {
+        setCartStockWarning(
+          `Cannot add more items; stock limit reached (${availableStock} ${availableStock === 1 ? 'item' : 'items'} available in stock)`
+        );
+      } else {
+        setCartStockWarning(null);
+      }
+      return [...prev, { product: liveProd, quantity: initialQty }];
     });
   };
 
   const updateCartQuantity = (productId: string, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(productId);
+      setCartStockWarning(null);
       return;
     }
+
+    const currentProd = products.find((p) => p.id === productId);
+    const cartItem = cart.find((item) => item.product.id === productId);
+    const availableStock = Math.max(0, currentProd?.stockCount ?? cartItem?.product.stockCount ?? 99);
+
+    if (quantity > availableStock) {
+      setCartStockWarning(
+        `Cannot add more items; stock limit reached (${availableStock} ${availableStock === 1 ? 'item' : 'items'} available in stock)`
+      );
+      setCart((prev) =>
+        prev.map((item) =>
+          item.product.id === productId ? { ...item, quantity: availableStock } : item
+        )
+      );
+      return;
+    }
+
+    setCartStockWarning(null);
     setCart((prev) =>
       prev.map((item) =>
         item.product.id === productId ? { ...item, quantity } : item
@@ -1650,28 +1715,54 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return newOrder;
   };
 
-  // Real-Time Stock Replenishment on Order Cancellation
+  // Real-Time Stock Replenishment on Order Cancellation (Strictly Idempotent)
   const replenishOrderInventory = (order: Order) => {
-    if (order.isRestocked || !order.items || order.items.length === 0) return;
+    if (!order || !order.id) return;
+    // Strict Guard: Prevent double-restock or stock inflation if already processed
+    if (order.isRestocked || restockedOrderIdsRef.current.has(order.id)) {
+      return;
+    }
+    if (!order.items || order.items.length === 0) return;
+
+    // Immediately register in ref and flag in-memory order object to block concurrent/duplicate calls
+    restockedOrderIdsRef.current.add(order.id);
+    order.isRestocked = true;
 
     const restockedTitles: string[] = [];
     let affectedCategory: string | undefined;
 
     setProducts((prev) => {
       const next = prev.map((prod) => {
-        const item = order.items.find(
-          (it) =>
-            it.product.id === prod.id ||
-            (it.product.productCode &&
-              prod.productCode &&
-              it.product.productCode.trim().toUpperCase() === prod.productCode.trim().toUpperCase())
-        );
-        if (!item) return prod;
+        // Collect all matching line items in this specific order
+        const matchingItems = order.items.filter((it) => {
+          const itId = it.product?.id || (it as any).productId;
+          const itCode = it.product?.productCode || (it as any).productCode;
+          return (
+            (itId && itId === prod.id) ||
+            (Boolean(itCode) &&
+              Boolean(prod.productCode) &&
+              itCode.trim().toUpperCase() === prod.productCode.trim().toUpperCase())
+          );
+        });
 
-        const currentStock = prod.stockCount ?? 0;
-        const newCount = currentStock + (item.quantity || 1);
+        if (matchingItems.length === 0) return prod;
+
+        // Restore strictly the exact physical quantity purchased in this specific order
+        const exactRestockQty = matchingItems.reduce(
+          (sum, it) => sum + Math.max(1, Number(it.quantity) || 1),
+          0
+        );
+
+        const currentStock =
+          typeof prod.stockCount === 'number' && !isNaN(prod.stockCount)
+            ? Math.max(0, prod.stockCount)
+            : 0;
+
+        // Correctly returning physical stock from current database count + exact order quantity
+        const newCount = currentStock + exactRestockQty;
         const newStatus: 'in_stock' | 'out_of_stock' | 'limited' =
           newCount > 2 ? 'in_stock' : newCount > 0 ? 'limited' : 'out_of_stock';
+
         restockedTitles.push(prod.title);
         if (prod.category) affectedCategory = prod.category;
 
@@ -1695,6 +1786,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return next;
     });
 
+    // Mark order isRestocked in orders state & Firestore
+    setOrders((prev) =>
+      prev.map((ord) => (ord.id === order.id ? { ...ord, isRestocked: true } : ord))
+    );
+    updateDoc(doc(db, 'orders', order.id), { isRestocked: true }).catch((err) =>
+      handleFirestoreError(err, OperationType.UPDATE, `orders/${order.id}`)
+    );
+
     // Send real-time PWA and Web Push Notification with audio chime!
     if (restockedTitles.length > 0) {
       sendRestockPushNotification(restockedTitles, affectedCategory);
@@ -1711,11 +1810,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   ) => {
     let orderToSync: Partial<Order> | null = null;
+    const isNowCancelled = status === 'Cancelled' || status === 'Rejected';
+    if (isNowCancelled) {
+      const targetOrder = orders.find((o) => o.id === orderId);
+      if (
+        targetOrder &&
+        !targetOrder.isRestocked &&
+        !restockedOrderIdsRef.current.has(targetOrder.id)
+      ) {
+        replenishOrderInventory(targetOrder);
+      }
+    }
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
 
-        const isNowCancelled = status === 'Cancelled' || status === 'Rejected';
         const isNowRefunded = status === 'Refunded';
 
         const nextShippingDetails = extra?.shippingDetails || ord.shippingDetails;
@@ -1789,11 +1899,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         const isNowDelivered = status === 'Delivered';
-        let didRestock = ord.isRestocked;
-        if (isNowCancelled && !ord.isRestocked) {
-          replenishOrderInventory(ord);
-          didRestock = true;
-        }
+        const didRestock = isNowCancelled ? true : Boolean(ord.isRestocked);
 
         const updated: Order = {
           ...ord,
@@ -2400,6 +2506,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const actorName = currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
     const nowIso = new Date().toISOString();
 
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (
+      action === 'approve' &&
+      targetOrder &&
+      !targetOrder.isRestocked &&
+      !restockedOrderIdsRef.current.has(targetOrder.id)
+    ) {
+      replenishOrderInventory(targetOrder);
+    }
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
@@ -2429,10 +2545,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           ],
         };
 
+        const existingResolvedHistory = ord.resolvedIssuesHistory || [];
+        const nextResolvedHistory = [
+          ...existingResolvedHistory.filter((h) => h.issueType !== 'cancellation'),
+          resolvedIssuePayload,
+        ];
+
         if (action === 'approve') {
-          if (!ord.isRestocked) {
-            replenishOrderInventory(ord);
-          }
           const updated: Order = {
             ...ord,
             status: 'Cancelled',
@@ -2452,6 +2571,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               adminDecisionNotes: adminNotes,
             },
             deliveryIssue: resolvedIssuePayload,
+            resolvedIssuesHistory: nextResolvedHistory,
             refundDetails: {
               ...ord.refundDetails,
               refundStatus: refundUtr ? 'processed' : 'pending',
@@ -2477,6 +2597,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               adminDecisionNotes: adminNotes,
             },
             deliveryIssue: resolvedIssuePayload,
+            resolvedIssuesHistory: nextResolvedHistory,
             lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           };
           orderToSync = updated;
@@ -2546,6 +2667,56 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
     }
 
+    // Prevent duplicate active requests for the exact same dispute category
+    if (isDisputeActiveForType(targetOrder, issueType)) {
+      return {
+        success: false,
+        message: `An active ${issueType === 'refund' ? 'refund inquiry' : 'delivery dispute'} for order #${targetOrder.orderNumber} is already currently being investigated by our concierge team. Duplicate requests for the same active issue are not permitted.`,
+      };
+    }
+
+    // Maintain strict rule: Prevent multiple or duplicate requests for the same dispute category once resolved
+    if (isDisputeResolvedForType(targetOrder, issueType)) {
+      return {
+        success: false,
+        message: `A ${issueType === 'refund' ? 'refund inquiry' : 'delivery dispute'} for order #${targetOrder.orderNumber} has already been officially resolved and closed by boutique concierge. Multiple requests for the same dispute category are not permitted.`,
+      };
+    }
+
+    // Lifecycle validation: Delivery disputes require Delivered status
+    if (issueType === 'delivery') {
+      const orderStage = (targetOrder.status || '').trim().toLowerCase();
+      if (orderStage !== 'delivered') {
+        return {
+          success: false,
+          message: 'Delivery issue reporting is only available after an order has been marked as Delivered.',
+        };
+      }
+    }
+
+    // Lifecycle validation: Refund disputes require Cancelled, Rejected, or Refunded status
+    if (issueType === 'refund') {
+      const orderStage = (targetOrder.status || '').trim().toLowerCase();
+      const refundTxStatus = (targetOrder.refundDetails?.refundStatus || '').trim().toLowerCase();
+      const isCancelledOrRefunded =
+        orderStage === 'cancelled' ||
+        orderStage === 'rejected' ||
+        orderStage === 'refunded' ||
+        refundTxStatus === 'processed' ||
+        refundTxStatus === 'pending' ||
+        refundTxStatus === 'completed' ||
+        Boolean(targetOrder.refundDetails?.refundUtr) ||
+        Boolean(targetOrder.cancellationReason) ||
+        Boolean(targetOrder.cancellationRequest?.requested);
+
+      if (!isCancelledOrRefunded) {
+        return {
+          success: false,
+          message: 'Refund issue reporting is only available after an order has been cancelled or moved to refunded status.',
+        };
+      }
+    }
+
     const defaultDesc =
       issueType === 'refund'
         ? 'Customer submitted a refund inquiry / dispute regarding payment or cancellation.'
@@ -2581,6 +2752,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       note: `Customer reported (${issueType}): "${issueDescription.trim()}". Routed to Customer Issues.`,
     };
 
+    // Archive any previously resolved dispute into resolvedIssuesHistory to preserve past resolution audit
+    const prevIssue = targetOrder.deliveryIssue;
+    const existingResolvedHistory = targetOrder.resolvedIssuesHistory || [];
+    const nextResolvedHistory =
+      prevIssue && prevIssue.reported && prevIssue.status === 'resolved'
+        ? [...existingResolvedHistory.filter((h) => h.issueType !== prevIssue.issueType), prevIssue]
+        : existingResolvedHistory;
+
     let updatedOrder: Order | null = null;
     setOrders((prev) => {
       const next = prev.map((ord) => {
@@ -2591,6 +2770,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           issueAssignedStaffName: 'Unassigned',
           isClosed: false,
           deliveryIssue: issuePayload,
+          resolvedIssuesHistory: nextResolvedHistory,
           assignmentHistory: [...(ord.assignmentHistory || []), disputeLog],
         };
         return updatedOrder;
@@ -2607,6 +2787,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           issueAssignedStaffName: 'Unassigned',
           isClosed: false,
           deliveryIssue: issuePayload,
+          resolvedIssuesHistory: nextResolvedHistory,
           assignmentHistory: (updatedOrder as Order).assignmentHistory,
         })
       ).catch((err) =>
@@ -2642,17 +2823,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
 
+        const isRefund = ord.deliveryIssue?.issueType === 'refund';
+        const actionTitle =
+          action === 'reopen'
+            ? (isRefund ? 'Reopened Refund Inquiry for Investigation' : 'Reopened Disputed Order for Investigation')
+            : (isRefund ? 'Resolved Refund Dispute' : 'Resolved Delivery Dispute');
+
         const auditLog: StaffAssignmentLog = {
           id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           timestamp: nowIso,
           staffId: currentUser?.staffId || ord.assignedStaffId || 'admin',
           staffName: actorName,
           assignedBy: actorName,
-          action:
-            action === 'reopen'
-              ? 'Reopened Disputed Order for Investigation'
-              : 'Resolved Delivery Dispute',
-          note: resolutionNotes.trim() || (action === 'reopen' ? 'Reopened for investigation' : 'Dispute resolved with customer and courier'),
+          action: actionTitle,
+          note: resolutionNotes.trim() || (action === 'reopen' ? 'Reopened for investigation' : 'Dispute resolved with customer and accounts desk'),
         };
 
         const isResolved = action === 'resolve';
@@ -2661,18 +2845,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             reported: true,
             reportedAt: nowIso,
             customerPhone: ord.customer.phone,
-            issueDescription: 'Disputed delivery',
+            issueDescription: 'Disputed issue',
             status: 'investigating',
           }),
+          issueType: ord.deliveryIssue?.issueType || (ord.cancellationRequest ? 'refund' : 'delivery'),
           status: isResolved ? 'resolved' : 'investigating',
           resolutionNotes: resolutionNotes.trim(),
           resolvedAt: isResolved ? nowIso : ord.deliveryIssue?.resolvedAt,
           resolvedBy: isResolved ? actorName : ord.deliveryIssue?.resolvedBy,
         };
 
+        const existingResolvedHistory = ord.resolvedIssuesHistory || [];
+        const nextResolvedHistory = isResolved
+          ? [
+              ...existingResolvedHistory.filter((h) => h.issueType !== updatedIssue.issueType),
+              updatedIssue,
+            ]
+          : existingResolvedHistory;
+
         const updated: Order = {
           ...ord,
           deliveryIssue: updatedIssue,
+          resolvedIssuesHistory: nextResolvedHistory,
           disputeResolvedAt: isResolved ? nowIso : ord.disputeResolvedAt,
           disputeResolvedBy: isResolved ? actorName : ord.disputeResolvedBy,
           isClosed: action === 'reopen' ? false : (isResolved ? true : ord.isClosed),
@@ -2682,7 +2876,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           reopenedBy: action === 'reopen' ? actorName : ord.reopenedBy,
           reopenReason:
             action === 'reopen'
-              ? `Delivery Dispute Investigation: ${resolutionNotes.trim() || 'Customer non-delivery report'}`
+              ? `${isRefund ? 'Refund Inquiry' : 'Delivery Dispute'} Investigation: ${resolutionNotes.trim() || 'Customer report'}`
               : ord.reopenReason,
           lastUpdatedBy: currentUser?.username || ord.lastUpdatedBy,
           assignmentHistory: [...(ord.assignmentHistory || []), auditLog],
@@ -3659,6 +3853,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         isFreeDeliveryUnlocked,
         amountNeededForFreeDelivery,
         cartGrandTotal,
+        cartStockWarning,
+        clearCartStockWarning,
         orders,
         placeOrder,
         updateOrderStatus,

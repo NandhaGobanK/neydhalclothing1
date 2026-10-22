@@ -15,6 +15,7 @@ import {
 import {
   Search,
   CheckCircle,
+  CheckCircle2,
   Clock,
   Truck,
   XCircle,
@@ -126,15 +127,10 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
     const utr = cancellationApproveUtr.trim() || `UTR${Date.now().toString().slice(-8)}`;
     const notes = cancellationApproveNotes.trim() || 'Cancellation approved by concierge. Saree auto-restocked to inventory.';
 
-    // 1. Trigger context resolution (handles status, stock replenishment, isClosed, refundDetails)
+    // 1. Trigger context resolution (handles status, exact stock replenishment, isClosed, refundDetails)
     resolveCancellationRequest(order.id, 'approve', notes, utr);
 
-    // 2. Explicitly ensure inventory replenishment occurs
-    if (!order.isRestocked) {
-      replenishOrderInventory(order);
-    }
-
-    // 3. Immediately update selectedDetailOrder in place so modal view reflects changes without refresh
+    // 2. Immediately update selectedDetailOrder in place so modal view reflects changes without refresh
     if (selectedDetailOrder && selectedDetailOrder.id === order.id) {
       const nowIso = new Date().toISOString();
       setSelectedDetailOrder({
@@ -1435,6 +1431,47 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                       }
                     )}
                   </div>
+
+                  {/* Delivered Stage: Close Order Trigger & Realized Status */}
+                  {order.status === 'Delivered' && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {order.isClosed ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2.5 py-1 rounded-lg bg-emerald-950 text-emerald-300 text-[11px] font-bold flex items-center gap-1 border border-emerald-800">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Closed & Realized in Analytics</span>
+                          </span>
+                          {canEditOrders && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const reason = prompt('Reason for reopening this delivered order:');
+                                if (reason && reason.trim()) {
+                                  reopenOrder(order.id, currentUserName, reason.trim());
+                                }
+                              }}
+                              className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 text-[10px] font-bold border border-amber-300 transition cursor-pointer"
+                              title="Reopen order (immediately deducts units and revenue from sales analytics in real time)"
+                            >
+                              Reopen
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        canEditOrders && (
+                          <button
+                            type="button"
+                            onClick={() => closeOrder(order.id, currentUserName)}
+                            className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                            title="Close delivered order and commit units sold & revenue to sales analytics"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Mark Delivered & Close Order</span>
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Cancellation Request Alert Banner if Customer requested cancellation */}
@@ -3424,7 +3461,48 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                 <span>Copy Summary</span>
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {selectedDetailOrder.status === 'Delivered' && (
+                  selectedDetailOrder.isClosed ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-3 py-2 rounded-xl bg-emerald-950 text-emerald-300 font-bold text-xs flex items-center gap-1 border border-emerald-800">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Closed & Realized in Analytics</span>
+                      </span>
+                      {canEditOrders && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const reason = prompt('Reason for reopening this delivered order:');
+                            if (reason && reason.trim()) {
+                              reopenOrder(selectedDetailOrder.id, currentUserName, reason.trim());
+                              setSelectedDetailOrder({ ...selectedDetailOrder, isClosed: false });
+                            }
+                          }}
+                          className="px-2.5 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs border border-amber-300 transition cursor-pointer"
+                          title="Reopen order (immediately deducts units and revenue from sales analytics in real time)"
+                        >
+                          Reopen
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    canEditOrders && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          closeOrder(selectedDetailOrder.id, currentUserName);
+                          setSelectedDetailOrder({ ...selectedDetailOrder, isClosed: true });
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                        title="Formally close order (commits units sold & revenue to sales analytics)"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Close Order (Delivered & Verified)</span>
+                      </button>
+                    )
+                  )
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -3516,14 +3594,37 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
               </div>
 
               {/* Auto-Restock Indicator */}
-              <div className="p-3 bg-blue-50 rounded-2xl border border-blue-200 text-blue-950 flex items-start gap-2.5">
-                <Package className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                <div className="text-[11px] space-y-0.5">
-                  <p className="font-bold text-blue-900">Auto-Restock to Inventory Active</p>
-                  <p className="text-blue-800 leading-relaxed">
-                    Confirming this will automatically replenish stock count by returning all ordered sarees back into the live boutique stock pool.
-                  </p>
+              <div className="p-3 bg-blue-50 rounded-2xl border border-blue-200 text-blue-950 flex flex-col gap-2">
+                <div className="flex items-start gap-2.5">
+                  <Package className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="text-[11px] space-y-0.5">
+                    <p className="font-bold text-blue-900">Auto-Restock to Inventory Active</p>
+                    <p className="text-blue-800 leading-relaxed">
+                      Confirming this will restore strictly the exact quantity purchased back into the active boutique physical inventory.
+                    </p>
+                  </div>
                 </div>
+
+                {/* Exact Restocked Items Breakdown */}
+                {cancellationApproveOrder.items && cancellationApproveOrder.items.length > 0 && (
+                  <div className="pt-2 border-t border-blue-200/70 space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-blue-900">
+                      Exact Items & Physical Quantities to Restore:
+                    </p>
+                    <div className="space-y-1">
+                      {cancellationApproveOrder.items.map((it, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-white/80 px-2.5 py-1.5 rounded-lg text-[11px] border border-blue-200">
+                          <span className="font-medium text-neutral-800 truncate max-w-[260px]">
+                            {it.product.title}
+                          </span>
+                          <span className="font-bold text-emerald-700 shrink-0">
+                            +{it.quantity} {it.quantity > 1 ? 'items' : 'item'} to physical stock
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Refund Target UPI ID */}

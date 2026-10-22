@@ -9,6 +9,10 @@ import {
   getOrderEligibleRedressals,
   isCustomerReportIssueVisibleForOrder,
   DISPUTE_REDRESSALS,
+  isDisputeActiveForType,
+  isDisputeResolvedForType,
+  getAvailableRedressalsForOrder,
+  areAllEligibleDisputesResolved,
 } from '../../utils/disputeRedressals';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 import {
@@ -1031,7 +1035,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                     {/* Items List with Product SKU Code */}
                     <div>
                       <span className="text-[11px] font-semibold text-neutral-500 uppercase">
-                        Sarees in this Order:
+                        Items in this Order:
                       </span>
                       <div className="mt-1 space-y-1">
                         {order.items.map((item) => (
@@ -1110,19 +1114,65 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                           )
                         ) : null}
 
-                        {/* Conditional Customer Issue Reporting Dropdown (Rule: Delivery only if Delivered; Refund only if Cancelled + Refunded) */}
+                        {/* Conditional Customer Issue Reporting Dropdown (Rule: Delivery only if Delivered; Refund only if Cancelled + Refunded; Strict duplicate prevention once resolved) */}
                         {(() => {
-                          const eligibleRedressals = getOrderEligibleRedressals(order, settings).filter((r) => {
-                            // If an active unresolved dispute of this specific category is already in progress, don't show it again
-                            const isAlreadyActiveThisType =
-                              order.deliveryIssue?.reported &&
-                              order.deliveryIssue.status !== 'resolved' &&
-                              order.deliveryIssue.issueType === r.type;
-                            return !isAlreadyActiveThisType;
-                          });
+                          const eligibleRedressals = getOrderEligibleRedressals(order, settings);
+                          if (eligibleRedressals.length === 0) return null;
 
-                          const canReportIssueForThisOrder = eligibleRedressals.length > 0;
-                          if (!canReportIssueForThisOrder) return null;
+                          // Only dispute types that are not active and not already resolved
+                          const availableRedressals = getAvailableRedressalsForOrder(order, settings);
+
+                          const hasActiveDispute =
+                            Boolean(order.deliveryIssue?.reported && order.deliveryIssue.status !== 'resolved') ||
+                            Boolean(order.cancellationRequest?.requested && order.cancellationRequest.status === 'pending');
+
+                          const allEligibleResolved = areAllEligibleDisputesResolved(order, settings);
+
+                          // If all eligible disputes for this order are officially resolved and closed, lock repeated disputes
+                          if (allEligibleResolved && availableRedressals.length === 0) {
+                            return (
+                              <button
+                                type="button"
+                                disabled
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-300 bg-neutral-100 text-neutral-500 font-semibold text-xs cursor-not-allowed opacity-80 shadow-2xs"
+                                title="This issue has been officially resolved and closed by boutique concierge. Repeated disputes for the same category are disabled."
+                              >
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Report Issue (Resolved)</span>
+                                <Lock className="w-3 h-3 text-neutral-400" />
+                              </button>
+                            );
+                          }
+
+                          // If order is closed and no available redressals remain (e.g. delivered and completed)
+                          if (order.isClosed && availableRedressals.length === 0) {
+                            return (
+                              <button
+                                type="button"
+                                disabled
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-300 bg-neutral-100 text-neutral-400 font-semibold text-xs cursor-not-allowed opacity-75 shadow-2xs"
+                                title="Order is archived/closed. New dispute requests are disabled."
+                              >
+                                <Lock className="w-3.5 h-3.5 text-neutral-400" />
+                                <span>Report Issue (Closed)</span>
+                              </button>
+                            );
+                          }
+
+                          // If an active dispute is already in progress and no other distinct category is available
+                          if (hasActiveDispute && availableRedressals.length === 0) {
+                            return (
+                              <div
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 font-semibold text-xs shadow-2xs"
+                                title="Your issue report is actively being investigated by concierge."
+                              >
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                                <span>Dispute In Progress</span>
+                              </div>
+                            );
+                          }
+
+                          if (availableRedressals.length === 0) return null;
 
                           return (
                             <div className="relative inline-block text-left">
@@ -1160,7 +1210,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                                     Select Issue Category
                                   </div>
 
-                                  {eligibleRedressals.map((redressal) => (
+                                  {availableRedressals.map((redressal) => (
                                     <button
                                       key={redressal.id}
                                       type="button"
@@ -1202,13 +1252,14 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
 
                       {/* Order-Specific Customer-to-Staff Live Chat Integration */}
                       {(() => {
-                        const isOrderClosed = Boolean(order.isClosed);
-                        const isLiveChatGloballyEnabled = settings.storefrontDisplay?.allowLiveChat !== false;
-                        const isChatAvailable = isLiveChatGloballyEnabled && !isOrderClosed;
                         const hasActiveDispute = Boolean(
                           order.deliveryIssue &&
                             (order.deliveryIssue.status === 'open' || order.deliveryIssue.status === 'investigating')
                         );
+                        const allDisputesResolved = areAllEligibleDisputesResolved(order, settings);
+                        const isLiveChatGloballyEnabled = settings.storefrontDisplay?.allowLiveChat !== false;
+                        const isChatAvailable =
+                          isLiveChatGloballyEnabled && (!order.isClosed || hasActiveDispute || !allDisputesResolved);
 
                         return (
                           <div className="flex items-center gap-2 ml-auto">
@@ -1268,13 +1319,20 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                                 )}
                                 <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg border border-neutral-200 flex items-center gap-1">
                                   <Lock className="w-3 h-3 text-neutral-400" />
-                                  <span>Order Closed</span>
+                                  <span>
+                                    {allDisputesResolved
+                                      ? 'Dispute Resolved (Chat Closed)'
+                                      : order.isClosed
+                                      ? 'Order Closed'
+                                      : 'Chat Unavailable'}
+                                  </span>
                                 </span>
                               </div>
                             )}
                           </div>
                         );
                       })()}
+
                     </div>
 
                     {/* Live Customer Chat Stream Box (User Request 3) */}
