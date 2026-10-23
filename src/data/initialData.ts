@@ -152,6 +152,20 @@ export const DEFAULT_SAREE_CATEGORIES: SareeCategory[] = [
     imageUrl: '/assets/images/saree_banarasi_emerald_1791651794836.jpg',
     displayOrder: 5,
   },
+  {
+    id: 'cat-blouses',
+    name: 'Designer Blouses',
+    description: 'Handcrafted bespoke zardozi and raw silk blouses curated to pair with heirloom sarees.',
+    imageUrl: '/assets/images/designer_silk_blouse_1792785885478.jpg',
+    displayOrder: 6,
+  },
+  {
+    id: 'cat-jewelry',
+    name: 'Temple Jewelry',
+    description: 'Traditional 22k gold plated bridal temple jewelry sets with kundan and pearl detailing.',
+    imageUrl: '/assets/images/temple_jewelry_set_1792785897600.jpg',
+    displayOrder: 7,
+  },
 ];
 
 export const DEFAULT_PRODUCT_ATTRIBUTES: ProductAttributeDefinition[] = [
@@ -313,6 +327,7 @@ export const INITIAL_SETTINGS: StoreSettings = {
     enabled: true,
     idleThresholdMinutes: 15,
   },
+  enableOrderDeletion: false,
 };
 
 // Initial state for fresh boutique launch: 6 handcrafted heirloom sarees loaded
@@ -346,6 +361,8 @@ export const INITIAL_PRODUCTS: Product[] = [
     initialSku: 'KAN-CRIM-101',
     skuEditCount: 0,
     isSkuLocked: false,
+    crossSellProductIds: ['prod-blouse-zardozi-01', 'prod-jewelry-choker-02'],
+    crossSellCategoryNames: ['Designer Blouses', 'Temple Jewelry'],
   },
   {
     id: 'saree-banarasi-emerald-02',
@@ -376,6 +393,8 @@ export const INITIAL_PRODUCTS: Product[] = [
     initialSku: 'BAN-EMER-202',
     skuEditCount: 0,
     isSkuLocked: false,
+    crossSellProductIds: ['prod-blouse-zardozi-01', 'prod-jewelry-choker-02'],
+    crossSellCategoryNames: ['Designer Blouses', 'Temple Jewelry'],
   },
   {
     id: 'saree-chanderi-lavender-03',
@@ -496,6 +515,60 @@ export const INITIAL_PRODUCTS: Product[] = [
     initialSku: 'KAN-PINK-606',
     skuEditCount: 0,
     isSkuLocked: false,
+  },
+  {
+    id: 'prod-blouse-zardozi-01',
+    productCode: 'BLS-CRIM-101',
+    title: 'Mayil Maggam Embroidered Bridal Blouse',
+    subtitle: 'Pure Crimson Raw Silk with Antique Gold Zardozi & Pearl Motifs',
+    description: 'Bespoke hand-embroidered raw silk blouse tailored to elevate traditional bridal and festive Kanjivaram & Banarasi sarees. Embellished with artisanal peacock maggam needlework, dabka threads, and freshwater pearls.',
+    fabric: 'Pure Georgette',
+    color: 'Crimson Red',
+    price: 4800,
+    originalPrice: 6500,
+    stockStatus: 'in_stock',
+    stockCount: 6,
+    isVisible: true,
+    images: [
+      '/assets/images/designer_silk_blouse_1792785885478.jpg',
+    ],
+    borderType: 'Intricate scalloped elbow-sleeve zardozi border',
+    occasion: 'Bridal Muhurtham & Reception Ensemble',
+    isFeatured: true,
+    createdAt: '2026-03-07T10:00:00Z',
+    category: 'Designer Blouses',
+    initialSku: 'BLS-CRIM-101',
+    skuEditCount: 0,
+    isSkuLocked: false,
+    crossSellProductIds: ['saree-kanjivaram-crimson-01', 'prod-jewelry-choker-02'],
+    crossSellCategoryNames: ['Kanjivaram Silk', 'Temple Jewelry'],
+  },
+  {
+    id: 'prod-jewelry-choker-02',
+    productCode: 'JWL-KEMP-202',
+    title: 'Heritage Lakshmi Kempu Choker & Jhumka Set',
+    subtitle: 'Antique 22k Gold Micron Plating with Royal Ruby Kundan Stones',
+    description: 'Mastercrafted temple jewelry choker necklace featuring Goddess Lakshmi center motif flanked by royal peacocks, encircled by ruby kundan cabochons and clustered pearls. Comes with matching handcrafted chandelier jhumkas.',
+    fabric: 'Other',
+    color: 'Mustard Gold',
+    price: 6900,
+    originalPrice: 9200,
+    stockStatus: 'in_stock',
+    stockCount: 5,
+    isVisible: true,
+    images: [
+      '/assets/images/temple_jewelry_set_1792785897600.jpg',
+    ],
+    borderType: 'Adjustable braided zari dori tassel',
+    occasion: 'Temple Weddings, Bharatanatyam & Grand Receptions',
+    isFeatured: true,
+    createdAt: '2026-03-07T11:00:00Z',
+    category: 'Temple Jewelry',
+    initialSku: 'JWL-KEMP-202',
+    skuEditCount: 0,
+    isSkuLocked: false,
+    crossSellProductIds: ['saree-kanjivaram-crimson-01', 'prod-blouse-zardozi-01'],
+    crossSellCategoryNames: ['Kanjivaram Silk', 'Designer Blouses'],
   },
 ];
 

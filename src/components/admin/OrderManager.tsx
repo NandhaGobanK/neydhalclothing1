@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore, getBoutiqueOrderPrefix } from '../../context/StoreContext';
-import { Order, OrderStatus } from '../../types/store';
+import { Order, OrderStatus, DeletedOrderAuditLog } from '../../types/store';
 import { syncOrdersToGoogleSheet } from '../../utils/googleSheets';
 import { getAccessToken } from '../../utils/firebaseAuth';
 import { playOrderNotificationSound } from '../../utils/audio';
@@ -52,6 +52,9 @@ import {
   Phone,
   Mail,
   Trash2,
+  Shield,
+  Lock,
+  Eye,
 } from 'lucide-react';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 import { CourierLogisticsPanel } from '../common/CourierLogisticsPanel';
@@ -70,6 +73,10 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
 }) => {
   const {
     orders,
+    deletedOrderLogs,
+    adminDeletionAlert,
+    dismissAdminDeletionAlert,
+    clearDeletedOrderLogs,
     deleteOrder,
     updateOrderStatus,
     updateOrderShipping,
@@ -94,6 +101,8 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   const currentUserName = currentUser?.name || (isAdmin ? 'Store Owner' : 'Staff Concierge');
   const currentUserId = currentUser?.staffId || (isAdmin ? 'admin' : '');
   const canEditOrders = isAdmin || currentPermissions?.orders?.canEdit !== false;
+  // Conditional Access: When enableOrderDeletion toggle is enabled in settings, deletion is permitted; otherwise completely hidden/blocked
+  const canDeleteOrders = canEditOrders && settings.enableOrderDeletion === true;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Dedicated Order Deletion / Removal State for Staff & Admins
@@ -102,6 +111,8 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   const [deleteReasonNote, setDeleteReasonNote] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteSuccessToast, setDeleteSuccessToast] = useState<{ orderNumber: string } | null>(null);
+  const [selectedAuditLog, setSelectedAuditLog] = useState<DeletedOrderAuditLog | null>(null);
+  const [auditLogSearch, setAuditLogSearch] = useState('');
 
   const handleConfirmDeleteOrder = async () => {
     if (!deletingOrder) return;
@@ -482,12 +493,25 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   };
 
   // Dynamic Queue Filter: Defaults to 'unassigned' so assigned orders clear from the Order Page and move to staff/admin buckets
-  const [activeQueueFilter, setActiveQueueFilter] = useState<'unassigned' | 'all' | 'mine'>('unassigned');
+  const [activeQueueFilter, setActiveQueueFilter] = useState<'unassigned' | 'all' | 'mine' | 'deleted_logs'>('unassigned');
   const [assignmentToast, setAssignmentToast] = useState<{
     orderNumber: string;
     staffName: string;
     staffId: string;
   } | null>(null);
+
+  const filteredAuditLogs = useMemo(() => {
+    if (!auditLogSearch.trim()) return deletedOrderLogs;
+    const q = auditLogSearch.toLowerCase().trim();
+    return deletedOrderLogs.filter(
+      (l) =>
+        l.orderNumber.toLowerCase().includes(q) ||
+        l.customerName.toLowerCase().includes(q) ||
+        l.customerPhone.includes(q) ||
+        l.deletedBy.toLowerCase().includes(q) ||
+        (l.deletionReason && l.deletionReason.toLowerCase().includes(q))
+    );
+  }, [deletedOrderLogs, auditLogSearch]);
 
   const unassignedOrders = useMemo(() => {
     return orders.filter(
@@ -1012,6 +1036,55 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
         </div>
       )}
 
+      {/* Real-time Order Deletion Alert for Main Admin */}
+      {adminDeletionAlert && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-red-600 via-rose-700 to-amber-700 text-white shadow-lg flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 border border-white/20">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-white/20 text-white shrink-0 animate-pulse">
+              <Shield className="w-5 h-5 text-amber-200" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-bold uppercase tracking-wider text-amber-200">
+                  Security Audit Alert
+                </span>
+                <span className="text-[11px] text-white/80">
+                  {new Date(adminDeletionAlert.deletedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <p className="font-bold text-white text-sm mt-0.5">
+                Order #{adminDeletionAlert.orderNumber} Deleted by {adminDeletionAlert.deletedBy}
+              </p>
+              <p className="text-white/90 text-xs">
+                Customer: {adminDeletionAlert.customerName} ({adminDeletionAlert.customerPhone}) · Value: ₹{adminDeletionAlert.totalAmount.toLocaleString('en-IN')}
+                {adminDeletionAlert.deletionReason && ` · Reason: "${adminDeletionAlert.deletionReason}"`}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveQueueFilter('deleted_logs');
+                dismissAdminDeletionAlert();
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white text-rose-950 font-bold hover:bg-rose-50 transition shadow-xs cursor-pointer text-xs flex items-center gap-1"
+            >
+              <span>View Audit Ledger</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={dismissAdminDeletionAlert}
+              className="text-white/80 hover:text-white font-bold p-1 cursor-pointer"
+              title="Dismiss alert"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Order Deletion Success Banner */}
       {deleteSuccessToast && (
         <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-rose-950 via-neutral-900 to-rose-900 text-white text-xs font-medium shadow-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 border border-rose-500/30">
@@ -1104,6 +1177,26 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                 activeQueueFilter === 'all' && !globalOrderSearch ? 'bg-neutral-800 text-white' : 'bg-neutral-200 text-neutral-700'
               }`}>
                 {orders.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveQueueFilter('deleted_logs');
+                setGlobalOrderSearch('');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                activeQueueFilter === 'deleted_logs' && !globalOrderSearch
+                  ? 'bg-rose-950 text-white shadow-xs font-bold border border-rose-800'
+                  : 'bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-200'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 text-rose-600" />
+              <span>Deleted Orders Audit Ledger</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                activeQueueFilter === 'deleted_logs' && !globalOrderSearch ? 'bg-rose-800 text-white' : 'bg-rose-200 text-rose-950'
+              }`}>
+                {deletedOrderLogs.length}
               </span>
             </button>
           </div>
@@ -1231,8 +1324,178 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
         )}
       </div>
 
-      {/* Orders List */}
-      {displayOrders.length === 0 ? (
+      {/* Orders List OR Deleted Orders Audit Ledger */}
+      {activeQueueFilter === 'deleted_logs' ? (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-rose-200 p-4 sm:p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
+                  <Shield className="w-5 h-5 text-rose-700" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-base sm:text-lg font-bold text-neutral-900 flex items-center gap-2">
+                    <span>Deleted Orders Audit Ledger & Activity Trail</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                      {deletedOrderLogs.length} Records
+                    </span>
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Permanent audit history registering every order record removal, staff/admin actor, timestamp, customer information, and preserved order snapshot.
+                  </p>
+                </div>
+              </div>
+
+              {isAdmin && deletedOrderLogs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Are you sure you want to permanently clear the audit log history? This cannot be undone.')) {
+                      clearDeletedOrderLogs();
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 font-semibold text-xs transition cursor-pointer self-start sm:self-auto"
+                >
+                  Clear Audit Logs
+                </button>
+              )}
+            </div>
+
+            {/* Audit Log Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+              <input
+                type="text"
+                value={auditLogSearch}
+                onChange={(e) => setAuditLogSearch(e.target.value)}
+                placeholder="Filter audit logs by Order #, Customer Name, Mobile, Staff Member, or Reason..."
+                className="w-full pl-10 pr-20 py-2 rounded-xl border border-neutral-200 bg-neutral-50 text-xs text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-200"
+              />
+              {auditLogSearch && (
+                <button
+                  type="button"
+                  onClick={() => setAuditLogSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-lg text-xs font-medium text-neutral-500 hover:text-neutral-800 bg-neutral-200"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Audit Logs List */}
+          {filteredAuditLogs.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-neutral-200 p-10 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+                <Shield className="w-6 h-6" />
+              </div>
+              <p className="font-serif text-lg font-bold text-neutral-800">
+                {auditLogSearch ? `No audit records match "${auditLogSearch}"` : 'No Deleted Order Records Found'}
+              </p>
+              <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                {auditLogSearch
+                  ? 'Try searching with a different order number, phone digits, or staff name.'
+                  : 'No orders have been deleted from the boutique system. Whenever an authorized admin or staff member deletes an order, its complete forensic audit record will appear here.'}
+              </p>
+              {auditLogSearch && (
+                <button
+                  type="button"
+                  onClick={() => setAuditLogSearch('')}
+                  className="mt-2 px-3.5 py-1.5 rounded-xl bg-neutral-900 text-white text-xs font-semibold hover:bg-neutral-800 transition cursor-pointer"
+                >
+                  Clear Search
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredAuditLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="bg-white rounded-2xl border border-neutral-200 hover:border-rose-300 p-4 sm:p-5 shadow-xs transition space-y-3.5"
+                >
+                  {/* Card Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-neutral-100 pb-3">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="font-mono font-bold text-sm text-neutral-950 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
+                        #{log.orderNumber}
+                      </span>
+                      <span className="text-xs text-neutral-500">
+                        Deleted {new Date(log.deletedAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })} at {new Date(log.deletedAt).toLocaleTimeString('en-IN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-neutral-900 text-white flex items-center gap-1">
+                        <span>👤 Deleted by: {log.deletedBy}</span>
+                        <span className="text-neutral-400">({log.deletedByRole === 'admin' ? 'Store Owner' : 'Staff Concierge'})</span>
+                      </span>
+                      {log.restockedItems && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          ✓ Inventory Restocked
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAuditLog(log)}
+                      className="px-3.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Inspect Preserved Order Snapshot</span>
+                    </button>
+                  </div>
+
+                  {/* Card Content Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100 space-y-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Customer Details</p>
+                      <p className="font-bold text-neutral-900">{log.customerName}</p>
+                      <p className="text-neutral-600 font-mono text-[11px]">{log.customerPhone}</p>
+                      {log.orderSnapshot?.customer?.email && (
+                        <p className="text-neutral-500 truncate text-[11px]">{log.orderSnapshot.customer.email}</p>
+                      )}
+                    </div>
+
+                    <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100 space-y-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Financial Value</p>
+                      <p className="font-bold text-neutral-900 text-sm">{formatPrice(log.totalAmount)}</p>
+                      <p className="text-neutral-600 text-[11px]">Payment: {log.orderSnapshot?.checkoutMethod || 'UPI Instant'}</p>
+                      {log.orderSnapshot?.upiTransactionId && (
+                        <p className="font-mono text-[10px] text-emerald-700 truncate">UTR: {log.orderSnapshot.upiTransactionId}</p>
+                      )}
+                    </div>
+
+                    <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100 space-y-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Items Preserved ({log.itemsCount || 1})</p>
+                      <div className="space-y-0.5 max-h-16 overflow-y-auto">
+                        <p className="text-neutral-700 text-[11px] leading-relaxed">
+                          {log.itemsSummary || 'Preserved items'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-100 space-y-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-rose-800">Deletion Reason</p>
+                      <p className="text-rose-950 font-medium italic text-[11px]">
+                        "{log.deletionReason || 'Manual deletion by concierge'}"
+                      </p>
+                      <p className="text-[10px] text-rose-700 pt-0.5">
+                        Original Order Date: {log.orderSnapshot?.createdAt ? new Date(log.orderSnapshot.createdAt).toLocaleDateString('en-IN') : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : displayOrders.length === 0 ? (
         <div className="bg-white rounded-2xl border border-neutral-200 p-10 text-center space-y-3">
           {globalOrderSearch.trim() ? (
             <>
@@ -1553,7 +1816,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   )}
 
                   {/* Dedicated Order Removal Button for Staff and Admins */}
-                  {canEditOrders && (
+                  {canDeleteOrders && (
                     <button
                       type="button"
                       onClick={() => {
@@ -3623,7 +3886,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   <Send className="w-3.5 h-3.5" />
                   <span>WhatsApp Customer</span>
                 </button>
-                {canEditOrders && (
+                {canDeleteOrders && (
                   <button
                     type="button"
                     onClick={() => {
@@ -4123,6 +4386,136 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   <span>{isDeleting ? 'Deleting...' : 'Delete Order Record'}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preserved Order Snapshot Inspection Modal */}
+      {selectedAuditLog && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
+          <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto flex flex-col max-h-[92vh]">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-neutral-950 via-neutral-900 to-rose-950 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  <Shield className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-serif text-base sm:text-lg font-bold text-white">
+                      Preserved Order Snapshot
+                    </h3>
+                    <span className="font-mono text-xs font-bold text-amber-300 bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 rounded">
+                      #{selectedAuditLog.orderNumber}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-300 mt-0.5">
+                    Deleted by <strong className="text-white">{selectedAuditLog.deletedBy}</strong> ({selectedAuditLog.deletedByRole === 'admin' ? 'Store Owner' : 'Staff Concierge'}) on {new Date(selectedAuditLog.deletedAt).toLocaleString('en-IN')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAuditLog(null)}
+                className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs">
+              {/* Security Audit Banner */}
+              <div className="p-3.5 bg-rose-50 rounded-2xl border border-rose-200 text-rose-950 space-y-1">
+                <p className="font-bold flex items-center gap-1.5 text-rose-900">
+                  <Shield className="w-4 h-4 text-rose-700" />
+                  <span>Immutable Audit Record: {selectedAuditLog.id}</span>
+                </p>
+                <p className="text-[11px] text-rose-900">
+                  Reason for Removal: <strong>"{selectedAuditLog.deletionReason || 'Manual deletion by concierge'}"</strong>
+                </p>
+                <p className="text-[11px] text-rose-800">
+                  Stock Restored: {selectedAuditLog.restockedItems ? 'Yes (Returned to active saree inventory)' : 'No (Stock was not incremented)'}
+                </p>
+              </div>
+
+              {/* Customer & Delivery Summary */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-1.5">
+                  <p className="font-bold text-neutral-900 text-xs">Customer Information</p>
+                  <p className="text-neutral-700 font-medium">{selectedAuditLog.customerName}</p>
+                  <p className="text-neutral-600 font-mono">{selectedAuditLog.customerPhone}</p>
+                  {selectedAuditLog.orderSnapshot?.customer?.email && (
+                    <p className="text-neutral-500">{selectedAuditLog.orderSnapshot.customer.email}</p>
+                  )}
+                </div>
+                <div className="p-3.5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-1.5">
+                  <p className="font-bold text-neutral-900 text-xs">Order Value & Financials</p>
+                  <p className="text-base font-bold text-neutral-950">{formatPrice(selectedAuditLog.totalAmount)}</p>
+                  <p className="text-neutral-600">Payment: {selectedAuditLog.orderSnapshot?.checkoutMethod || 'UPI Instant'}</p>
+                  {selectedAuditLog.orderSnapshot?.upiTransactionId && (
+                    <p className="font-mono text-emerald-700">Payment UTR: {selectedAuditLog.orderSnapshot.upiTransactionId}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Preserved Saree Items */}
+              <div className="space-y-2">
+                <h4 className="font-bold text-neutral-900 text-xs">Preserved Saree Items Snapshot:</h4>
+                <div className="space-y-2">
+                  {selectedAuditLog.orderSnapshot?.items?.map((it, idx) => (
+                    <div key={idx} className="p-3 rounded-xl border border-neutral-200 bg-white flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {it.product.images?.[0] && (
+                          <img
+                            src={it.product.images[0]}
+                            alt={it.product.title}
+                            className="w-12 h-14 object-cover rounded-lg border border-neutral-200 shrink-0"
+                          />
+                        )}
+                        <div>
+                          <p className="font-bold text-neutral-900">{it.product.title}</p>
+                          <p className="text-[11px] text-neutral-500">
+                            {it.product.productCode ? `SKU: ${it.product.productCode} · ` : ''}Qty: {it.quantity} × {formatPrice(it.product.price)}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="font-bold text-neutral-900 text-sm">
+                        {formatPrice(it.product.price * it.quantity)}
+                      </p>
+                    </div>
+                  )) || (
+                    <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-600 text-xs">
+                      Preserved Items: {selectedAuditLog.itemsSummary || 'None recorded'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Full Raw Snapshot Toggle / Inspection */}
+              <details className="p-3 bg-neutral-900 text-neutral-200 rounded-2xl text-[11px] font-mono">
+                <summary className="font-bold text-amber-400 cursor-pointer select-none">
+                  Inspect Raw Forensic Snapshot JSON
+                </summary>
+                <pre className="mt-2 p-2 bg-neutral-950 rounded-xl overflow-x-auto text-[10px] text-emerald-300 max-h-60">
+                  {JSON.stringify(selectedAuditLog.orderSnapshot || selectedAuditLog, null, 2)}
+                </pre>
+              </details>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-between">
+              <span className="text-[11px] text-neutral-500">
+                Logged to secure audit collection: <code className="font-mono">/deleted_orders_log</code>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedAuditLog(null)}
+                className="px-4 py-2 rounded-xl bg-neutral-900 text-white font-bold text-xs hover:bg-neutral-800 transition cursor-pointer"
+              >
+                Close Snapshot
+              </button>
             </div>
           </div>
         </div>

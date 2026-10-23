@@ -29,7 +29,9 @@
         "initialSku": { "type": "string", "maxLength": 64 },
         "skuEditCount": { "type": "number" },
         "isSkuLocked": { "type": "boolean" },
-        "category": { "type": "string", "maxLength": 100 }
+        "category": { "type": "string", "maxLength": 100 },
+        "crossSellProductIds": { "type": "array" },
+        "crossSellCategoryNames": { "type": "array" }
       },
       "required": ["id", "productCode", "title", "fabric", "color", "price", "stockStatus", "isVisible"]
     },
@@ -118,10 +120,34 @@
         "chatTemplates": { "type": "object" },
         "defaultStaffPermissions": { "type": "object" },
         "sareeCategories": { "type": "array" },
+        "enableOrderDeletion": { "type": "boolean" },
         "isFreshBrandNew": { "type": "boolean" },
         "lastResetAt": { "type": "string" }
       },
       "required": ["boutiqueName", "theme"]
+    },
+    "DeletedOrderAuditLog": {
+      "title": "DeletedOrderAuditLog",
+      "description": "Secure audit trail of removed orders registering actor, timestamp, and order snapshot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "orderNumber": { "type": "string", "maxLength": 64 },
+        "customerName": { "type": "string", "maxLength": 200 },
+        "customerPhone": { "type": "string", "maxLength": 50 },
+        "totalAmount": { "type": "number" },
+        "itemsCount": { "type": "number" },
+        "itemsSummary": { "type": "string", "maxLength": 2000 },
+        "deletedBy": { "type": "string", "maxLength": 200 },
+        "deletedById": { "type": "string", "maxLength": 128 },
+        "deletedByRole": { "type": "string", "maxLength": 64 },
+        "deletedAt": { "type": "string" },
+        "deletionReason": { "type": "string", "maxLength": 1000 },
+        "restockedItems": { "type": "boolean" },
+        "orderSnapshot": { "type": "object" }
+      },
+      "required": ["id", "orderId", "orderNumber", "deletedBy", "deletedAt"]
     }
   },
   "firestore": {
@@ -144,6 +170,10 @@
     "/orders/{orderId}": {
       "schema": { "$ref": "Order" },
       "description": "Customer orders and UPI transactions"
+    },
+    "/deleted_orders_log/{logId}": {
+      "schema": { "$ref": "DeletedOrderAuditLog" },
+      "description": "Secure audit log and ledger of removed/deleted orders"
     },
     "/settings/{settingsId}": {
       "schema": { "$ref": "StoreSettings" },

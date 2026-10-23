@@ -20,7 +20,10 @@ import {
   Minus,
   Instagram,
   Film,
+  Camera,
+  Sparkles,
 } from 'lucide-react';
+import { VirtualTryOnModal } from '../common/VirtualTryOnModal';
 
 interface ProductDetailModalProps {
   product: Product;
@@ -29,6 +32,7 @@ interface ProductDetailModalProps {
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose }) => {
   const {
+    products,
     addToCart,
     setIsCartOpen,
     setIsCheckoutOpen,
@@ -41,6 +45,41 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<'photos' | 'video' | 'shorts'>('photos');
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Cross-sell & Virtual Try-On state
+  const [isTryOnOpen, setIsTryOnOpen] = useState(false);
+  const [addedCrossSellIds, setAddedCrossSellIds] = useState<Record<string, boolean>>({});
+
+  // Matching cross-sell products (handpicked + category fallbacks)
+  const matchingCrossSellProducts = React.useMemo(() => {
+    const directIds = product.crossSellProductIds || [];
+    const directMatches = products.filter(
+      (p) => directIds.includes(p.id) && p.id !== product.id && p.stockStatus !== 'out_of_stock'
+    );
+
+    const catFallbacks = product.crossSellCategoryNames && product.crossSellCategoryNames.length > 0
+      ? product.crossSellCategoryNames
+      : ['Designer Blouses', 'Temple Jewelry'];
+
+    const catMatches = products.filter(
+      (p) =>
+        p.id !== product.id &&
+        !directIds.includes(p.id) &&
+        p.stockStatus !== 'out_of_stock' &&
+        p.category &&
+        catFallbacks.some((c) => c.toLowerCase() === p.category?.toLowerCase())
+    );
+
+    return [...directMatches, ...catMatches].slice(0, 4);
+  }, [product, products]);
+
+  const handleQuickAddCrossSell = (item: Product) => {
+    addToCart(item, 1);
+    setAddedCrossSellIds((prev) => ({ ...prev, [item.id]: true }));
+    setTimeout(() => {
+      setAddedCrossSellIds((prev) => ({ ...prev, [item.id]: false }));
+    }, 1800);
+  };
 
   // Customer Reviews state
   const reviews = getProductReviews(product.id);
@@ -536,6 +575,102 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 })}
               </div>
 
+              {/* Complete the Look Cross-Selling Widget (Blouse, Sarees, & Jewelry) */}
+              {matchingCrossSellProducts.length > 0 && (
+                <div className="mb-6 p-4 rounded-2xl bg-amber-50/60 border border-amber-200/90 shadow-2xs">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full uppercase tracking-wider border border-amber-200">
+                        Atelier Pairing
+                      </span>
+                      <h3 className="font-serif text-base font-bold text-neutral-900 mt-1 flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-600" />
+                        <span>Complete The Look</span>
+                      </h3>
+                      <p className="text-[11px] text-neutral-500">
+                        Curated matching blouses & temple jewelry to pair with this drape
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsTryOnOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-amber-300 hover:text-amber-200 text-xs font-semibold shadow-xs transition cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-amber-400" />
+                      <span>✨ Try On This Look</span>
+                    </button>
+                  </div>
+
+                  {/* Cross-Sell Cards Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {matchingCrossSellProducts.map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-2xs flex items-center gap-2.5"
+                      >
+                        <div className="w-14 h-14 rounded-lg overflow-hidden bg-neutral-100 shrink-0 border border-neutral-200">
+                          <img
+                            src={item.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                            alt={item.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[10px] font-semibold text-amber-800 block truncate">
+                            {item.category || 'Matching Accent'}
+                          </span>
+                          <h4 className="text-xs font-bold text-neutral-900 truncate" title={item.title}>
+                            {item.title}
+                          </h4>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-xs font-bold text-neutral-900 tabular-nums">
+                              {formatPrice(item.price)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickAddCrossSell(item)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
+                                addedCrossSellIds[item.id]
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
+                                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
+                              }`}
+                            >
+                              {addedCrossSellIds[item.id] ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span>Added</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-3 h-3" />
+                                  <span>+ Add</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Ensemble Quick Bundle Action */}
+                  <div className="mt-3 pt-2.5 border-t border-amber-200/60 flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-[11px] text-amber-900 font-medium">
+                      Want to visualize the entire ensemble on yourself?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsTryOnOpen(true)}
+                      className="text-xs font-bold text-amber-900 hover:text-amber-950 underline flex items-center gap-1"
+                    >
+                      <span>Open Virtual Styling Atelier</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Cancellation & Refund Policy Notice on Product Front (User Request) */}
               <div className="mb-6 p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-950 space-y-1">
                 <div className="flex items-center gap-2 font-bold text-amber-900">
@@ -831,6 +966,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
           </div>
         </div>
       </div>
+
+      {/* Interactive Virtual Try-On Modal (Live Camera / Photo Upload) */}
+      {isTryOnOpen && (
+        <VirtualTryOnModal
+          primaryProduct={product}
+          matchingProducts={matchingCrossSellProducts}
+          onClose={() => setIsTryOnOpen(false)}
+        />
+      )}
     </div>
   );
 };

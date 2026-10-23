@@ -20,6 +20,7 @@ import {
   ProductAttributeDefinition,
   OrderStatusHistory,
   InvestigationComment,
+  DeletedOrderAuditLog,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -34,7 +35,7 @@ import {
 import { googleSignOut, setCachedAccessToken } from '../utils/firebaseAuth';
 import { syncPWAAndDocumentMetadata } from '../utils/dynamicManifest';
 import { formatDeviceDateTime, getDeviceTimezone } from '../utils/deviceTime';
-import { sendRestockPushNotification } from '../utils/audio';
+import { sendRestockPushNotification, playChatChimeSound } from '../utils/audio';
 import {
   notifyCustomerOfConciergeMessage,
   notifyStaffOfCustomerMessage,
@@ -69,6 +70,7 @@ const STORAGE_KEYS = {
   CART: 'aara_boutique_cart_v3',
   CURRENT_USER: 'aara_boutique_user_v3',
   REVIEWS: 'aara_boutique_reviews_v3',
+  DELETED_ORDERS_LOG: 'aara_boutique_deleted_orders_log_v3',
 };
 
 export interface ActiveUser {
@@ -103,9 +105,14 @@ interface StoreContextType {
   cartGrandTotal: number;
   cartStockWarning: string | null;
   clearCartStockWarning: () => void;
+  dismissCartPriceAlert: (productId: string) => void;
 
   // Orders
   orders: Order[];
+  deletedOrderLogs: DeletedOrderAuditLog[];
+  adminDeletionAlert: DeletedOrderAuditLog | null;
+  dismissAdminDeletionAlert: () => void;
+  clearDeletedOrderLogs: () => Promise<void>;
   placeOrder: (orderInput: {
     customer: Order['customer'];
     items: CartItem[];
@@ -481,6 +488,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         allowCustomerDeliveryDisputes: loaded.storefrontDisplay?.allowCustomerDeliveryDisputes ?? true,
         allowCustomerRefundDisputes: loaded.storefrontDisplay?.allowCustomerRefundDisputes ?? true,
       },
+      enableOrderDeletion: loaded.enableOrderDeletion ?? false,
     };
     if (updated && (updated.adminPin === '889900' || !updated.adminPin)) {
       return { ...updated, adminPin: '889988' };
@@ -493,6 +501,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   );
   const [cartStockWarning, setCartStockWarning] = useState<string | null>(null);
   const clearCartStockWarning = () => setCartStockWarning(null);
+
+  // Deleted Orders Audit Ledger & Instant Admin Deletion Alert
+  const [deletedOrderLogs, setDeletedOrderLogs] = useState<DeletedOrderAuditLog[]>(() =>
+    loadFromStorage(STORAGE_KEYS.DELETED_ORDERS_LOG, [])
+  );
+  const [adminDeletionAlert, setAdminDeletionAlert] = useState<DeletedOrderAuditLog | null>(null);
+  const dismissAdminDeletionAlert = () => setAdminDeletionAlert(null);
 
   const [currentUser, setCurrentUser] = useState<ActiveUser | null>(() =>
     loadFromStorage(STORAGE_KEYS.CURRENT_USER, null)
@@ -673,23 +688,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return Array.from(distinctOrderMap.values());
   }, [orders, customerOrderNumbers, lastPlacedOrder]);
 
-  // Active customer orders visible in My Orders dashboard (excludes soft-hidden orders)
+  // Customer orders visible in My Orders dashboard (all orders preserved)
   const customerOrders = useMemo(() => {
-    return allCustomerOrders.filter((o) => {
-      const idMatch = hiddenOrderKeysSet.has(o.id.toUpperCase());
-      const numMatch = hiddenOrderKeysSet.has(o.orderNumber.trim().toUpperCase());
-      return !idMatch && !numMatch;
-    });
-  }, [allCustomerOrders, hiddenOrderKeysSet]);
+    return allCustomerOrders;
+  }, [allCustomerOrders]);
 
-  // Soft-hidden orders retained for customer inspection / restoration
   const hiddenCustomerOrders = useMemo(() => {
-    return allCustomerOrders.filter((o) => {
-      const idMatch = hiddenOrderKeysSet.has(o.id.toUpperCase());
-      const numMatch = hiddenOrderKeysSet.has(o.orderNumber.trim().toUpperCase());
-      return idMatch || numMatch;
-    });
-  }, [allCustomerOrders, hiddenOrderKeysSet]);
+    return [];
+  }, []);
 
   const customerOrdersCount = customerOrders.length;
 
@@ -930,6 +936,37 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
     return () => unsub();
   }, []);
+
+  // Real-time Firestore sync for Deleted Orders Audit Log (strictly admin audit trail)
+  useEffect(() => {
+    // Audit logs are strictly an administrative record; skip entirely for storefront visitors
+    if (!currentUser || currentUser.type !== 'admin') {
+      setDeletedOrderLogs([]);
+      return;
+    }
+
+    const unsub = onSnapshot(
+      collection(db, 'deleted_orders_log'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: DeletedOrderAuditLog[] = [];
+          snapshot.forEach((d) => {
+            list.push({ id: d.id, ...d.data() } as DeletedOrderAuditLog);
+          });
+          list.sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());
+          setDeletedOrderLogs(list);
+          saveToStorage(STORAGE_KEYS.DELETED_ORDERS_LOG, list);
+        } else {
+          setDeletedOrderLogs([]);
+          saveToStorage(STORAGE_KEYS.DELETED_ORDERS_LOG, []);
+        }
+      },
+      (error) => {
+        console.warn('Firestore deleted_orders_log sync warning:', error);
+      }
+    );
+    return () => unsub();
+  }, [currentUser]);
 
   // Real-time Firestore sync for Boutique Settings & Announcements
   useEffect(() => {
@@ -1310,6 +1347,82 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const clearCart = () => {
     setCart([]);
+  };
+
+  // Dynamic Real-Time Cart Price Synchronization & Price Change Notification (User Requirement 3)
+  useEffect(() => {
+    if (!cart || cart.length === 0 || !products || products.length === 0) return;
+
+    let hasAnyChanges = false;
+    const nextCart = cart.map((cartItem) => {
+      const liveProd = products.find(
+        (p) =>
+          p.id === cartItem.product.id ||
+          (Boolean(p.productCode) &&
+            Boolean(cartItem.product.productCode) &&
+            p.productCode.trim().toUpperCase() === cartItem.product.productCode.trim().toUpperCase())
+      );
+
+      if (!liveProd) return cartItem;
+
+      // 1. Detect dynamic price change by admin or staff
+      if (liveProd.price !== cartItem.product.price) {
+        hasAnyChanges = true;
+        const oldPrice = cartItem.product.price;
+        const newPrice = liveProd.price;
+        const previousPriceRecorded = cartItem.previousPrice !== undefined ? cartItem.previousPrice : oldPrice;
+        const notice = `The price of this item has been updated from ₹${oldPrice.toLocaleString('en-IN')} to ₹${newPrice.toLocaleString('en-IN')}`;
+
+        return {
+          ...cartItem,
+          product: {
+            ...liveProd,
+            price: newPrice,
+          },
+          previousPrice: previousPriceRecorded,
+          priceChangeNotice: notice,
+          priceChangedAt: new Date().toISOString(),
+        };
+      }
+
+      // 2. Synchronize non-price changes (title, stock, images) while preserving existing price alert
+      if (
+        cartItem.product.title !== liveProd.title ||
+        cartItem.product.stockCount !== liveProd.stockCount ||
+        cartItem.product.stockStatus !== liveProd.stockStatus ||
+        cartItem.product.images?.[0] !== liveProd.images?.[0]
+      ) {
+        hasAnyChanges = true;
+        return {
+          ...cartItem,
+          product: {
+            ...liveProd,
+            price: liveProd.price,
+          },
+        };
+      }
+
+      return cartItem;
+    });
+
+    if (hasAnyChanges) {
+      setCart(nextCart);
+      saveToStorage(STORAGE_KEYS.CART, nextCart);
+    }
+  }, [products]);
+
+  const dismissCartPriceAlert = (productId: string) => {
+    setCart((prev) => {
+      const updated = prev.map((item) => {
+        if (item.product.id === productId) {
+          const { priceChangeNotice, previousPrice, ...rest } = item;
+          return rest;
+        }
+        return item;
+      });
+      saveToStorage(STORAGE_KEYS.CART, updated);
+      return updated;
+    });
   };
 
   const cartTotal = useMemo(() => {
@@ -2423,6 +2536,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     orderId: string,
     options?: { restockItems?: boolean; reason?: string }
   ): Promise<void> => {
+    // Guard: Order deletion must be enabled in boutique settings
+    if (!settings.enableOrderDeletion) {
+      console.warn('Order deletion is blocked: enableOrderDeletion is disabled in Settings.');
+      throw new Error(
+        'Order deletion is currently disabled in Boutique Settings. Please enable the Order Deletion toggle in Admin Settings first.'
+      );
+    }
+
     const targetOrder = orders.find((o) => o.id === orderId);
     if (!targetOrder) return;
 
@@ -2435,7 +2556,56 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       replenishOrderInventory(targetOrder);
     }
 
-    // Remove from in-memory orders state & local storage
+    // Construct comprehensive audit trail record
+    const actorName =
+      currentUser?.name || (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+    const actorId = currentUser?.staffId || (currentUser?.type === 'admin' ? 'admin' : '');
+    const actorRole =
+      currentUser?.type === 'admin'
+        ? 'admin'
+        : settings.staffMembers?.find((s) => s.id === currentUser?.staffId)?.role || 'staff';
+    const nowIso = new Date().toISOString();
+
+    const itemsSummary =
+      targetOrder.items && targetOrder.items.length > 0
+        ? targetOrder.items.map((it) => `${it.product?.title || 'Saree'} (x${it.quantity})`).join(', ')
+        : 'N/A';
+
+    const auditEntry: DeletedOrderAuditLog = {
+      id: `del-log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      orderId: targetOrder.id,
+      orderNumber: targetOrder.orderNumber,
+      customerName: targetOrder.customer.name,
+      customerPhone: targetOrder.customer.phone,
+      totalAmount: targetOrder.totalAmount,
+      itemsCount: targetOrder.items.reduce((sum, it) => sum + (it.quantity || 1), 0),
+      itemsSummary,
+      deletedBy: actorName,
+      deletedById: actorId,
+      deletedByRole: actorRole,
+      deletedAt: nowIso,
+      deletionReason: options?.reason?.trim() || 'Manual removal by authorized staff/admin',
+      restockedItems: Boolean(options?.restockItems),
+      orderSnapshot: targetOrder,
+    };
+
+    // 1. Persist audit log to dedicated Firestore collection (/deleted_orders_log)
+    setDoc(doc(db, 'deleted_orders_log', auditEntry.id), sanitizeForFirestore(auditEntry)).catch(
+      (err) => console.warn('Failed to sync deleted order audit log to Firestore:', err)
+    );
+
+    // 2. Update local state and localStorage for audit ledger
+    setDeletedOrderLogs((prev) => {
+      const next = [auditEntry, ...prev.filter((l) => l.id !== auditEntry.id)];
+      saveToStorage(STORAGE_KEYS.DELETED_ORDERS_LOG, next);
+      return next;
+    });
+
+    // 3. Trigger instant real-time notification & chime to main store admin
+    setAdminDeletionAlert(auditEntry);
+    playChatChimeSound();
+
+    // 4. Remove from in-memory orders state & local storage
     setOrders((prev) => {
       const next = prev.filter((o) => o.id !== orderId);
       saveToStorage(STORAGE_KEYS.ORDERS, next);
@@ -2468,11 +2638,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return next;
     });
 
-    // Delete document from Firestore
+    // 5. Delete document from Firestore
     try {
       await deleteDoc(doc(db, 'orders', orderId));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `orders/${orderId}`);
+    }
+  };
+
+  const clearDeletedOrderLogs = async (): Promise<void> => {
+    setDeletedOrderLogs([]);
+    saveToStorage(STORAGE_KEYS.DELETED_ORDERS_LOG, []);
+    try {
+      const snap = await getDocs(collection(db, 'deleted_orders_log'));
+      snap.forEach((d) => {
+        deleteDoc(doc(db, 'deleted_orders_log', d.id)).catch(() => {});
+      });
+    } catch (err) {
+      console.warn('Failed to clear deleted orders log in Firestore:', err);
     }
   };
 
@@ -3982,7 +4165,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         cartGrandTotal,
         cartStockWarning,
         clearCartStockWarning,
+        dismissCartPriceAlert,
         orders,
+        deletedOrderLogs,
+        adminDeletionAlert,
+        dismissAdminDeletionAlert,
+        clearDeletedOrderLogs,
         placeOrder,
         deleteOrder,
         updateOrderStatus,

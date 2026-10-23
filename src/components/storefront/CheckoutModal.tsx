@@ -21,6 +21,7 @@ import {
   Smartphone,
   ChevronDown,
   ChevronUp,
+  Sparkles,
 } from 'lucide-react';
 
 interface CheckoutModalProps {
@@ -221,6 +222,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
 
           {/* Section 1: Order Summary Preview */}
           <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80">
+            {/* Real-time Cart Price Synchronization Alert Badge in Checkout */}
+            {cart.some((it) => it.previousPrice !== undefined && it.previousPrice !== it.product.price) && (
+              <div className="mb-3 p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="font-medium">
+                  The prices of items in your bag reflect recent boutique rate updates before checkout.
+                </span>
+              </div>
+            )}
+
             <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
               <span className="font-semibold text-neutral-700">Order Items ({cart.length})</span>
               {cartShippingFee === 0 ? (
@@ -237,9 +248,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               {cart.map((item) => (
                 <span
                   key={item.product.id}
-                  className="text-xs bg-white border border-neutral-200 px-2.5 py-1 rounded-lg text-neutral-800"
+                  className="text-xs bg-white border border-neutral-200 px-2.5 py-1 rounded-lg text-neutral-800 flex items-center gap-1.5"
                 >
-                  {item.product.title} (×{item.quantity})
+                  <span>{item.product.title} (×{item.quantity})</span>
+                  {item.previousPrice !== undefined && item.previousPrice !== item.product.price && (
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-200">
+                      Rate Updated: {formatPrice(item.product.price)}
+                    </span>
+                  )}
                 </span>
               ))}
             </div>

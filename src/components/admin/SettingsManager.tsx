@@ -161,6 +161,9 @@ export const SettingsManager: React.FC = () => {
   // Requirement 2: Auto-Confirmation Mode Toggle
   const [autoConfirmationMode, setAutoConfirmationMode] = useState<boolean>(settings.autoConfirmationMode ?? false);
 
+  // Dedicated Order Deletion Admin Toggle & Operational Control (User Request)
+  const [enableOrderDeletion, setEnableOrderDeletion] = useState<boolean>(settings.enableOrderDeletion ?? false);
+
   // Payment Config
   const [upiId, setUpiId] = useState(settings.payment.upiId);
   const [payeeName, setPayeeName] = useState(settings.payment.payeeName);
@@ -262,6 +265,9 @@ export const SettingsManager: React.FC = () => {
       }
       if (settings.autoConfirmationMode !== undefined) {
         setAutoConfirmationMode(settings.autoConfirmationMode);
+      }
+      if (settings.enableOrderDeletion !== undefined) {
+        setEnableOrderDeletion(settings.enableOrderDeletion);
       }
     }
   }, [settings]);
@@ -522,6 +528,7 @@ export const SettingsManager: React.FC = () => {
         idleThresholdMinutes: Number(idleThresholdMinutes) || 15,
       },
       autoConfirmationMode,
+      enableOrderDeletion,
       ...(isAdmin ? { adminPin: adminPin.trim() || '889988' } : {}),
     });
 
@@ -1578,6 +1585,90 @@ export const SettingsManager: React.FC = () => {
                   <span>
                     Active: Whenever an order in <strong>Pending</strong> state is assigned to a staff specialist or claimed by store owner, it will instantly switch to <strong>Confirmed</strong> and notify the customer.
                   </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Section 4D: Dedicated Order Deletion Toggle & Operational Control (User Request) */}
+        {isAdmin && (
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-rose-950 font-serif font-bold text-base sm:text-lg">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+                <h3>Order Deletion Admin Control & Security</h3>
+              </div>
+              <span
+                className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 ${
+                  enableOrderDeletion
+                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                    : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    enableOrderDeletion ? 'bg-rose-500 animate-pulse' : 'bg-neutral-400'
+                  }`}
+                />
+                <span>{enableOrderDeletion ? 'Order Deletion: ENABLED' : 'Order Deletion: DISABLED'}</span>
+              </span>
+            </div>
+
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              When <strong>enabled</strong>, authorized staff specialists and store administrators are permitted to remove or delete order records from the boutique database. Every deletion registers an immutable entry in the <strong>Order Removal Audit Trail</strong> and sends an instant real-time alert to the boutique owner. When <strong>disabled</strong>, all order deletion options and buttons are completely blocked and hidden across the administrative workspace.
+            </p>
+
+            <div
+              className={`p-4 rounded-xl border space-y-3 text-xs transition-colors ${
+                enableOrderDeletion ? 'bg-rose-50/50 border-rose-200' : 'bg-neutral-50 border-neutral-200'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-neutral-900 block text-sm flex items-center gap-1.5">
+                    <Shield className="w-4 h-4 text-amber-600" />
+                    <span>Enable / Disable Order Deletion</span>
+                  </span>
+                  <span className="text-[11px] text-neutral-500">
+                    Allow authorized administrators and assigned staff specialists to delete orders
+                  </span>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={enableOrderDeletion}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setEnableOrderDeletion(enabled);
+                      updateSettings({ enableOrderDeletion: enabled });
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                </label>
+              </div>
+
+              {enableOrderDeletion ? (
+                <div className="p-3 rounded-lg bg-rose-50 text-rose-900 border border-rose-200 flex items-start gap-2 text-[11px] leading-relaxed">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Order Deletion Active:</span>
+                    <span>
+                      Authorized personnel can remove orders. Every removal will register the actor name, exact timestamp, customer phone, items purchased, and reason in the <strong>Deleted Orders Audit Ledger</strong>, and ring an instant alert chime to the owner.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-neutral-100 text-neutral-700 border border-neutral-200 flex items-start gap-2 text-[11px] leading-relaxed">
+                  <Lock className="w-4 h-4 text-neutral-500 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Safety Mode Engaged (Deletion Blocked):</span>
+                    <span>
+                      The delete order buttons are hidden across the entire portal. No orders can be deleted until this setting is toggled on.
+                    </span>
+                  </div>
                 </div>
               )}
             </div>

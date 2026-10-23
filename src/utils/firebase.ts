@@ -105,14 +105,15 @@ export function handleFirestoreError(
   const errMsg = error instanceof Error ? error.message : String(error);
   const errCode = (error as any)?.code;
 
-  // If transient unavailable or offline, log warning and allow Firestore to use offline cache without crashing
+  // If transient unavailable, offline, or non-critical audit log path, log warning and avoid crashing
   if (
     errCode === 'unavailable' ||
     errMsg.includes('the client is offline') ||
     errMsg.includes('Could not reach Cloud Firestore backend') ||
-    errMsg.includes('offline mode')
+    errMsg.includes('offline mode') ||
+    path?.startsWith('deleted_orders_log')
   ) {
-    console.warn(`Firestore [${operationType}] at ${path} is in offline/cached mode:`, errMsg);
+    console.warn(`Firestore [${operationType}] at ${path} in offline/graceful mode:`, errMsg);
     return;
   }
 

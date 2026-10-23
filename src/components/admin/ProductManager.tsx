@@ -115,6 +115,11 @@ export const ProductManager: React.FC = () => {
   const [isCatImgUploading, setIsCatImgUploading] = useState(false);
   const [isProductImgUploading, setIsProductImgUploading] = useState(false);
 
+  // Cross-Selling Product-Category Suggestion Mapping State
+  const [crossSellProductIds, setCrossSellProductIds] = useState<string[]>([]);
+  const [crossSellCategoryNames, setCrossSellCategoryNames] = useState<string[]>([]);
+  const [crossSellSearchQuery, setCrossSellSearchQuery] = useState('');
+
   // Requirement 4: Category & Product Image Persistence Bug Fix
   // Uses client-side canvas compression so high-res phone camera uploads fit strictly within Firestore document limits
   const handleCatImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -408,6 +413,12 @@ export const ProductManager: React.FC = () => {
       'attr-occasion': 'Wedding & Reception',
     };
     setCustomAttributesValues(initialAttrs);
+
+    // Initialize cross-sell recommendations
+    setCrossSellProductIds([]);
+    setCrossSellCategoryNames(['Designer Blouses', 'Temple Jewelry']);
+    setCrossSellSearchQuery('');
+
     setIsEditingModalOpen(true);
   };
 
@@ -599,6 +610,12 @@ export const ProductManager: React.FC = () => {
       initialAttrs['attr-blouse'] = prod.blousePieceIncluded ? 'Included (0.8m Running Silk)' : 'Not Included';
     }
     setCustomAttributesValues(initialAttrs);
+
+    // Populate cross-sell configuration
+    setCrossSellProductIds(prod.crossSellProductIds || []);
+    setCrossSellCategoryNames(prod.crossSellCategoryNames || []);
+    setCrossSellSearchQuery('');
+
     setIsEditingModalOpen(true);
   };
 
@@ -741,6 +758,8 @@ export const ProductManager: React.FC = () => {
       occasion: finalOccasion ? finalOccasion.trim() : undefined,
       specificationFields: productSpecificAttributes,
       customAttributes: customAttributesValues,
+      crossSellProductIds,
+      crossSellCategoryNames,
     };
 
     if (editingProduct) {
@@ -2111,6 +2130,151 @@ export const ProductManager: React.FC = () => {
                         No specification fields added for this product yet. Click "Manage Specification Fields" to add custom columns.
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* Cross-Selling Product-Category Suggestion Mapping Section */}
+                <div className="sm:col-span-2 p-4 bg-amber-50/50 rounded-2xl border border-amber-200/90 space-y-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      <h4 className="font-serif text-sm font-bold text-neutral-900">
+                        Cross-Selling Product Suggestions (Blouse, Sarees, & Jewelry)
+                      </h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                        {crossSellProductIds.length} Linked Items
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      Select matching sarees, blouses, and jewelry items to display dynamically on the customer product details and cart drawer.
+                    </p>
+                  </div>
+
+                  {/* 1. Handpicked Product Links */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-neutral-800">
+                      1. Handpicked Specific Products to Cross-Sell:
+                    </label>
+
+                    {/* Filter and selector */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={crossSellSearchQuery}
+                        onChange={(e) => setCrossSellSearchQuery(e.target.value)}
+                        placeholder="Search catalog to link matching blouse, saree, or jewelry..."
+                        className="w-full p-2.5 pl-8 rounded-xl border border-neutral-300 text-xs bg-white text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                      />
+                      <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-3" />
+                      {crossSellSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setCrossSellSearchQuery('')}
+                          className="text-[10px] text-neutral-400 hover:text-neutral-700 absolute right-2.5 top-3"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Search results & quick toggle list */}
+                    <div className="max-h-40 overflow-y-auto space-y-1.5 p-2 bg-white rounded-xl border border-neutral-200">
+                      {products
+                        .filter(
+                          (p) =>
+                            p.id !== editingProduct?.id &&
+                            (!crossSellSearchQuery.trim() ||
+                              p.title.toLowerCase().includes(crossSellSearchQuery.toLowerCase()) ||
+                              p.productCode.toLowerCase().includes(crossSellSearchQuery.toLowerCase()) ||
+                              (p.category && p.category.toLowerCase().includes(crossSellSearchQuery.toLowerCase())))
+                        )
+                        .slice(0, 10)
+                        .map((candidate) => {
+                          const isLinked = crossSellProductIds.includes(candidate.id);
+                          return (
+                            <div
+                              key={candidate.id}
+                              onClick={() => {
+                                setCrossSellProductIds((prev) =>
+                                  isLinked ? prev.filter((id) => id !== candidate.id) : [...prev, candidate.id]
+                                );
+                              }}
+                              className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-2 transition cursor-pointer ${
+                                isLinked
+                                  ? 'bg-amber-50 border-amber-300 text-amber-950 font-semibold'
+                                  : 'bg-neutral-50/50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <img
+                                  src={candidate.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                                  alt={candidate.title}
+                                  className="w-7 h-7 rounded-md object-cover bg-neutral-200 shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <span className="text-[10px] text-neutral-500 font-mono">
+                                    [{candidate.productCode}]
+                                  </span>{' '}
+                                  <span className="truncate">{candidate.title}</span>
+                                  {candidate.category && (
+                                    <span className="ml-1 text-[9px] px-1.5 py-0.2 rounded bg-neutral-200 text-neutral-700">
+                                      {candidate.category}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="tabular-nums font-bold">{formatPrice(candidate.price)}</span>
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
+                                    isLinked
+                                      ? 'bg-amber-600 text-white'
+                                      : 'bg-neutral-200 text-neutral-700'
+                                  }`}
+                                >
+                                  {isLinked ? '✓ Linked' : '+ Link'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  {/* 2. Category Fallback Configuration */}
+                  <div className="pt-2 border-t border-amber-200/60 space-y-2">
+                    <label className="block text-xs font-bold text-neutral-800">
+                      2. Fallback Cross-Sell Categories:
+                    </label>
+                    <p className="text-[10px] text-neutral-500">
+                      When handpicked items are out of stock, recommend items from these categories:
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {categories.map((cat) => {
+                        const isCatSelected = crossSellCategoryNames.includes(cat.name);
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => {
+                              setCrossSellCategoryNames((prev) =>
+                                isCatSelected
+                                  ? prev.filter((c) => c !== cat.name)
+                                  : [...prev, cat.name]
+                              );
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer flex items-center gap-1.5 ${
+                              isCatSelected
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                                : 'bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-100'
+                            }`}
+                          >
+                            <span>{cat.name}</span>
+                            {isCatSelected && <Check className="w-3 h-3" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 

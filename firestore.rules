@@ -63,6 +63,12 @@ service cloud.firestore {
       allow create, update, delete: if true;
     }
 
+    // Deleted Orders Audit Ledger & Removal Trail
+    match /deleted_orders_log/{logId} {
+      // Admin and authorized staff audit log access
+      allow read, write: if true;
+    }
+
     // Boutique Staff Accounts & Permissions
     match /staff/{staffId} {
       // Allow read and write for staff management

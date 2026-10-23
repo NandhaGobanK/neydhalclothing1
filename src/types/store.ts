@@ -65,6 +65,8 @@ export interface Product {
   category?: string; // Category grouping (e.g. Poontamil Sarees, Foil Print Sarees, etc.)
   isRestocked?: boolean; // Set to true when restocked via order cancellation or inventory update
   restockedAt?: string; // Timestamp of latest restock event
+  crossSellProductIds?: string[]; // Handpicked linked product IDs for cross-selling (e.g. matching blouse, jewelry)
+  crossSellCategoryNames?: string[]; // Fallback cross-sell category names (e.g. ['Designer Blouses', 'Temple Jewelry'])
 }
 
 export interface SareeCategory {
@@ -104,6 +106,27 @@ export interface ProductReview {
 export interface CartItem {
   product: Product;
   quantity: number;
+  previousPrice?: number; // Captured if price changed dynamically while item is in cart
+  priceChangeNotice?: string; // Clear price change notice e.g. "The price of this item has been updated from ₹X to ₹Y"
+  priceChangedAt?: string; // Timestamp when price change was detected
+}
+
+export interface DeletedOrderAuditLog {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  totalAmount: number;
+  itemsCount: number;
+  itemsSummary: string; // e.g. "Kanjivaram Silk (x1), Banarasi Brocade (x2)"
+  deletedBy: string; // Staff name or "Admin / Owner"
+  deletedById?: string;
+  deletedByRole?: string; // "admin" | "manager" | "concierge" | "fulfillment"
+  deletedAt: string; // ISO timestamp
+  deletionReason?: string; // Reason entered upon deletion
+  restockedItems?: boolean;
+  orderSnapshot?: Partial<Order>; // Full order data snapshot for audit recovery/records
 }
 
 export type OrderStatus =
@@ -425,6 +448,7 @@ export interface StoreSettings {
   productAttributes?: ProductAttributeDefinition[]; // Flexible custom specifications / attributes
   isFabricOptional?: boolean; // Admin preference: whether Fabric Type is optional
   autoConfirmationMode?: boolean; // When enabled, assigning order automatically transitions Pending -> Confirmed
+  enableOrderDeletion?: boolean; // Dedicated Admin toggle: When enabled, authorized staff and admins can delete order records. When disabled, order deletion is completely blocked/hidden.
   isFreshBrandNew?: boolean; // True when reset to clean fresh state
   lastResetAt?: string; // Timestamp of latest fresh reset
 }
