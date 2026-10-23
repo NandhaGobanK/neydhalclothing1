@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Product } from '../../types/store';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice, calculateDiscount, getProductShareUrl, getPublicStoreUrl } from '../../utils/upi';
@@ -20,17 +20,19 @@ import {
   Minus,
   Instagram,
   Film,
-  Camera,
+  Eye,
   Sparkles,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
-import { VirtualTryOnModal } from '../common/VirtualTryOnModal';
 
 interface ProductDetailModalProps {
   product: Product;
   onClose: () => void;
+  onSelectProduct?: (product: Product) => void;
 }
 
-export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose }) => {
+export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose, onSelectProduct }) => {
   const {
     products,
     addToCart,
@@ -41,44 +43,77 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
     getProductReviews,
     getProductAverageRating,
     addReview,
+    setActiveProductModal,
   } = useStore();
+  const modalBoxRef = useRef<HTMLDivElement>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<'photos' | 'video' | 'shorts'>('photos');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Cross-sell & Virtual Try-On state
-  const [isTryOnOpen, setIsTryOnOpen] = useState(false);
+  // Suggested items single-carousel state
   const [addedCrossSellIds, setAddedCrossSellIds] = useState<Record<string, boolean>>({});
+  const carouselScrollRef = useRef<HTMLDivElement>(null);
 
-  // Matching cross-sell products (handpicked + category fallbacks)
-  const matchingCrossSellProducts = React.useMemo(() => {
+  const scrollCarousel = (offset: number) => {
+    if (carouselScrollRef.current) {
+      carouselScrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
+
+  // Unified suggested items (combines blouses, jewelry, complementary sarees, & handpicked items)
+  const suggestedItems = React.useMemo(() => {
+    // 1. Direct handpicked cross-sells
     const directIds = product.crossSellProductIds || [];
     const directMatches = products.filter(
       (p) => directIds.includes(p.id) && p.id !== product.id && p.stockStatus !== 'out_of_stock'
     );
 
-    const catFallbacks = product.crossSellCategoryNames && product.crossSellCategoryNames.length > 0
+    // 2. Category configured suggestions or fallbacks (e.g. Blouses, Jewelry, Sarees)
+    const configuredCategories = product.crossSellCategoryNames && product.crossSellCategoryNames.length > 0
       ? product.crossSellCategoryNames
-      : ['Designer Blouses', 'Temple Jewelry'];
+      : ['Designer Blouses', 'Temple Jewelry', 'Jewellery', 'Blouses', 'Accessories', 'Kanjivaram Silk', 'Banarasi Brocade'];
 
-    const catMatches = products.filter(
-      (p) =>
-        p.id !== product.id &&
-        !directIds.includes(p.id) &&
-        p.stockStatus !== 'out_of_stock' &&
-        p.category &&
-        catFallbacks.some((c) => c.toLowerCase() === p.category?.toLowerCase())
+    const categoryMatches = products.filter((p) => {
+      if (p.id === product.id || directIds.includes(p.id) || p.stockStatus === 'out_of_stock' || !p.category) {
+        return false;
+      }
+      const cat = p.category.toLowerCase();
+      return configuredCategories.some(
+        (c) => c.toLowerCase() === cat || cat.includes(c.toLowerCase()) || c.toLowerCase().includes(cat)
+      );
+    });
+
+    // 3. Fallbacks to other products in stock
+    const existingIds = new Set([product.id, ...directMatches.map((m) => m.id), ...categoryMatches.map((m) => m.id)]);
+    const otherProducts = products.filter(
+      (p) => !existingIds.has(p.id) && p.stockStatus !== 'out_of_stock'
     );
 
-    return [...directMatches, ...catMatches].slice(0, 4);
+    return [...directMatches, ...categoryMatches, ...otherProducts];
   }, [product, products]);
 
-  const handleQuickAddCrossSell = (item: Product) => {
+  const handleQuickAddCrossSell = (item: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     addToCart(item, 1);
     setAddedCrossSellIds((prev) => ({ ...prev, [item.id]: true }));
     setTimeout(() => {
       setAddedCrossSellIds((prev) => ({ ...prev, [item.id]: false }));
     }, 1800);
+  };
+
+  const handleViewSuggestedProduct = (item: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (onSelectProduct) {
+      onSelectProduct(item);
+    } else {
+      setActiveProductModal(item);
+    }
+    setSelectedImageIndex(0);
+    setActiveTab('photos');
+    setQuantity(1);
+    if (modalBoxRef.current) {
+      modalBoxRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   // Customer Reviews state
@@ -202,7 +237,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
-      <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+      <div
+        ref={modalBoxRef}
+        className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200"
+      >
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -575,101 +613,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 })}
               </div>
 
-              {/* Complete the Look Cross-Selling Widget (Blouse, Sarees, & Jewelry) */}
-              {matchingCrossSellProducts.length > 0 && (
-                <div className="mb-6 p-4 rounded-2xl bg-amber-50/60 border border-amber-200/90 shadow-2xs">
-                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                    <div>
-                      <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full uppercase tracking-wider border border-amber-200">
-                        Atelier Pairing
-                      </span>
-                      <h3 className="font-serif text-base font-bold text-neutral-900 mt-1 flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-amber-600" />
-                        <span>Complete The Look</span>
-                      </h3>
-                      <p className="text-[11px] text-neutral-500">
-                        Curated matching blouses & temple jewelry to pair with this drape
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsTryOnOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-amber-300 hover:text-amber-200 text-xs font-semibold shadow-xs transition cursor-pointer"
-                    >
-                      <Camera className="w-3.5 h-3.5 text-amber-400" />
-                      <span>✨ Try On This Look</span>
-                    </button>
-                  </div>
-
-                  {/* Cross-Sell Cards Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {matchingCrossSellProducts.map((item) => (
-                      <div
-                        key={item.id}
-                        className="p-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-2xs flex items-center gap-2.5"
-                      >
-                        <div className="w-14 h-14 rounded-lg overflow-hidden bg-neutral-100 shrink-0 border border-neutral-200">
-                          <img
-                            src={item.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
-                            alt={item.title}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-[10px] font-semibold text-amber-800 block truncate">
-                            {item.category || 'Matching Accent'}
-                          </span>
-                          <h4 className="text-xs font-bold text-neutral-900 truncate" title={item.title}>
-                            {item.title}
-                          </h4>
-                          <div className="flex items-center justify-between mt-1">
-                            <span className="text-xs font-bold text-neutral-900 tabular-nums">
-                              {formatPrice(item.price)}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleQuickAddCrossSell(item)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
-                                addedCrossSellIds[item.id]
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
-                                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
-                              }`}
-                            >
-                              {addedCrossSellIds[item.id] ? (
-                                <>
-                                  <Check className="w-3 h-3 text-emerald-600" />
-                                  <span>Added</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Plus className="w-3 h-3" />
-                                  <span>+ Add</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Ensemble Quick Bundle Action */}
-                  <div className="mt-3 pt-2.5 border-t border-amber-200/60 flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-[11px] text-amber-900 font-medium">
-                      Want to visualize the entire ensemble on yourself?
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsTryOnOpen(true)}
-                      className="text-xs font-bold text-amber-900 hover:text-amber-950 underline flex items-center gap-1"
-                    >
-                      <span>Open Virtual Styling Atelier</span>
-                      <span>→</span>
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* Cancellation & Refund Policy Notice on Product Front (User Request) */}
               <div className="mb-6 p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-950 space-y-1">
@@ -965,16 +908,107 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Interactive Virtual Try-On Modal (Live Camera / Photo Upload) */}
-      {isTryOnOpen && (
-        <VirtualTryOnModal
-          primaryProduct={product}
-          matchingProducts={matchingCrossSellProducts}
-          onClose={() => setIsTryOnOpen(false)}
-        />
-      )}
+        {/* Suggested Items (Single Carousel for all recommendations: Blouses, Jewelry, Sarees) */}
+        {suggestedItems.length > 0 && (
+          <div className="border-t border-neutral-200/90 bg-white p-4 sm:p-6 select-none">
+            {/* Header with Title and Scroll Controls */}
+            <div className="flex items-center justify-between mb-3.5">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm sm:text-base font-semibold text-neutral-900 tracking-tight">
+                  Suggested Items
+                </h4>
+                <span className="text-[11px] text-neutral-400 font-medium">
+                  ({suggestedItems.length} items)
+                </span>
+              </div>
+
+              {/* Navigation Arrows */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => scrollCarousel(-220)}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border border-neutral-200 shadow-2xs hover:shadow-xs flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
+                  aria-label="Previous items"
+                  title="Scroll left"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollCarousel(220)}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border border-neutral-200 shadow-2xs hover:shadow-xs flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
+                  aria-label="Next items"
+                  title="Scroll right"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Single Carousel Container */}
+            <div className="relative group/carousel">
+              {/* Left Floating Button for larger screens */}
+              <button
+                type="button"
+                onClick={() => scrollCarousel(-220)}
+                className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
+                aria-label="Previous items"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {/* Scrollable Row of Suggested Products */}
+              <div
+                ref={carouselScrollRef}
+                className="flex items-center gap-3 overflow-x-auto scrollbar-none scroll-smooth px-1 py-1"
+              >
+                {suggestedItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={(e) => handleViewSuggestedProduct(item, e)}
+                    className="group/card relative w-24 sm:w-28 md:w-32 aspect-[3/4] rounded-2xl border border-neutral-200/90 hover:border-amber-500 overflow-hidden bg-neutral-50 shrink-0 shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                    title={`Click to view ${item.title}`}
+                  >
+                    {/* Product Photo */}
+                    <img
+                      src={item.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                      alt={item.title}
+                      className="w-full h-full object-cover group-hover/card:scale-106 transition-transform duration-300"
+                      loading="lazy"
+                    />
+
+                    {/* Subtle Category Tag */}
+                    {item.category && (
+                      <span className="absolute top-1.5 left-1.5 z-10 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider bg-black/70 text-amber-200 backdrop-blur-xs px-1.5 py-0.5 rounded-md truncate max-w-[90%]">
+                        {item.category}
+                      </span>
+                    )}
+
+                    {/* Price Badge Overlay at Bottom Left (matching reference design) */}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2 text-white">
+                      <p className="text-[11px] sm:text-xs font-bold leading-tight truncate">
+                        {formatPrice(item.price)}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Right Floating Button for larger screens */}
+              <button
+                type="button"
+                onClick={() => scrollCarousel(220)}
+                className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
+                aria-label="Next items"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

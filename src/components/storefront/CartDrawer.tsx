@@ -22,6 +22,7 @@ export const CartDrawer: React.FC = () => {
     cartGrandTotal,
     settings,
     setIsCheckoutOpen,
+    setActiveProductModal,
     cartStockWarning,
     clearCartStockWarning,
     dismissCartPriceAlert,
@@ -335,35 +336,47 @@ export const CartDrawer: React.FC = () => {
                     {cartCrossSellSuggestions.map((sug) => (
                       <div
                         key={sug.id}
-                        className="p-2.5 rounded-xl bg-amber-50/50 border border-amber-200/80 flex items-center justify-between gap-3 shadow-2xs"
+                        className="p-2.5 rounded-xl bg-amber-50/50 hover:bg-amber-100/50 border border-amber-200/80 hover:border-amber-400/80 flex items-center justify-between gap-3 shadow-2xs transition group"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCartOpen(false);
+                            setActiveProductModal(sug);
+                          }}
+                          className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer flex-1"
+                          title={`Click to view ${sug.title} details`}
+                        >
                           <img
                             src={sug.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                             alt={sug.title}
-                            className="w-11 h-11 rounded-lg object-cover bg-white border border-neutral-200 shrink-0"
+                            className="w-12 h-12 rounded-lg object-cover bg-white border border-neutral-200 shrink-0 group-hover:scale-105 transition-transform"
                           />
                           <div className="min-w-0">
                             <span className="text-[10px] text-amber-800 font-semibold block truncate">
                               {sug.category || 'Matching Piece'}
                             </span>
-                            <h5 className="text-xs font-bold text-neutral-900 truncate" title={sug.title}>
+                            <h5 className="text-xs font-bold text-neutral-900 truncate group-hover:text-amber-900 group-hover:underline" title={sug.title}>
                               {sug.title}
                             </h5>
                             <span className="text-xs font-bold text-neutral-950 tabular-nums">
                               {formatPrice(sug.price)}
                             </span>
                           </div>
-                        </div>
+                        </button>
 
                         <button
                           type="button"
-                          onClick={() => handleQuickAddCrossSell(sug)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleQuickAddCrossSell(sug);
+                          }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition shrink-0 cursor-pointer ${
                             addedCrossSell[sug.id]
                               ? 'bg-emerald-600 text-white'
                               : 'bg-neutral-900 hover:bg-neutral-800 text-white shadow-2xs'
                           }`}
+                          title={`Add ${sug.title} to bag`}
                         >
                           {addedCrossSell[sug.id] ? (
                             <>

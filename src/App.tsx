@@ -402,6 +402,7 @@ function MainAppContent() {
             <ProductDetailModal
               product={activeProductModal}
               onClose={() => setActiveProductModal(null)}
+              onSelectProduct={(p) => setActiveProductModal(p)}
             />
           )}
 
