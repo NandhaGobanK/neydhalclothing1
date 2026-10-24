@@ -376,14 +376,24 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       <div className="relative w-full max-w-6xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
         {/* Top Reseller Brand Ribbon */}
         <div className="bg-gradient-to-r from-purple-950 via-neutral-900 to-indigo-950 text-white p-5 sm:p-6 shrink-0 relative border-b border-purple-800/40">
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
-            aria-label="Close portal"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="Return to Customer Store"
+            >
+              <span>&larr; Patron Store</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+              aria-label="Close portal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -703,6 +713,17 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
               >
                 <Sparkles className="w-4 h-4 text-purple-600" />
                 <span>Log in as "Sri Meenakshi Saree Resellers" (20% Wholesale Tier)</span>
+              </button>
+            </div>
+
+            {/* Return to Customer Login */}
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-xs text-neutral-500 hover:text-purple-900 transition font-medium cursor-pointer"
+              >
+                Not a reseller? Return to Patron / Retail Login &rarr;
               </button>
             </div>
           </div>

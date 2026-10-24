@@ -174,7 +174,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess 
 
         <div className="flex items-center gap-2 text-xs text-neutral-400">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span className="hidden sm:inline">Protected Member Portal</span>
+          <span>Protected Member Portal</span>
         </div>
       </header>
 
@@ -490,7 +490,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess 
         </div>
       </main>
 
-      {/* Footer info with zero reseller references */}
+      {/* Footer info strictly for patrons */}
       <footer className="relative z-10 max-w-7xl mx-auto w-full px-4 py-4 text-center text-xs text-neutral-400 border-t border-white/5">
         <p className="text-[11px]">
           © {new Date().getFullYear()} {settings.boutiqueName}. Pure Handloom Heritage Atelier. All rights reserved.

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Lock, Phone, Mail, MapPin, Instagram, Heart, Navigation, ExternalLink, ShieldCheck, FileText, Youtube, AlertCircle, BookOpen, Download, Smartphone, Truck } from 'lucide-react';
+import { Lock, Phone, Mail, MapPin, Instagram, Heart, Navigation, ExternalLink, ShieldCheck, FileText, Youtube, AlertCircle, BookOpen, Download, Smartphone, Truck, Store } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 import { isCustomerReportIssueVisible } from '../../utils/disputeRedressals';
 
@@ -10,7 +10,7 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions }) => {
-  const { settings, isAdminLoggedIn, setIsTrackOrderOpen } = useStore();
+  const { settings, isAdminLoggedIn, setIsTrackOrderOpen, setIsResellerPortalOpen } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoErr, setLogoErr] = React.useState(false);
 

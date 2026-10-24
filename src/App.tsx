@@ -162,6 +162,11 @@ function MainAppContent() {
           setShowAdminAuthModal(true);
         }
       }
+      // Secret key combination: Ctrl+Shift+R or Cmd+Shift+R for discreet reseller portal access
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault();
+        setIsResellerPortalOpen(true);
+      }
     };
 
     window.addEventListener('popstate', handleUrlRouting);
