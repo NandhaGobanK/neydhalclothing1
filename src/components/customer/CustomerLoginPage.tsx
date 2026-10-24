@@ -29,9 +29,50 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess 
     customerLogin,
     customerLoginWithGoogle,
     customerRegister,
+    setIsResellerPortalOpen,
   } = useStore();
 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
+
+  // Discreet Reseller Access for Mobile & PWA:
+  // 1. Native PWA icon shortcut ("B2B Wholesale Hub")
+  // 2. Triple-tap on boutique logo emblem or Shield
+  // 3. Long-press on boutique logo emblem for 1.2s
+  // 4. Subtle "Partner Access" footer link
+  // 5. Typing "reseller" or "b2b" into the sign-in field
+  const tapCountRef = React.useRef(0);
+  const tapTimerRef = React.useRef<any>(null);
+  const longPressTimerRef = React.useRef<any>(null);
+
+  const openResellerPortal = () => {
+    setIsResellerPortalOpen(true);
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'reseller';
+    }
+  };
+
+  const handleDiscreetResellerTap = () => {
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    if (tapCountRef.current >= 3) {
+      tapCountRef.current = 0;
+      openResellerPortal();
+    } else {
+      tapTimerRef.current = setTimeout(() => {
+        tapCountRef.current = 0;
+      }, 1000);
+    }
+  };
+
+  const handleTouchStart = () => {
+    longPressTimerRef.current = setTimeout(() => {
+      openResellerPortal();
+    }, 1200);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+  };
 
   const [authMode, setAuthMode] = useState<'google' | 'phone' | 'register'>('google');
   const [phoneOrEmail, setPhoneOrEmail] = useState('');
@@ -150,7 +191,13 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess 
 
       {/* Top Boutique Navigation Header */}
       <header className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div
+          onClick={handleDiscreetResellerTap}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="flex items-center gap-3 cursor-pointer select-none active:opacity-90"
+          title={`${settings.boutiqueName} Boutique (Triple-tap or hold 1.2s on mobile for Partner Access)`}
+        >
           {settings.logoUrl ? (
             <img
               src={settings.logoUrl}
@@ -172,7 +219,13 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess 
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
+        <div
+          onClick={handleDiscreetResellerTap}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer select-none active:opacity-80"
+          title="Protected Member Portal (Triple-tap on mobile for Partner Access)"
+        >
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span>Protected Member Portal</span>
         </div>

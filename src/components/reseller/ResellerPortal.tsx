@@ -376,33 +376,14 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       <div className="relative w-full max-w-6xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
         {/* Top Reseller Brand Ribbon */}
         <div className="bg-gradient-to-r from-purple-950 via-neutral-900 to-indigo-950 text-white p-5 sm:p-6 shrink-0 relative border-b border-purple-800/40">
-          <div className="absolute top-4 right-4 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-              title="Return to Customer Store"
-            >
-              <span>&larr; Patron Store</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
-              aria-label="Close portal"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shadow-md border border-purple-400/30">
+            <div className="flex items-center gap-3 pr-2">
+              <span className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shadow-md border border-purple-400/30 shrink-0">
                 <Store className="w-6 h-6" />
               </span>
               <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl sm:text-2xl font-serif font-bold text-white tracking-tight">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg sm:text-2xl font-serif font-bold text-white tracking-tight">
                     {currentReseller ? currentReseller.businessName : 'Boutique Reseller Portal'}
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/30 text-purple-200 border border-purple-400/30">
@@ -417,18 +398,39 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
               </div>
             </div>
 
-            {currentReseller && (
-              <div className="flex items-center gap-2">
+            {/* Top Right Action Controls: Logout, Return to Patron Store, Close */}
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+              {currentReseller && (
                 <button
                   type="button"
                   onClick={resellerLogout}
-                  className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                  title="Sign out of Reseller session"
                 >
                   <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Reseller Logout</span>
+                  <span>Logout</span>
                 </button>
-              </div>
-            )}
+              )}
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                title="Return to Customer Store"
+              >
+                <span>&larr; Patron Store</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                aria-label="Close portal"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Navigation Bar if Authenticated */}

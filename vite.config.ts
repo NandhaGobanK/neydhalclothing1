@@ -42,6 +42,22 @@ export default defineConfig(() => {
               purpose: 'maskable',
             },
           ],
+          shortcuts: [
+            {
+              name: 'B2B Wholesale Hub',
+              short_name: 'Resellers',
+              description: 'B2B Wholesale & Dropship Portal',
+              url: '/#reseller',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+            {
+              name: 'Patron Storefront',
+              short_name: 'Store',
+              description: 'Browse Heritage Handloom Sarees',
+              url: '/',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+          ],
         },
         devOptions: {
           enabled: true,
