@@ -1,8 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useStore, getBoutiqueOrderPrefix } from '../../context/StoreContext';
-import { Product, SareeFabric, SareeColor, SareeCategory, ProductAttributeDefinition } from '../../types/store';
+import { Product, ProductType, SareeFabric, SareeColor, SareeCategory, ProductAttributeDefinition } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
-import { compressImage } from '../../utils/imageCompress';
+import {
+  isProductInActiveCategories,
+  getCategorySingularName,
+  getCategoryPluralName,
+} from '../../utils/productValidation';
 import {
   Plus,
   Eye,
@@ -29,6 +33,9 @@ import {
   FolderPlus,
   SlidersHorizontal,
   Settings2,
+  Shirt,
+  Gem,
+  Scissors,
 } from 'lucide-react';
 
 export const ProductManager: React.FC = () => {
@@ -234,79 +241,214 @@ export const ProductManager: React.FC = () => {
   const [lengthMeters, setLengthMeters] = useState(6.3);
   const [occasion, setOccasion] = useState('Bridal & Wedding');
 
-  const autoFillSareeDetails = (fab: SareeFabric, col: string) => {
-    const colorDesc = col || 'Festive';
-    let suggestedTitle = '';
-    let suggestedSubtitle = '';
-    let suggestedDesc = '';
-    let suggestedWeave = '';
-    let suggestedBorder = '';
-    let suggestedPrice = 28500;
-    let suggestedOriginal = 34000;
+  // Product Type Selector State ('saree' | 'blouse' | 'jewelry' | 'kurti')
+  const [productType, setProductType] = useState<ProductType>('saree');
 
-    switch (fab) {
-      case 'Kanjivaram Silk':
-        suggestedTitle = `Royal ${colorDesc} Shrimant Kanjivaram Bridal Silk`;
-        suggestedSubtitle = 'Pure Mulberry Silk with Tested Gold Zari Temple Pallu';
-        suggestedDesc = `Individually hand-woven over 24 artisan days in Kanchipuram, this heirloom ${colorDesc.toLowerCase()} drape features classic interlocking temple gopuram borders and delicate peacock motifs. Certified pure silk mark.`;
-        suggestedWeave = 'Authentic 3-ply mulberry double-korvai handloom with gold zari';
-        suggestedBorder = 'Traditional 8-inch contrast Korvai border with Mayil motifs';
-        suggestedPrice = 32500;
-        suggestedOriginal = 39000;
-        break;
-      case 'Banarasi Brocade':
-        suggestedTitle = `Varanasi Kadwa ${colorDesc} Floral Brocade`;
-        suggestedSubtitle = 'Fine Katan Silk with Meenakari Floral Jaal';
-        suggestedDesc = `Artisan-crafted on heritage pit looms along the banks of Varanasi. Features intricate antique gold zari hunting motifs, interlocking lotus vines, and vivid ${colorDesc.toLowerCase()} butas.`;
-        suggestedWeave = 'Kadwa hand-woven with individual meena threads on pure Katan silk';
-        suggestedBorder = 'Intricate Shikargah border with scalloped edges';
-        suggestedPrice = 29500;
-        suggestedOriginal = 36000;
-        break;
-      case 'Chanderi Tissue':
-        suggestedTitle = `Gossamer ${colorDesc} Chanderi Tissue Silk`;
-        suggestedSubtitle = 'Feather-Light Mulberry with Roopa Kalabattu Silver Zari';
-        suggestedDesc = `Ethereal sheer texture woven with fine gossamer silk and silver zari threads. Glistens gracefully under evening light, finished with delicate ashrafi buttis.`;
-        suggestedWeave = 'Traditional pit-loom extra weft hand-interlace';
-        suggestedBorder = 'Delicate 3-inch Zari Pasa border';
-        suggestedPrice = 18500;
-        suggestedOriginal = 22000;
-        break;
-      case 'Organza Silk':
-        suggestedTitle = `Noor ${colorDesc} Hand-Embellished Organza Silk`;
-        suggestedSubtitle = 'Translucent Crisp Organza with Gold Gota Work';
-        suggestedDesc = `Fluid sheer silk organza drape adorned with hand-cut gota patti motifs and fine needlework along the perimeter. Ideal for contemporary cocktail celebrations.`;
-        suggestedWeave = 'Crisp hand-twisted organza yarns with artisan hand needle embroidery';
-        suggestedBorder = 'Hand-scalloped floral gota patti lace border';
-        suggestedPrice = 16800;
-        suggestedOriginal = 19500;
-        break;
-      case 'Pure Georgette':
-        suggestedTitle = `Banarasi Khaddi ${colorDesc} Pure Georgette`;
-        suggestedSubtitle = 'High-Twist Silk with Antique Matte Gold Jaal';
-        suggestedDesc = `Body-hugging crinkled pure georgette saree steeped in rich ${colorDesc.toLowerCase()} with all-over antique gold leaf bootas and a sweeping zari pallu that drapes effortlessly.`;
-        suggestedWeave = 'Khaddi Georgette high-twist silk warp with antique tilla motifs';
-        suggestedBorder = 'Broad paisley border with gold fringe hem';
-        suggestedPrice = 24500;
-        suggestedOriginal = 29000;
-        break;
-      default:
-        suggestedTitle = `Handcrafted ${colorDesc} ${fab} Saree`;
-        suggestedSubtitle = 'Artisan-Woven Pure Silk Drape';
-        suggestedDesc = `A majestic handcrafted ${fab.toLowerCase()} saree in radiant ${colorDesc.toLowerCase()}, woven by master artisans with authentic zari detailing.`;
-        suggestedWeave = 'Traditional artisan handloom interlace';
-        suggestedBorder = 'Contrast zari border with ornate selvedge';
-        suggestedPrice = 22000;
-        suggestedOriginal = 26500;
+  // Saree Template Specific States
+  const [sareeLength, setSareeLength] = useState<number>(6.3);
+  const [sareeBlouseIncluded, setSareeBlouseIncluded] = useState<'yes' | 'no' | 'unstitched'>('yes');
+  const [palluDetails, setPalluDetails] = useState('');
+  const [sareeBorderDetails, setSareeBorderDetails] = useState('');
+  const [sareeFabricComp, setSareeFabricComp] = useState('Pure Mulberry Kanchipuram Silk');
+
+  // Blouse Template Specific States
+  const [bustSize, setBustSize] = useState('36 (With 2-inch margin)');
+  const [blouseSleeveLength, setBlouseSleeveLength] = useState('Elbow Length (11 inches)');
+  const [blouseFabricType, setBlouseFabricType] = useState('Pure Raw Silk with Maggam Work');
+  const [neckStyle, setNeckStyle] = useState('Sweetheart Neck with Back Dori');
+  const [liningDetails, setLiningDetails] = useState('Double Padded with 100% Breathable Cotton');
+
+  // Jewelry Template Specific States
+  const [baseMetal, setBaseMetal] = useState('22K Gold Plated Brass & Copper');
+  const [gemstoneDetails, setGemstoneDetails] = useState('South Sea Pearls & Kemp Stones');
+  const [setComponents, setSetComponents] = useState('Necklace + Pair of Jhumka Earrings');
+  const [closureType, setClosureType] = useState('Adjustable Traditional Zari Thread Dori (Free Size)');
+
+  // Kurti Template Specific States
+  const [kurtiLength, setKurtiLength] = useState('Calf Length (46 inches)');
+  const [cutStyle, setCutStyle] = useState('A-Line Flared Silhouette');
+  const [sleeveStyle, setSleeveStyle] = useState('3/4th Sleeves with Zari Piping');
+  const [kurtiFabricType, setKurtiFabricType] = useState('Pure Mulmul Cotton');
+  const [embroideryDetails, setEmbroideryDetails] = useState('Handcrafted Lucknowi Chikankari with Mukaish Work');
+
+  const PRODUCT_TYPES: {
+    id: ProductType;
+    label: string;
+    icon: string;
+    badge: string;
+    subtitle: string;
+    defaultCat: string;
+    suggestedCrossSells: string[];
+  }[] = [
+    {
+      id: 'saree',
+      label: 'Saree',
+      icon: '🥻',
+      badge: 'Heritage Drape',
+      subtitle: 'Kanjivaram, Banarasi, Organza',
+      defaultCat: 'Heirloom Sarees',
+      suggestedCrossSells: ['Designer Blouses', 'Temple Jewelry'],
+    },
+    {
+      id: 'blouse',
+      label: 'Blouse',
+      icon: '✂️',
+      badge: 'Designer Tailored',
+      subtitle: 'Bust size, neck & lining specs',
+      defaultCat: 'Designer Blouses',
+      suggestedCrossSells: ['Heirloom Sarees', 'Temple Jewelry'],
+    },
+    {
+      id: 'jewelry',
+      label: 'Jewelry',
+      icon: '💎',
+      badge: 'Temple Heritage',
+      subtitle: 'Metal, gemstones & sets',
+      defaultCat: 'Temple Jewelry',
+      suggestedCrossSells: ['Heirloom Sarees', 'Designer Blouses'],
+    },
+    {
+      id: 'kurti',
+      label: 'Kurti',
+      icon: '👗',
+      badge: 'Ethnic Tunic',
+      subtitle: 'Cut, length & chikankari',
+      defaultCat: 'Ethnic Kurtis',
+      suggestedCrossSells: ['Bottoms & Palazzos', 'Dupattas', 'Temple Jewelry'],
+    },
+  ];
+
+  const applyProductTemplate = (type: ProductType, currentFab?: string, currentCol?: string) => {
+    const colorDesc = currentCol || selectedColorOption || 'Crimson Red';
+
+    if (type === 'saree') {
+      const fabName = currentFab || 'Kanjivaram Silk';
+      setFabric(fabName as SareeFabric);
+      setSareeFabricComp(fabName === 'Kanjivaram Silk' ? 'Pure Mulberry Kanchipuram Silk' : fabName);
+      setSareeLength(6.3);
+      setSareeBlouseIncluded('yes');
+      setPalluDetails('Tested Pure Gold Zari Temple Gopuram Pallu with Peacock Motifs');
+      setSareeBorderDetails('Traditional 8-inch Contrast Korvai Border');
+      setWeaveDetails('Authentic 3-ply mulberry double-korvai handloom');
+      setTitle(`Royal ${colorDesc} Shrimant Kanjivaram Bridal Silk`);
+      setSubtitle('Pure Mulberry Silk with Tested Gold Zari Temple Pallu');
+      setDescription(`Individually hand-woven over 24 artisan days in Kanchipuram, this heirloom drape features classic interlocking temple gopuram borders and delicate peacock motifs. Certified pure silk mark.`);
+      setPrice(28500);
+      setOriginalPrice(34000);
+      setCategory(categories.find((c) => c.name.toLowerCase().includes('saree'))?.name || 'Heirloom Sarees');
+      setCrossSellCategoryNames(['Designer Blouses', 'Temple Jewelry']);
+
+      const fields: ProductAttributeDefinition[] = [
+        { id: 'attr-fabric-comp', name: 'Fabric Composition', placeholder: 'e.g. Pure Mulberry Kanchipuram Silk', isOptional: false },
+        { id: 'attr-length', name: 'Saree Length', placeholder: 'e.g. 6.3 Meters (With Blouse)', isOptional: false },
+        { id: 'attr-blouse-inc', name: 'Blouse Piece', placeholder: 'e.g. Included (0.8m Running Silk)', isOptional: false },
+        { id: 'attr-pallu', name: 'Pallu Design', placeholder: 'e.g. Tested Pure Gold Zari Temple Gopuram', isOptional: true },
+        { id: 'attr-border', name: 'Border & Zari Detail', placeholder: 'e.g. Traditional 8-inch Contrast Korvai', isOptional: true },
+        { id: 'attr-weave', name: 'Weave Technique', placeholder: 'e.g. Authentic 3-ply Mulberry Korvai', isOptional: true },
+      ];
+      setProductSpecificAttributes(fields);
+      setCustomAttributesValues({
+        'attr-fabric-comp': 'Pure Mulberry Kanchipuram Silk',
+        'attr-length': '6.3 Meters (With Blouse)',
+        'attr-blouse-inc': 'Included (0.8m Running Silk)',
+        'attr-pallu': 'Tested Pure Gold Zari Temple Gopuram Pallu with Peacock Motifs',
+        'attr-border': 'Traditional 8-inch Contrast Korvai Border',
+        'attr-weave': 'Authentic 3-ply mulberry double-korvai handloom',
+      });
+    } else if (type === 'blouse') {
+      setBustSize('36 (With 2-inch margin)');
+      setBlouseSleeveLength('Elbow Length (11 inches)');
+      setBlouseFabricType('Pure Raw Silk with Maggam Work');
+      setNeckStyle('Sweetheart Neck with Back Dori');
+      setLiningDetails('Double Padded with 100% Breathable Cotton');
+      setTitle(`Aarohi ${colorDesc} Zardozi Hand-Embroidered Raw Silk Blouse`);
+      setSubtitle('Sweetheart Neckline with Heavy Zari Maggam Sleeves');
+      setDescription(`Masterpiece designer blouse tailored in rich pure raw silk. Features handcrafted zardozi embroidery, padded cups for a flawless fit, and pure breathable cotton lining.`);
+      setPrice(8500);
+      setOriginalPrice(11000);
+      setCategory(categories.find((c) => c.name.toLowerCase().includes('blouse'))?.name || 'Designer Blouses');
+      setCrossSellCategoryNames(['Heirloom Sarees', 'Temple Jewelry']);
+
+      const fields: ProductAttributeDefinition[] = [
+        { id: 'attr-bust-size', name: 'Bust Size', placeholder: 'e.g. 36 (With 2-inch inner margin)', isOptional: false },
+        { id: 'attr-sleeve-length', name: 'Sleeve Length', placeholder: 'e.g. Elbow Length (11 inches)', isOptional: false },
+        { id: 'attr-blouse-fabric', name: 'Fabric Type', placeholder: 'e.g. Pure Raw Silk with Maggam Work', isOptional: false },
+        { id: 'attr-neck-style', name: 'Neck Style', placeholder: 'e.g. Sweetheart Neck with Back Dori', isOptional: false },
+        { id: 'attr-lining', name: 'Lining Details', placeholder: 'e.g. Double Padded with 100% Breathable Cotton', isOptional: false },
+      ];
+      setProductSpecificAttributes(fields);
+      setCustomAttributesValues({
+        'attr-bust-size': '36 (With 2-inch margin)',
+        'attr-sleeve-length': 'Elbow Length (11 inches)',
+        'attr-blouse-fabric': 'Pure Raw Silk with Maggam Work',
+        'attr-neck-style': 'Sweetheart Neck with Back Dori',
+        'attr-lining': 'Double Padded with 100% Breathable Cotton',
+      });
+    } else if (type === 'jewelry') {
+      setBaseMetal('22K Gold Plated Brass & Copper');
+      setGemstoneDetails('South Sea Pearls & Kemp Stones');
+      setSetComponents('Necklace + Pair of Jhumka Earrings');
+      setClosureType('Adjustable Traditional Zari Thread Dori (Free Size)');
+      setTitle(`Devasthanam Antique Temple Gold ${colorDesc} Choker & Jhumka Set`);
+      setSubtitle('22K Matte Gold Finish with Kemp Rubies & Pearls');
+      setDescription(`Handcrafted heritage temple jewelry set plated in 22K antique matte gold. Adorned with luminous South Sea pearls, emerald accents, and radiant kemp stones.`);
+      setPrice(12500);
+      setOriginalPrice(15500);
+      setCategory(categories.find((c) => c.name.toLowerCase().includes('jewel'))?.name || 'Temple Jewelry');
+      setCrossSellCategoryNames(['Heirloom Sarees', 'Designer Blouses']);
+
+      const fields: ProductAttributeDefinition[] = [
+        { id: 'attr-base-metal', name: 'Material / Base Metal', placeholder: 'e.g. 22K Gold Plated Brass & Copper', isOptional: false },
+        { id: 'attr-gemstones', name: 'Gemstone Details', placeholder: 'e.g. South Sea Pearls & Kemp Stones', isOptional: false },
+        { id: 'attr-components', name: 'Set Components', placeholder: 'e.g. Necklace + Pair of Jhumka Earrings', isOptional: false },
+        { id: 'attr-closure', name: 'Sizing & Closure Type', placeholder: 'e.g. Adjustable Traditional Zari Dori (Free Size)', isOptional: false },
+      ];
+      setProductSpecificAttributes(fields);
+      setCustomAttributesValues({
+        'attr-base-metal': '22K Gold Plated Brass & Copper',
+        'attr-gemstones': 'South Sea Pearls & Kemp Stones',
+        'attr-components': 'Necklace + Pair of Jhumka Earrings',
+        'attr-closure': 'Adjustable Traditional Zari Thread Dori (Free Size)',
+      });
+    } else if (type === 'kurti') {
+      setKurtiLength('Calf Length (46 inches)');
+      setCutStyle('A-Line Flared Silhouette');
+      setSleeveStyle('3/4th Sleeves with Zari Piping');
+      setKurtiFabricType('Pure Mulmul Cotton');
+      setEmbroideryDetails('Handcrafted Lucknowi Chikankari with Mukaish Work');
+      setTitle(`Nazakat Hand-Embroidered ${colorDesc} Chikankari Cotton Kurti`);
+      setSubtitle('A-Line Flared Pure Mulmul with Mukaish Accents');
+      setDescription(`Bespoke handcrafted ethnic kurti spun from breathable mulmul cotton. Adorned with intricate shadow work chikankari motifs, delicate mukaish rings, and mother-of-pearl buttons.`);
+      setPrice(4200);
+      setOriginalPrice(5500);
+      setCategory(categories.find((c) => c.name.toLowerCase().includes('kurti'))?.name || 'Ethnic Kurtis');
+      setCrossSellCategoryNames(['Bottoms & Palazzos', 'Dupattas', 'Temple Jewelry']);
+
+      const fields: ProductAttributeDefinition[] = [
+        { id: 'attr-kurti-length', name: 'Kurti Length', placeholder: 'e.g. Calf Length (46 inches)', isOptional: false },
+        { id: 'attr-cut-style', name: 'Silhouette / Cut Style', placeholder: 'e.g. A-Line Flared Silhouette', isOptional: false },
+        { id: 'attr-sleeve-style', name: 'Sleeve Length & Style', placeholder: 'e.g. 3/4th Sleeves with Zari Piping', isOptional: false },
+        { id: 'attr-kurti-fabric', name: 'Fabric Type', placeholder: 'e.g. Pure Mulmul Cotton', isOptional: false },
+        { id: 'attr-embroidery', name: 'Embroidery / Print Details', placeholder: 'e.g. Handcrafted Lucknowi Chikankari with Mukaish Work', isOptional: false },
+      ];
+      setProductSpecificAttributes(fields);
+      setCustomAttributesValues({
+        'attr-kurti-length': 'Calf Length (46 inches)',
+        'attr-cut-style': 'A-Line Flared Silhouette',
+        'attr-sleeve-style': '3/4th Sleeves with Zari Piping',
+        'attr-kurti-fabric': 'Pure Mulmul Cotton',
+        'attr-embroidery': 'Handcrafted Lucknowi Chikankari with Mukaish Work',
+      });
     }
+  };
 
-    setTitle(suggestedTitle);
-    setSubtitle(suggestedSubtitle);
-    setDescription(suggestedDesc);
-    setWeaveDetails(suggestedWeave);
-    setBorderType(suggestedBorder);
-    setPrice(suggestedPrice);
-    setOriginalPrice(suggestedOriginal);
+  const handleSelectProductType = (newType: ProductType) => {
+    setProductType(newType);
+    applyProductTemplate(newType, fabric, selectedColorOption);
+  };
+
+  const autoFillSareeDetails = (fab: SareeFabric, col: string) => {
+    applyProductTemplate('saree', fab, col);
   };
 
   const copySkuToClipboard = (sku: string) => {
@@ -365,7 +507,7 @@ export const ProductManager: React.FC = () => {
     setSkuError(err);
   };
 
-  const openAddModal = (presetCategory?: string) => {
+  const openAddModal = (presetCategory?: string, initialType?: ProductType) => {
     setEditingProduct(null);
     setIsEditingSku(true);
     setAutoGenerateEnabled(false);
@@ -376,15 +518,28 @@ export const ProductManager: React.FC = () => {
     const initialSuffix = String(Math.floor(100 + Math.random() * 900));
     setSkuCodeSuffix(initialSuffix);
     setProductCode('');
+
+    // Determine initial type from parameter or category context
+    const catNameLower = (presetCategory || activeCategoryView?.name || '').toLowerCase();
+    const resolvedType: ProductType =
+      initialType ||
+      (catNameLower.includes('blouse')
+        ? 'blouse'
+        : catNameLower.includes('jewel')
+        ? 'jewelry'
+        : catNameLower.includes('kurti')
+        ? 'kurti'
+        : 'saree');
+    setProductType(resolvedType);
+
     const targetCat =
       presetCategory ||
-      (activeCategoryView ? activeCategoryView.name : categories[0]?.name || 'Heirloom Sarees');
+      (activeCategoryView ? activeCategoryView.name : categories.find(c => c.name.toLowerCase().includes(resolvedType))?.name || categories[0]?.name || 'Heirloom Sarees');
     setCategory(targetCat);
     setFabric(initialFabric);
     setCustomFabric('');
     setSelectedColorOption(initialColor);
     setCustomColor('');
-    autoFillSareeDetails(initialFabric, initialColor);
     setStockStatus('in_stock');
     setStockCount(3);
     setIsVisible(true);
@@ -392,31 +547,12 @@ export const ProductManager: React.FC = () => {
     setImageUrlInput('');
     setVideoUrl('https://www.youtube.com/watch?v=0hW73jL76bY');
     setInstagramShortsUrl('');
-    setBlousePieceIncluded(true);
-    setLengthMeters(6.3);
     setOccasion('Wedding & Reception');
 
-    // Initialize product-specific specification fields
-    const initialFields: ProductAttributeDefinition[] = [
-      { id: 'attr-weave', name: 'Weave Technique', placeholder: 'e.g. Traditional Korvai Handloom', isOptional: true },
-      { id: 'attr-border', name: 'Border & Pallu Detail', placeholder: 'e.g. Heavy Zari Contrast Border', isOptional: true },
-      { id: 'attr-blouse', name: 'Blouse Piece', placeholder: 'e.g. Included (0.8m Running Silk)', isOptional: true },
-      { id: 'attr-length', name: 'Total Length', placeholder: 'e.g. 6.3 Meters', isOptional: true },
-      { id: 'attr-occasion', name: 'Recommended Occasion', placeholder: 'e.g. Bridal & Festive', isOptional: true },
-    ];
-    setProductSpecificAttributes(initialFields);
-    const initialAttrs: Record<string, string> = {
-      'attr-weave': 'Traditional Korvai Handloom Weave',
-      'attr-border': 'Pure Gold Zari Contrast Pallu',
-      'attr-blouse': 'Included (0.8m Running Silk)',
-      'attr-length': '6.3 Meters',
-      'attr-occasion': 'Wedding & Reception',
-    };
-    setCustomAttributesValues(initialAttrs);
+    // Apply the dynamic product type template
+    applyProductTemplate(resolvedType, initialFabric, initialColor);
 
-    // Initialize cross-sell recommendations
     setCrossSellProductIds([]);
-    setCrossSellCategoryNames(['Designer Blouses', 'Temple Jewelry']);
     setCrossSellSearchQuery('');
 
     setIsEditingModalOpen(true);
@@ -518,6 +654,44 @@ export const ProductManager: React.FC = () => {
     setIsColorConfirmed(true);
     setSkuError(null);
     setCategory(prod.category || categories[0]?.name || 'Heirloom Sarees');
+
+    const inferredType: ProductType =
+      prod.productType ||
+      (prod.category?.toLowerCase().includes('blouse') || prod.title.toLowerCase().includes('blouse')
+        ? 'blouse'
+        : prod.category?.toLowerCase().includes('jewel') || prod.title.toLowerCase().includes('jewel') || prod.title.toLowerCase().includes('necklace')
+        ? 'jewelry'
+        : prod.category?.toLowerCase().includes('kurti') || prod.title.toLowerCase().includes('kurti') || prod.title.toLowerCase().includes('anarkali')
+        ? 'kurti'
+        : 'saree');
+    setProductType(inferredType);
+
+    // Populate Saree template attributes
+    setSareeLength(prod.lengthMeters || (prod.customAttributes?.['attr-length'] ? parseFloat(prod.customAttributes['attr-length']) : 6.3));
+    setSareeBlouseIncluded(prod.blousePieceIncluded === false ? 'no' : 'yes');
+    setPalluDetails(prod.palluDetails || prod.customAttributes?.['attr-pallu'] || '');
+    setSareeBorderDetails(prod.borderType || prod.customAttributes?.['attr-border'] || '');
+    setSareeFabricComp(prod.fabric || prod.customAttributes?.['attr-fabric-comp'] || 'Pure Mulberry Kanchipuram Silk');
+
+    // Populate Blouse template attributes
+    setBustSize(prod.bustSize || prod.customAttributes?.['attr-bust-size'] || '36 (With 2-inch margin)');
+    setBlouseSleeveLength(prod.sleeveLength || prod.customAttributes?.['attr-sleeve-length'] || 'Elbow Length (11 inches)');
+    setBlouseFabricType(prod.fabric || prod.customAttributes?.['attr-blouse-fabric'] || 'Pure Raw Silk with Maggam Work');
+    setNeckStyle(prod.neckStyle || prod.customAttributes?.['attr-neck-style'] || 'Sweetheart Neck with Back Dori');
+    setLiningDetails(prod.liningDetails || prod.customAttributes?.['attr-lining'] || 'Double Padded with 100% Breathable Cotton');
+
+    // Populate Jewelry template attributes
+    setBaseMetal(prod.baseMetal || prod.customAttributes?.['attr-base-metal'] || '22K Gold Plated Brass & Copper');
+    setGemstoneDetails(prod.gemstoneDetails || prod.customAttributes?.['attr-gemstones'] || 'South Sea Pearls & Kemp Stones');
+    setSetComponents(prod.setComponents || prod.customAttributes?.['attr-components'] || 'Necklace + Pair of Jhumka Earrings');
+    setClosureType(prod.closureType || prod.customAttributes?.['attr-closure'] || 'Adjustable Traditional Zari Thread Dori (Free Size)');
+
+    // Populate Kurti template attributes
+    setKurtiLength(prod.kurtiLength || prod.customAttributes?.['attr-kurti-length'] || 'Calf Length (46 inches)');
+    setCutStyle(prod.cutStyle || prod.customAttributes?.['attr-cut-style'] || 'A-Line Flared Silhouette');
+    setSleeveStyle(prod.sleeveStyle || prod.customAttributes?.['attr-sleeve-style'] || '3/4th Sleeves with Zari Piping');
+    setKurtiFabricType(prod.fabric || prod.customAttributes?.['attr-kurti-fabric'] || 'Pure Mulmul Cotton');
+    setEmbroideryDetails(prod.embroideryDetails || prod.customAttributes?.['attr-embroidery'] || 'Handcrafted Lucknowi Chikankari with Mukaish Work');
 
     const isStandardColor = standardColors.includes(prod.color as any);
     if (isStandardColor) {
@@ -735,13 +909,42 @@ export const ProductManager: React.FC = () => {
     const rawLength = customAttributesValues['attr-length'] || customAttributesValues['Total Length'] || customAttributesValues['Length (Meters)'] || lengthMeters;
     const finalLength = Number(rawLength);
 
+    // Sync active template attributes into customAttributes dictionary
+    const updatedCustomAttrs = { ...customAttributesValues };
+    if (productType === 'saree') {
+      if (sareeFabricComp) updatedCustomAttrs['attr-fabric-comp'] = sareeFabricComp;
+      if (sareeLength) updatedCustomAttrs['attr-length'] = `${sareeLength} Meters`;
+      updatedCustomAttrs['attr-blouse-inc'] = sareeBlouseIncluded === 'yes' ? 'Included (0.8m Running Silk)' : sareeBlouseIncluded === 'no' ? 'Not Included' : 'Unstitched Fabric Attached';
+      if (palluDetails) updatedCustomAttrs['attr-pallu'] = palluDetails;
+      if (sareeBorderDetails) updatedCustomAttrs['attr-border'] = sareeBorderDetails;
+      if (weaveDetails) updatedCustomAttrs['attr-weave'] = weaveDetails;
+    } else if (productType === 'blouse') {
+      if (bustSize) updatedCustomAttrs['attr-bust-size'] = bustSize;
+      if (blouseSleeveLength) updatedCustomAttrs['attr-sleeve-length'] = blouseSleeveLength;
+      if (blouseFabricType) updatedCustomAttrs['attr-blouse-fabric'] = blouseFabricType;
+      if (neckStyle) updatedCustomAttrs['attr-neck-style'] = neckStyle;
+      if (liningDetails) updatedCustomAttrs['attr-lining'] = liningDetails;
+    } else if (productType === 'jewelry') {
+      if (baseMetal) updatedCustomAttrs['attr-base-metal'] = baseMetal;
+      if (gemstoneDetails) updatedCustomAttrs['attr-gemstones'] = gemstoneDetails;
+      if (setComponents) updatedCustomAttrs['attr-components'] = setComponents;
+      if (closureType) updatedCustomAttrs['attr-closure'] = closureType;
+    } else if (productType === 'kurti') {
+      if (kurtiLength) updatedCustomAttrs['attr-kurti-length'] = kurtiLength;
+      if (cutStyle) updatedCustomAttrs['attr-cut-style'] = cutStyle;
+      if (sleeveStyle) updatedCustomAttrs['attr-sleeve-style'] = sleeveStyle;
+      if (kurtiFabricType) updatedCustomAttrs['attr-kurti-fabric'] = kurtiFabricType;
+      if (embroideryDetails) updatedCustomAttrs['attr-embroidery'] = embroideryDetails;
+    }
+
     const payload: any = {
       productCode: finalSku,
+      productType,
       category: category.trim() || categories[0]?.name || 'Heirloom Sarees',
       title: title.trim(),
       subtitle: subtitle.trim(),
       description: description.trim(),
-      fabric: finalFabric as SareeFabric | undefined,
+      fabric: (productType === 'blouse' ? blouseFabricType : productType === 'kurti' ? kurtiFabricType : finalFabric) as SareeFabric | undefined,
       color: finalColor as SareeColor,
       price: Number(price),
       originalPrice: Number(originalPrice) || undefined,
@@ -752,12 +955,29 @@ export const ProductManager: React.FC = () => {
       videoUrl: videoUrl.trim() || undefined,
       instagramShortsUrl: instagramShortsUrl.trim() || undefined,
       weaveDetails: finalWeave ? finalWeave.trim() : undefined,
-      borderType: finalBorder ? finalBorder.trim() : undefined,
-      blousePieceIncluded,
-      lengthMeters: !isNaN(finalLength) ? finalLength : undefined,
+      borderType: productType === 'saree' ? (sareeBorderDetails.trim() || finalBorder?.trim()) : undefined,
+      blousePieceIncluded: productType === 'saree' ? (sareeBlouseIncluded !== 'no') : undefined,
+      lengthMeters: productType === 'saree' ? (!isNaN(finalLength) ? finalLength : sareeLength) : undefined,
       occasion: finalOccasion ? finalOccasion.trim() : undefined,
+      // Saree template attributes
+      palluDetails: productType === 'saree' ? palluDetails.trim() || undefined : undefined,
+      // Blouse template attributes
+      bustSize: productType === 'blouse' ? bustSize.trim() || undefined : undefined,
+      sleeveLength: productType === 'blouse' ? blouseSleeveLength.trim() || undefined : undefined,
+      neckStyle: productType === 'blouse' ? neckStyle.trim() || undefined : undefined,
+      liningDetails: productType === 'blouse' ? liningDetails.trim() || undefined : undefined,
+      // Jewelry template attributes
+      baseMetal: productType === 'jewelry' ? baseMetal.trim() || undefined : undefined,
+      gemstoneDetails: productType === 'jewelry' ? gemstoneDetails.trim() || undefined : undefined,
+      setComponents: productType === 'jewelry' ? setComponents.trim() || undefined : undefined,
+      closureType: productType === 'jewelry' ? closureType.trim() || undefined : undefined,
+      // Kurti template attributes
+      kurtiLength: productType === 'kurti' ? kurtiLength.trim() || undefined : undefined,
+      cutStyle: productType === 'kurti' ? cutStyle.trim() || undefined : undefined,
+      sleeveStyle: productType === 'kurti' ? sleeveStyle.trim() || undefined : undefined,
+      embroideryDetails: productType === 'kurti' ? embroideryDetails.trim() || undefined : undefined,
       specificationFields: productSpecificAttributes,
-      customAttributes: customAttributesValues,
+      customAttributes: updatedCustomAttrs,
       crossSellProductIds,
       crossSellCategoryNames,
     };
@@ -806,24 +1026,29 @@ export const ProductManager: React.FC = () => {
   }, [products]);
 
   const currentCategoryProducts = useMemo(() => {
-    if (!activeCategoryView) return products;
-    return products.filter(
+    const validProds = products.filter((p) => isProductInActiveCategories(p, categories));
+    if (!activeCategoryView) return validProds;
+    return validProds.filter(
       (p) =>
         p.category?.toLowerCase() === activeCategoryView.name.toLowerCase() ||
         p.fabric?.toLowerCase() === activeCategoryView.name.toLowerCase()
     );
-  }, [products, activeCategoryView]);
+  }, [products, categories, activeCategoryView]);
 
   const categoryCounts = useMemo(() => {
     const map: Record<string, number> = {};
-    products.forEach((p) => {
-      const cat = p.category || 'Uncategorized';
-      map[cat] = (map[cat] || 0) + 1;
-    });
+    products
+      .filter((p) => isProductInActiveCategories(p, categories))
+      .forEach((p) => {
+        const cat = p.category || 'Uncategorized';
+        map[cat] = (map[cat] || 0) + 1;
+      });
     return map;
-  }, [products]);
+  }, [products, categories]);
 
-  const displayedProducts = showAllSareesFlat ? products : currentCategoryProducts;
+  const displayedProducts = showAllSareesFlat
+    ? products.filter((p) => isProductInActiveCategories(p, categories))
+    : currentCategoryProducts;
 
   const filteredProducts = useMemo(() => {
     if (!tableSearchQuery.trim()) return displayedProducts;
@@ -1036,16 +1261,22 @@ export const ProductManager: React.FC = () => {
                     onClick={() => setActiveCategoryView(cat)}
                     className="group bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-between border-t-4 border-t-amber-500 hover:border-t-rose-800"
                   >
-                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-100">
+                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-950 flex items-center justify-center">
+                      <img
+                        src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                        alt=""
+                        aria-hidden="true"
+                        className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110 pointer-events-none"
+                      />
                       <img
                         src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={cat.name}
-                        className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500"
+                        className="relative z-1 max-h-full max-w-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+                      <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/95 via-black/40 to-transparent pointer-events-none" />
 
-                      <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                      <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
                         <span className="bg-white/95 backdrop-blur-xs text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
                           {count} {count === 1 ? 'Saree' : 'Sarees'}
                         </span>
@@ -1057,7 +1288,7 @@ export const ProductManager: React.FC = () => {
                                 e.stopPropagation();
                                 openEditCategoryModal(cat);
                               }}
-                              className="p-1 rounded-full bg-black/60 hover:bg-amber-600 text-white transition cursor-pointer"
+                              className="p-1 rounded-full bg-black/75 hover:bg-amber-600 text-white transition cursor-pointer shadow-sm"
                               title="Edit category details & photo"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
@@ -1068,7 +1299,7 @@ export const ProductManager: React.FC = () => {
                                 e.stopPropagation();
                                 setCategoryToDelete(cat);
                               }}
-                              className="p-1 rounded-full bg-black/60 hover:bg-rose-600 text-white transition cursor-pointer"
+                              className="p-1 rounded-full bg-black/75 hover:bg-rose-600 text-white transition cursor-pointer shadow-sm"
                               title="Remove category"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1077,11 +1308,12 @@ export const ProductManager: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="absolute bottom-3 left-3 right-3 text-white">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300">
+                      {/* Category Title & Labels Overlay (Prominent z-30) */}
+                      <div className="absolute inset-x-0 bottom-0 z-30 p-3.5 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent text-white pointer-events-none">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300 drop-shadow block">
                           Category Collection
                         </span>
-                        <h3 className="font-serif font-bold text-lg sm:text-xl text-white group-hover:text-amber-200 transition">
+                        <h3 className="font-serif font-bold text-lg sm:text-xl text-white group-hover:text-amber-200 transition drop-shadow-md">
                           {cat.name}
                         </h3>
                       </div>
@@ -1305,9 +1537,15 @@ export const ProductManager: React.FC = () => {
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="font-mono text-[10px] sm:text-xs font-bold text-rose-950 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 truncate">
-                      {product.productCode}
-                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-mono text-[10px] sm:text-xs font-bold text-rose-950 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 truncate">
+                        {product.productCode}
+                      </span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 shrink-0 flex items-center gap-1">
+                        <span>{PRODUCT_TYPES.find((t) => t.id === (product.productType || 'saree'))?.icon}</span>
+                        <span>{PRODUCT_TYPES.find((t) => t.id === (product.productType || 'saree'))?.label}</span>
+                      </span>
+                    </div>
                     <span className="text-[10px] text-amber-700 font-bold flex items-center gap-0.5 shrink-0">
                       <span>Edit</span>
                       <Edit2 className="w-3 h-3" />
@@ -1465,10 +1703,16 @@ export const ProductManager: React.FC = () => {
                   {/* Category, Fabric & Color */}
                   <td className="py-3 px-3">
                     <div className="min-w-0">
-                      <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-800 border border-rose-200 truncate max-w-full">
-                        {product.category || 'General Collection'}
-                      </span>
-                      <p className="font-semibold text-neutral-800 text-xs truncate mt-0.5">{product.fabric}</p>
+                      <div className="flex items-center gap-1 mb-1">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-900 border border-amber-200 shrink-0">
+                          <span>{PRODUCT_TYPES.find((t) => t.id === (product.productType || 'saree'))?.icon}</span>
+                          <span>{PRODUCT_TYPES.find((t) => t.id === (product.productType || 'saree'))?.label}</span>
+                        </span>
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-800 border border-rose-200 truncate max-w-[120px]">
+                          {product.category || 'General Collection'}
+                        </span>
+                      </div>
+                      <p className="font-semibold text-neutral-800 text-xs truncate mt-0.5">{product.fabric || product.title}</p>
                       <p className="text-neutral-500 text-[10px] truncate">{product.color}</p>
                     </div>
                   </td>
@@ -1604,9 +1848,19 @@ export const ProductManager: React.FC = () => {
           <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
             {/* Modal Header */}
             <div className="p-4 sm:p-6 border-b border-neutral-100 flex items-center justify-between bg-neutral-900 text-white shrink-0">
-              <h3 className="font-serif text-lg sm:text-xl font-bold">
-                {editingProduct ? 'Edit Saree Details' : 'Add New Handloom Saree'}
-              </h3>
+              <div>
+                <h3 className="font-serif text-lg sm:text-xl font-bold flex items-center gap-2">
+                  <span>{PRODUCT_TYPES.find((t) => t.id === productType)?.icon || '🥻'}</span>
+                  <span>
+                    {editingProduct
+                      ? `Edit ${PRODUCT_TYPES.find((t) => t.id === productType)?.label || 'Product'} Details`
+                      : `Add New ${PRODUCT_TYPES.find((t) => t.id === productType)?.label || 'Product'}`}
+                  </span>
+                </h3>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Template active: <span className="text-amber-300 font-semibold">{PRODUCT_TYPES.find((t) => t.id === productType)?.label}</span> ({PRODUCT_TYPES.find((t) => t.id === productType)?.badge})
+                </p>
+              </div>
               <button
                 onClick={() => setIsEditingModalOpen(false)}
                 className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
@@ -1617,6 +1871,61 @@ export const ProductManager: React.FC = () => {
 
             {/* Modal Form Body */}
             <form onSubmit={handleSaveProduct} className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+              {/* Product Type Selector - 4 distinct categories: Saree, Blouse, Jewelry, Kurti */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 text-white border border-neutral-800 shadow-md space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="text-amber-300 font-serif font-bold text-xs uppercase tracking-wider">
+                      Product Type Template Selector *
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-neutral-400 hidden sm:inline">
+                    Adapts attributes & cross-sells dynamically
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {PRODUCT_TYPES.map((type) => {
+                    const isSelected = productType === type.id;
+                    return (
+                      <button
+                        key={type.id}
+                        type="button"
+                        onClick={() => handleSelectProductType(type.id)}
+                        className={`p-3 rounded-xl border text-left transition relative cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-amber-500/20 border-amber-400 text-white ring-2 ring-amber-400/40 shadow-sm'
+                            : 'bg-neutral-800/80 border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:border-neutral-600'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xl sm:text-2xl">{type.icon}</span>
+                            {isSelected ? (
+                              <span className="w-4 h-4 rounded-full bg-amber-400 text-neutral-950 flex items-center justify-center text-[10px] font-bold">
+                                ✓
+                              </span>
+                            ) : (
+                              <span className="w-3.5 h-3.5 rounded-full border border-neutral-600" />
+                            )}
+                          </div>
+                          <p className={`font-serif font-bold text-xs ${isSelected ? 'text-amber-300' : 'text-white'}`}>
+                            {type.label}
+                          </p>
+                          <span className="text-[9px] text-amber-200/80 font-semibold block uppercase tracking-wider mt-0.5">
+                            {type.badge}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 mt-1.5 line-clamp-1">
+                          {type.subtitle}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Unique Product Code Card - Manual Input with duplicate prevention */}
                 <div className="sm:col-span-2 p-3.5 rounded-2xl bg-neutral-900 text-white border border-neutral-800">
@@ -2058,6 +2367,455 @@ export const ProductManager: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Dynamic Product Type Template Fields Section */}
+                <div className="sm:col-span-2 p-4 bg-gradient-to-br from-amber-50/70 via-orange-50/30 to-amber-50/40 rounded-2xl border border-amber-200/90 space-y-3.5 shadow-2xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-amber-200/70">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">
+                        {PRODUCT_TYPES.find((t) => t.id === productType)?.icon || '🥻'}
+                      </span>
+                      <div>
+                        <h4 className="font-serif text-sm font-bold text-neutral-900">
+                          {productType === 'saree' && 'Saree Handloom & Weaving Attributes'}
+                          {productType === 'blouse' && 'Designer Blouse Tailoring Attributes'}
+                          {productType === 'jewelry' && 'Temple Jewelry Craftsmanship Attributes'}
+                          {productType === 'kurti' && 'Ethnic Kurti Tailoring & Silhouette Attributes'}
+                        </h4>
+                        <p className="text-[11px] text-neutral-600">
+                          {productType === 'saree' && 'Fabric composition, length, blouse inclusion, pallu design, and border details.'}
+                          {productType === 'blouse' && 'Bust sizing, sleeve length, fabric type, neck style, and padding/lining details.'}
+                          {productType === 'jewelry' && 'Base metal composition, gemstones, set components, and closure/sizing type.'}
+                          {productType === 'kurti' && 'Kurti length, cut silhouette, sleeve style, fabric type, and embroidery/print details.'}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-200/80 text-amber-950 border border-amber-300 uppercase tracking-wider shrink-0">
+                      {productType} Template
+                    </span>
+                  </div>
+
+                  {/* 1. Saree Template Fields */}
+                  {productType === 'saree' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Fabric Composition *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={sareeFabricComp}
+                          onChange={(e) => {
+                            setSareeFabricComp(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-fabric-comp': e.target.value }));
+                          }}
+                          placeholder="e.g. Pure Mulberry Kanchipuram Silk"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Saree Length (Meters) *
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="4"
+                            max="10"
+                            required
+                            value={sareeLength}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 6.3;
+                              setSareeLength(val);
+                              setLengthMeters(val);
+                              setCustomAttributesValues((prev) => ({ ...prev, 'attr-length': `${val} Meters` }));
+                            }}
+                            className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-bold focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                          />
+                          <div className="flex gap-1 shrink-0">
+                            {[6.3, 5.5].map((preset) => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => {
+                                  setSareeLength(preset);
+                                  setLengthMeters(preset);
+                                  setCustomAttributesValues((prev) => ({ ...prev, 'attr-length': `${preset} Meters` }));
+                                }}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                                  sareeLength === preset
+                                    ? 'bg-amber-600 text-white border-amber-600'
+                                    : 'bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-100'
+                                }`}
+                              >
+                                {preset}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Blouse Piece Inclusion *
+                        </label>
+                        <select
+                          value={sareeBlouseIncluded}
+                          onChange={(e) => {
+                            const val = e.target.value as 'yes' | 'no' | 'unstitched';
+                            setSareeBlouseIncluded(val);
+                            setBlousePieceIncluded(val !== 'no');
+                            setCustomAttributesValues((prev) => ({
+                              ...prev,
+                              'attr-blouse-inc': val === 'yes' ? 'Included (0.8m Running Silk)' : val === 'no' ? 'Not Included' : 'Unstitched Contrast Fabric Attached',
+                            }));
+                          }}
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        >
+                          <option value="yes">Yes - Included (0.8m Running Pure Silk)</option>
+                          <option value="unstitched">Yes - Unstitched Contrast Fabric Piece</option>
+                          <option value="no">No - Saree Only (Blouse Piece Not Included)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Zari & Border Details
+                        </label>
+                        <input
+                          type="text"
+                          value={sareeBorderDetails}
+                          onChange={(e) => {
+                            setSareeBorderDetails(e.target.value);
+                            setBorderType(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-border': e.target.value }));
+                          }}
+                          placeholder="e.g. Traditional 8-inch Contrast Korvai Border with Zari Mayil Chakram"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Pallu Design Description
+                        </label>
+                        <input
+                          type="text"
+                          value={palluDetails}
+                          onChange={(e) => {
+                            setPalluDetails(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-pallu': e.target.value }));
+                          }}
+                          placeholder="e.g. Tested Pure Gold Zari Temple Gopuram Pallu with Peacock & Floral Motifs"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. Blouse Template Fields */}
+                  {productType === 'blouse' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Bust Size (Inches / Margins) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={bustSize}
+                          onChange={(e) => {
+                            setBustSize(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-bust-size': e.target.value }));
+                          }}
+                          placeholder="e.g. 36 (With 2-inch inner margin)"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                        <div className="flex gap-1 mt-1.5 flex-wrap">
+                          {['32', '34', '36', '38', '40', '42'].map((sz) => (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() => {
+                                const fullVal = `${sz} (With 2-inch inner margin)`;
+                                setBustSize(fullVal);
+                                setCustomAttributesValues((prev) => ({ ...prev, 'attr-bust-size': fullVal }));
+                              }}
+                              className="px-2 py-0.5 rounded text-[10px] font-bold border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-700 cursor-pointer"
+                            >
+                              Size {sz}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Sleeve Length & Cut *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={blouseSleeveLength}
+                          onChange={(e) => {
+                            setBlouseSleeveLength(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-sleeve-length': e.target.value }));
+                          }}
+                          placeholder="e.g. Elbow Length (11 inches), Cap Sleeves, Sleeveless"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Blouse Fabric Type *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={blouseFabricType}
+                          onChange={(e) => {
+                            setBlouseFabricType(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-blouse-fabric': e.target.value }));
+                          }}
+                          placeholder="e.g. Pure Raw Silk with Maggam Work, Brocade Silk, Velvet"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Neck Style *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={neckStyle}
+                          onChange={(e) => {
+                            setNeckStyle(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-neck-style': e.target.value }));
+                          }}
+                          placeholder="e.g. Sweetheart Neck with Back Dori, Boat Neck, Deep U"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Lining & Padding Details *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={liningDetails}
+                          onChange={(e) => {
+                            setLiningDetails(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-lining': e.target.value }));
+                          }}
+                          placeholder="e.g. Double Padded with 100% Breathable Cotton Voile Lining"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. Jewelry Template Fields */}
+                  {productType === 'jewelry' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Material / Base Metal *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={baseMetal}
+                          onChange={(e) => {
+                            setBaseMetal(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-base-metal': e.target.value }));
+                          }}
+                          placeholder="e.g. 22K Gold Plated Brass & Copper, Kundan Alloy, 92.5 Silver"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Gemstone Details *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={gemstoneDetails}
+                          onChange={(e) => {
+                            setGemstoneDetails(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-gemstones': e.target.value }));
+                          }}
+                          placeholder="e.g. South Sea Pearls & Kemp Stones, Emerald Accents, Polki"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Set Components *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={setComponents}
+                          onChange={(e) => {
+                            setSetComponents(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-components': e.target.value }));
+                          }}
+                          placeholder="e.g. Necklace + Pair of Jhumka Earrings, Choker + Maang Tikka"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Sizing & Closure Type *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={closureType}
+                          onChange={(e) => {
+                            setClosureType(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-closure': e.target.value }));
+                          }}
+                          placeholder="e.g. Adjustable Traditional Zari Thread Dori (Free Size), Push Back"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. Kurti Template Fields */}
+                  {productType === 'kurti' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Kurti Length *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={kurtiLength}
+                          onChange={(e) => {
+                            setKurtiLength(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-kurti-length': e.target.value }));
+                          }}
+                          placeholder="e.g. Calf Length (46 inches), Knee Length (42 inches), Ankle Length"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                        <div className="flex gap-1 mt-1.5 flex-wrap">
+                          {['Knee Length (42")', 'Calf Length (46")', 'Ankle Length (52")'].map((len) => (
+                            <button
+                              key={len}
+                              type="button"
+                              onClick={() => {
+                                setKurtiLength(len);
+                                setCustomAttributesValues((prev) => ({ ...prev, 'attr-kurti-length': len }));
+                              }}
+                              className="px-2 py-0.5 rounded text-[10px] font-bold border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-700 cursor-pointer"
+                            >
+                              {len}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Silhouette / Cut Style *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cutStyle}
+                          onChange={(e) => {
+                            setCutStyle(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-cut-style': e.target.value }));
+                          }}
+                          placeholder="e.g. A-Line Flared Silhouette, Straight Fit with Side Slits, Anarkali"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                        <div className="flex gap-1 mt-1.5 flex-wrap">
+                          {['A-Line Flared', 'Straight Fit', 'Anarkali Flared', 'Nyra Cut'].map((st) => (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => {
+                                const full = `${st} Silhouette`;
+                                setCutStyle(full);
+                                setCustomAttributesValues((prev) => ({ ...prev, 'attr-cut-style': full }));
+                              }}
+                              className="px-2 py-0.5 rounded text-[10px] font-bold border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-700 cursor-pointer"
+                            >
+                              {st}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Sleeve Length & Style *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={sleeveStyle}
+                          onChange={(e) => {
+                            setSleeveStyle(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-sleeve-style': e.target.value }));
+                          }}
+                          placeholder="e.g. 3/4th Sleeves with Zari Piping, Full Sleeves, Bell Sleeves"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Kurti Fabric Type *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={kurtiFabricType}
+                          onChange={(e) => {
+                            setKurtiFabricType(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-kurti-fabric': e.target.value }));
+                          }}
+                          placeholder="e.g. Pure Mulmul Cotton, Rayon Slub, Pure Georgette with Lining"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold text-neutral-800 text-xs mb-1">
+                          Embroidery / Print Details *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={embroideryDetails}
+                          onChange={(e) => {
+                            setEmbroideryDetails(e.target.value);
+                            setCustomAttributesValues((prev) => ({ ...prev, 'attr-embroidery': e.target.value }));
+                          }}
+                          placeholder="e.g. Handcrafted Lucknowi Chikankari with Mukaish Work, Bagru Block Print"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white text-neutral-900 text-xs font-medium focus:ring-2 focus:ring-amber-500/40 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Product-Specific Specifications & Custom Attributes */}
                 <div className="sm:col-span-2 pt-3 border-t border-neutral-200">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
@@ -2139,14 +2897,20 @@ export const ProductManager: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-amber-600" />
                       <h4 className="font-serif text-sm font-bold text-neutral-900">
-                        Cross-Selling Product Suggestions (Blouse, Sarees, & Jewelry)
+                        {productType === 'saree' && 'Cross-Selling Product Suggestions (Matching Blouses & Temple Jewelry)'}
+                        {productType === 'blouse' && 'Cross-Selling Product Suggestions (Matching Heirloom Sarees & Jewelry)'}
+                        {productType === 'jewelry' && 'Cross-Selling Product Suggestions (Matching Sarees & Designer Blouses)'}
+                        {productType === 'kurti' && 'Cross-Selling Product Suggestions (Matching Bottoms, Dupattas & Jewelry)'}
                       </h4>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
                         {crossSellProductIds.length} Linked Items
                       </span>
                     </div>
                     <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Select matching sarees, blouses, and jewelry items to display dynamically on the customer product details and cart drawer.
+                      {productType === 'saree' && 'Select matching blouses and temple jewelry items to display dynamically on the customer product details and cart drawer.'}
+                      {productType === 'blouse' && 'Select matching sarees and jewelry sets to display dynamically on the customer product details and cart drawer.'}
+                      {productType === 'jewelry' && 'Select matching sarees and designer blouses to display dynamically on the customer product details and cart drawer.'}
+                      {productType === 'kurti' && 'Select matching bottoms, palazzos, dupattas, and jewelry items to display dynamically on the customer product details and cart drawer.'}
                     </p>
                   </div>
 
@@ -2162,7 +2926,15 @@ export const ProductManager: React.FC = () => {
                         type="text"
                         value={crossSellSearchQuery}
                         onChange={(e) => setCrossSellSearchQuery(e.target.value)}
-                        placeholder="Search catalog to link matching blouse, saree, or jewelry..."
+                        placeholder={
+                          productType === 'saree'
+                            ? 'Search catalog to link matching blouses & jewelry...'
+                            : productType === 'blouse'
+                            ? 'Search catalog to link matching sarees & jewelry...'
+                            : productType === 'jewelry'
+                            ? 'Search catalog to link matching sarees & blouses...'
+                            : 'Search catalog to link matching bottoms, dupattas & jewelry...'
+                        }
                         className="w-full p-2.5 pl-8 rounded-xl border border-neutral-300 text-xs bg-white text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
                       />
                       <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-3" />
@@ -2183,6 +2955,7 @@ export const ProductManager: React.FC = () => {
                         .filter(
                           (p) =>
                             p.id !== editingProduct?.id &&
+                            isProductInActiveCategories(p, categories) &&
                             (!crossSellSearchQuery.trim() ||
                               p.title.toLowerCase().includes(crossSellSearchQuery.toLowerCase()) ||
                               p.productCode.toLowerCase().includes(crossSellSearchQuery.toLowerCase()) ||
@@ -2683,11 +3456,11 @@ export const ProductManager: React.FC = () => {
                 </label>
 
                 {newCatImg ? (
-                  <div className="relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-100 aspect-16/9 max-h-44 mb-2 group">
+                  <div className="relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-900/5 p-2 min-h-36 max-h-72 mb-2 flex items-center justify-center group">
                     <img
                       src={newCatImg}
                       alt="Category preview"
-                      className="w-full h-full object-cover"
+                      className="max-h-68 w-auto max-w-full object-contain mx-auto rounded-xl shadow-xs"
                     />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
                       <button
@@ -2909,11 +3682,11 @@ export const ProductManager: React.FC = () => {
                 </label>
 
                 {editCatImg ? (
-                  <div className="relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-100 aspect-16/9 max-h-44 mb-2 group">
+                  <div className="relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-900/5 p-2 min-h-36 max-h-72 mb-2 flex items-center justify-center group">
                     <img
                       src={editCatImg}
                       alt="Category preview"
-                      className="w-full h-full object-cover"
+                      className="max-h-68 w-auto max-w-full object-contain mx-auto rounded-xl shadow-xs"
                     />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
                       <button

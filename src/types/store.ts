@@ -34,9 +34,12 @@ export interface ProductAttributeDefinition {
   isOptional?: boolean; // True if this field is optional
 }
 
+export type ProductType = 'saree' | 'blouse' | 'jewelry' | 'kurti';
+
 export interface Product {
   id: string;
   productCode: string; // Unique SKU code per product and color (e.g. KAN-CRIM-101)
+  productType?: ProductType; // Dynamic Template type (saree, blouse, jewelry, kurti)
   title: string;
   subtitle: string;
   description: string;
@@ -55,6 +58,23 @@ export interface Product {
   blousePieceIncluded?: boolean;
   lengthMeters?: number;
   occasion?: string;
+  // Saree template attributes
+  palluDetails?: string;
+  // Blouse template attributes
+  bustSize?: string;
+  sleeveLength?: string;
+  neckStyle?: string;
+  liningDetails?: string;
+  // Jewelry template attributes
+  baseMetal?: string;
+  gemstoneDetails?: string;
+  setComponents?: string;
+  closureType?: string;
+  // Kurti template attributes
+  kurtiLength?: string;
+  cutStyle?: string;
+  sleeveStyle?: string;
+  embroideryDetails?: string;
   customAttributes?: Record<string, string>; // Dynamic specification key-value pairs
   specificationFields?: ProductAttributeDefinition[]; // Product-specific custom specification fields definitions
   isFeatured?: boolean;

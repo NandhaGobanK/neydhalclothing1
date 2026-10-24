@@ -432,7 +432,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                 }`}
               >
                 <Package className="w-3.5 h-3.5" />
-                <span>Sarees</span>
+                <span>Products</span>
               </button>
             )}
 

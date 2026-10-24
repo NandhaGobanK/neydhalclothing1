@@ -46,7 +46,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
           alt={product.title}
           referrerPolicy="no-referrer"
-          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out"
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
         />
 
         {/* Top Badges (Discount Offer % Tag, Restocked Badge & Video Reel) */}
@@ -148,7 +148,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
               onOpenDetails(product);
             }}
             className="p-2.5 rounded-xl bg-white/90 hover:bg-neutral-950 text-neutral-950 hover:text-white transition shadow-lg"
-            title="View Saree Details"
+            title="View Details"
           >
             <Eye className="w-3.5 h-3.5" />
           </button>

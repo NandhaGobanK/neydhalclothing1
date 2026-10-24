@@ -333,22 +333,28 @@ function MainAppContent() {
                             setSelectedCategory(cat.name);
                             setCustomerActiveTab('categories');
                           }}
-                          className="group relative rounded-2xl overflow-hidden bg-neutral-900 aspect-3/4 border border-neutral-200/80 shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-end p-3 active:scale-98"
+                          className="group relative rounded-2xl overflow-hidden bg-neutral-950 aspect-3/4 border border-neutral-200/80 shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-end p-3 active:scale-98"
                           title={`View ${cat.name} Collection`}
                         >
                           <img
                             src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110 pointer-events-none"
+                          />
+                          <img
+                            src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                             alt={cat.name}
-                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-108 transition-transform duration-500 opacity-80 group-hover:opacity-90"
+                            className="relative z-1 max-h-full max-w-full object-contain p-1 group-hover:scale-105 transition-transform duration-500 mx-auto my-auto"
                             loading="lazy"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+                          <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/95 via-black/40 to-transparent pointer-events-none" />
 
-                          <div className="relative z-10 space-y-1">
-                            <span className="inline-block text-[9px] font-bold bg-white/90 text-neutral-900 px-1.5 py-0.5 rounded-full backdrop-blur-xs">
+                          <div className="relative z-30 space-y-1">
+                            <span className="inline-block text-[9px] font-bold bg-white/95 text-neutral-900 px-1.5 py-0.5 rounded-full backdrop-blur-xs shadow-xs">
                               {count} {count === 1 ? 'Design' : 'Designs'}
                             </span>
-                            <h3 className="font-serif font-bold text-xs sm:text-sm text-white leading-tight group-hover:text-amber-200 transition">
+                            <h3 className="font-serif font-bold text-xs sm:text-sm text-white leading-tight group-hover:text-amber-200 transition drop-shadow-md">
                               {cat.name}
                             </h3>
                           </div>

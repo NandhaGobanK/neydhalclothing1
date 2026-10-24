@@ -3,6 +3,7 @@ import { Product } from '../../types/store';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice, calculateDiscount, getProductShareUrl, getPublicStoreUrl } from '../../utils/upi';
 import { parseVideoUrl } from '../../utils/video';
+import { isProductInActiveCategories, getCategorySingularName, getCategoryPluralName } from '../../utils/productValidation';
 import {
   X,
   ShoppingBag,
@@ -24,6 +25,8 @@ import {
   Sparkles,
   ChevronRight,
   ChevronLeft,
+  ArrowRight,
+  Trash2,
 } from 'lucide-react';
 
 interface ProductDetailModalProps {
@@ -32,10 +35,28 @@ interface ProductDetailModalProps {
   onSelectProduct?: (product: Product) => void;
 }
 
-export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose, onSelectProduct }) => {
+export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product: initialProduct, onClose, onSelectProduct }) => {
+  const [product, setProduct] = useState<Product>(initialProduct);
+  const [historyStack, setHistoryStack] = useState<Product[]>([]);
+
+  useEffect(() => {
+    setProduct(initialProduct);
+    setHistoryStack([]);
+    setSelectedImageIndex(0);
+    setActiveTab('photos');
+    setQuantity(1);
+  }, [initialProduct.id]);
+
   const {
     products,
+    categories,
+    cart,
     addToCart,
+    updateCartQuantity,
+    removeFromCart,
+    cartCount,
+    cartTotal,
+    cartGrandTotal,
     setIsCartOpen,
     setIsCheckoutOpen,
     settings,
@@ -51,7 +72,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Suggested items single-carousel state
-  const [addedCrossSellIds, setAddedCrossSellIds] = useState<Record<string, boolean>>({});
   const carouselScrollRef = useRef<HTMLDivElement>(null);
 
   const scrollCarousel = (offset: number) => {
@@ -60,54 +80,157 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
     }
   };
 
-  // Unified suggested items (combines blouses, jewelry, complementary sarees, & handpicked items)
+  // Unified suggested items (cross-sells specifically tailored for this product)
   const suggestedItems = React.useMemo(() => {
     // 1. Direct handpicked cross-sells
     const directIds = product.crossSellProductIds || [];
-    const directMatches = products.filter(
-      (p) => directIds.includes(p.id) && p.id !== product.id && p.stockStatus !== 'out_of_stock'
-    );
+    if (directIds.length > 0) {
+      // If the admin explicitly handpicked cross-sell items,
+      // ONLY show those handpicked items that belong to active categories and are visible!
+      return products.filter(
+        (p) =>
+          directIds.includes(p.id) &&
+          p.id !== product.id &&
+          p.stockStatus !== 'out_of_stock' &&
+          p.isVisible !== false &&
+          isProductInActiveCategories(p, categories)
+      );
+    }
 
-    // 2. Category configured suggestions or fallbacks (e.g. Blouses, Jewelry, Sarees)
-    const configuredCategories = product.crossSellCategoryNames && product.crossSellCategoryNames.length > 0
-      ? product.crossSellCategoryNames
-      : ['Designer Blouses', 'Temple Jewelry', 'Jewellery', 'Blouses', 'Accessories', 'Kanjivaram Silk', 'Banarasi Brocade'];
+    // 2. Only if no direct cross-sells were handpicked, provide sensible category recommendations:
+    // Strictly filter out any categories that were removed or are not in active categories
+    const activeCategoryNames = (categories || [])
+      .map((c) => (c?.name ? String(c.name).toLowerCase().trim() : ''))
+      .filter(Boolean);
+    const candidateFallbackCategories =
+      product.crossSellCategoryNames && product.crossSellCategoryNames.length > 0
+        ? product.crossSellCategoryNames
+        : product.productType === 'kurti'
+        ? ['Ethnic Kurtis', 'Bottoms & Palazzos', 'Dupattas']
+        : product.productType === 'blouse'
+        ? ['Heirloom Sarees']
+        : product.productType === 'jewelry'
+        ? ['Heirloom Sarees', 'Designer Blouses']
+        : ['Designer Blouses'];
 
-    const categoryMatches = products.filter((p) => {
-      if (p.id === product.id || directIds.includes(p.id) || p.stockStatus === 'out_of_stock' || !p.category) {
-        return false;
-      }
-      const cat = p.category.toLowerCase();
-      return configuredCategories.some(
-        (c) => c.toLowerCase() === cat || cat.includes(c.toLowerCase()) || c.toLowerCase().includes(cat)
+    const validConfiguredCategories = candidateFallbackCategories.filter((catName) => {
+      const clean = catName.toLowerCase().trim();
+      return activeCategoryNames.some(
+        (ac) => ac === clean || ac.includes(clean) || clean.includes(ac)
       );
     });
 
-    // 3. Fallbacks to other products in stock
-    const existingIds = new Set([product.id, ...directMatches.map((m) => m.id), ...categoryMatches.map((m) => m.id)]);
-    const otherProducts = products.filter(
-      (p) => !existingIds.has(p.id) && p.stockStatus !== 'out_of_stock'
-    );
+    if (validConfiguredCategories.length === 0) {
+      return [];
+    }
 
-    return [...directMatches, ...categoryMatches, ...otherProducts];
-  }, [product, products]);
+    const categoryMatches = products.filter((p) => {
+      if (
+        p.id === product.id ||
+        p.stockStatus === 'out_of_stock' ||
+        p.isVisible === false ||
+        !p.category ||
+        !isProductInActiveCategories(p, categories)
+      ) {
+        return false;
+      }
+      const cat = p.category.toLowerCase().trim();
+      return validConfiguredCategories.some(
+        (c) =>
+          c.toLowerCase().trim() === cat ||
+          cat.includes(c.toLowerCase().trim()) ||
+          c.toLowerCase().trim().includes(cat)
+      );
+    });
 
-  const handleQuickAddCrossSell = (item: Product, e?: React.MouseEvent) => {
+    return categoryMatches.slice(0, 10);
+  }, [product, products, categories]);
+
+  // Suggested items added to cart tracker
+  const addedCarouselItems = React.useMemo(() => {
+    return suggestedItems
+      .map((item) => {
+        const cartEntry = cart.find((c) => c.product.id === item.id);
+        return {
+          item,
+          quantity: cartEntry ? cartEntry.quantity : 0,
+        };
+      })
+      .filter((entry) => entry.quantity > 0);
+  }, [suggestedItems, cart]);
+
+  const addedItemIds = React.useMemo(() => {
+    return new Set(addedCarouselItems.map((entry) => entry.item.id));
+  }, [addedCarouselItems]);
+
+  // Unselected suggested items: only show items that are NOT yet selected
+  // (Separates already selected products into their own dedicated column)
+  const unselectedSuggestedItems = React.useMemo(() => {
+    return suggestedItems.filter((item) => !addedItemIds.has(item.id));
+  }, [suggestedItems, addedItemIds]);
+
+  const carouselAddedItemsCount = React.useMemo(() => {
+    return addedCarouselItems.reduce((acc, entry) => acc + entry.quantity, 0);
+  }, [addedCarouselItems]);
+
+  const carouselAddedTotalCost = React.useMemo(() => {
+    return addedCarouselItems.reduce((acc, entry) => acc + entry.item.price * entry.quantity, 0);
+  }, [addedCarouselItems]);
+
+  const handleGoToCart = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    addToCart(item, 1);
-    setAddedCrossSellIds((prev) => ({ ...prev, [item.id]: true }));
-    setTimeout(() => {
-      setAddedCrossSellIds((prev) => ({ ...prev, [item.id]: false }));
-    }, 1800);
+    if (mainProductQtyInCart === 0 && !isOutOfStock && addedCarouselItems.length > 0) {
+      addToCart(product, quantity);
+    }
+    onClose();
+    setIsCartOpen(true);
+  };
+
+  // Add / Increment suggested item (+ symbol)
+  const handleIncrementSuggested = (item: Product, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const liveProd = products.find((p) => p.id === item.id) || item;
+    const maxStock = Math.max(0, liveProd.stockCount ?? 99);
+    const cartEntry = cart.find((c) => c.product.id === item.id);
+    const currentQty = cartEntry ? cartEntry.quantity : 0;
+    if (currentQty < maxStock) {
+      addToCart(item, 1);
+    }
+  };
+
+  // Remove / Decrement suggested item (- symbol)
+  const handleDecrementSuggested = (item: Product, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const cartEntry = cart.find((c) => c.product.id === item.id);
+    if (!cartEntry) return;
+    if (cartEntry.quantity > 1) {
+      updateCartQuantity(item.id, cartEntry.quantity - 1);
+    } else {
+      removeFromCart(item.id);
+    }
+  };
+
+  const handleClose = () => {
+    if (historyStack.length > 0) {
+      const prevProduct = historyStack[historyStack.length - 1];
+      setHistoryStack((prev) => prev.slice(0, -1));
+      setProduct(prevProduct);
+      setSelectedImageIndex(0);
+      setActiveTab('photos');
+      setQuantity(1);
+      if (modalBoxRef.current) {
+        modalBoxRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } else {
+      onClose();
+    }
   };
 
   const handleViewSuggestedProduct = (item: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (onSelectProduct) {
-      onSelectProduct(item);
-    } else {
-      setActiveProductModal(item);
-    }
+    // Push the current product into the navigation history stack
+    setHistoryStack((prev) => [...prev, product]);
+    setProduct(item);
     setSelectedImageIndex(0);
     setActiveTab('photos');
     setQuantity(1);
@@ -115,6 +238,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
       modalBoxRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
+
+  // Keyboard Escape listener to step back or close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [historyStack]);
 
   // Customer Reviews state
   const reviews = getProductReviews(product.id);
@@ -165,6 +299,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
   const [quantity, setQuantity] = useState(1);
   const [addedFeedback, setAddedFeedback] = useState(false);
 
+  // Dynamic category entity naming (adapts Saree, Blouse, Kurti, Jewelry, etc.)
+  const itemSingular = getCategorySingularName(product.category || product.productType);
+  const itemPlural = getCategoryPluralName(product.category || product.productType);
+
   const videoInfo = parseVideoUrl(product.videoUrl);
   const shortsInfo = parseVideoUrl(product.instagramShortsUrl);
   const isOutOfStock = product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0);
@@ -189,9 +327,35 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
     setTimeout(() => setAddedFeedback(false), 2200);
   };
 
+  // Check if current main product is in cart
+  const mainProductInCart = cart.find((c) => c.product.id === product.id);
+  const mainProductQtyInCart = mainProductInCart ? mainProductInCart.quantity : 0;
+
+  // Saree subtotal (either from cart if already in cart, or configured quantity * product.price)
+  const currentSareeSubtotal = (mainProductInCart && mainProductQtyInCart > 0)
+    ? mainProductInCart.product.price * mainProductQtyInCart
+    : product.price * quantity;
+
+  // Complete ensemble total cost (This Saree + Added Suggested Items)
+  const ensembleCombinedTotal = (mainProductQtyInCart > 0 || !isOutOfStock ? currentSareeSubtotal : 0) + carouselAddedTotalCost;
+
+  // Total items in the combined ensemble
+  const totalEnsembleItemsCount = (mainProductQtyInCart > 0 || !isOutOfStock ? (mainProductQtyInCart > 0 ? mainProductQtyInCart : quantity) : 0) + carouselAddedItemsCount;
+
   const handleInstantBuy = () => {
-    if (isOutOfStock) return;
-    addToCart(product, quantity);
+    if (isOutOfStock && carouselAddedItemsCount === 0) return;
+    if (!isOutOfStock) {
+      addToCart(product, quantity);
+    }
+    onClose();
+    setIsCheckoutOpen(true);
+  };
+
+  const handleBuyEnsembleNow = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (mainProductQtyInCart === 0 && !isOutOfStock) {
+      addToCart(product, quantity);
+    }
     onClose();
     setIsCheckoutOpen(true);
   };
@@ -236,19 +400,55 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          handleClose();
+        }
+      }}
+    >
       <div
         ref={modalBoxRef}
         className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200"
       >
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 z-20 p-2 rounded-full bg-neutral-900/60 hover:bg-neutral-900 text-white transition-colors"
-          aria-label="Close details"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* Navigation Back Button when viewing a suggested product */}
+        {historyStack.length > 0 && (
+          <div className="absolute top-4 left-4 z-20">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-900/85 hover:bg-neutral-950 text-white text-xs font-bold shadow-lg transition backdrop-blur-md cursor-pointer border border-white/20 active:scale-95"
+              title={`Return back to ${historyStack[historyStack.length - 1].title}`}
+            >
+              <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+              <span>Back to {historyStack[historyStack.length - 1].title.length > 18 ? `${historyStack[historyStack.length - 1].title.slice(0, 18)}...` : historyStack[historyStack.length - 1].title}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Close & Return Back Actions */}
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5">
+          {historyStack.length > 0 && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-2.5 py-1.5 rounded-full bg-neutral-900/60 hover:bg-neutral-900 text-white text-[10px] font-medium transition cursor-pointer backdrop-blur-xs hidden sm:inline-flex items-center gap-1 border border-white/10"
+              title="Close modal completely"
+            >
+              <span>Close All</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleClose}
+            className="p-2 rounded-full bg-neutral-900/60 hover:bg-neutral-900 text-white transition-colors cursor-pointer"
+            aria-label={historyStack.length > 0 ? "Back to previous product" : "Close details"}
+            title={historyStack.length > 0 ? `Back to ${historyStack[historyStack.length - 1].title}` : "Close details"}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2">
           {/* Left Column: Visual Media Gallery & Video */}
@@ -265,7 +465,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   }`}
                 >
                   <ImageIcon className="w-3.5 h-3.5" />
-                  <span>Saree Photos</span>
+                  <span>{itemSingular} Photos</span>
                 </button>
                 {videoInfo && (
                   <button
@@ -343,12 +543,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   );
                 })()
               ) : (
-                <img
-                  src={product.images[selectedImageIndex] || product.images[0]}
-                  alt={product.title}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover object-center"
-                />
+                <div className="w-full h-full flex items-center justify-center p-2 bg-neutral-900/5">
+                  <img
+                    src={product.images[selectedImageIndex] || product.images[0]}
+                    alt={product.title}
+                    referrerPolicy="no-referrer"
+                    className="max-h-full max-w-full object-contain mx-auto"
+                  />
+                </div>
               )}
             </div>
 
@@ -423,8 +625,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                     type="button"
                     onClick={handleShare}
                     className="w-10 h-10 rounded-full border-2 border-neutral-950 bg-amber-500 hover:bg-amber-400 active:scale-95 text-neutral-950 shadow-md hover:shadow-lg transition-all duration-150 flex items-center justify-center font-bold group cursor-pointer ring-2 ring-amber-300/60 shrink-0"
-                    title="Share Saree Link"
-                    aria-label="Share Saree Link"
+                    title={`Share ${itemSingular} Link`}
+                    aria-label={`Share ${itemSingular} Link`}
                   >
                     <Share2 className="w-5 h-5 stroke-[2.6] text-neutral-950 group-hover:scale-110 transition-transform" />
                   </button>
@@ -444,7 +646,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 </div>
               </div>
               {copiedLink && (
-                <p className="text-[11px] font-semibold text-emerald-700 mb-2">Saree link copied to clipboard! Share it with friends and family.</p>
+                <p className="text-[11px] font-semibold text-emerald-700 mb-2">{itemSingular} link copied to clipboard! Share it with friends and family.</p>
               )}
 
               {/* Title & Subtitle */}
@@ -589,12 +791,38 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                       val = product.weaveDetails;
                     } else if (attr.id === 'attr-border' || attr.name.toLowerCase().includes('border')) {
                       val = product.borderType;
-                    } else if (attr.id === 'attr-blouse' || attr.name.toLowerCase().includes('blouse')) {
+                    } else if (attr.id === 'attr-blouse' || attr.name.toLowerCase().includes('blouse piece')) {
                       val = product.blousePieceIncluded ? 'Included (0.8m Running Silk)' : 'Not Included';
-                    } else if (attr.id === 'attr-length' || attr.name.toLowerCase().includes('length')) {
+                    } else if (attr.id === 'attr-length' || attr.name.toLowerCase().includes('saree length') || attr.name.toLowerCase().includes('total length')) {
                       val = product.lengthMeters ? `${product.lengthMeters} Meters` : undefined;
                     } else if (attr.id === 'attr-occasion' || attr.name.toLowerCase().includes('occasion')) {
                       val = product.occasion;
+                    } else if (attr.id === 'attr-pallu' || attr.name.toLowerCase().includes('pallu')) {
+                      val = product.palluDetails;
+                    } else if (attr.id === 'attr-bust-size' || attr.name.toLowerCase().includes('bust')) {
+                      val = product.bustSize;
+                    } else if (attr.id === 'attr-sleeve-length' || attr.name.toLowerCase().includes('sleeve length')) {
+                      val = product.sleeveLength;
+                    } else if (attr.id === 'attr-neck-style' || attr.name.toLowerCase().includes('neck')) {
+                      val = product.neckStyle;
+                    } else if (attr.id === 'attr-lining' || attr.name.toLowerCase().includes('lining')) {
+                      val = product.liningDetails;
+                    } else if (attr.id === 'attr-base-metal' || attr.name.toLowerCase().includes('base metal') || attr.name.toLowerCase().includes('material')) {
+                      val = product.baseMetal;
+                    } else if (attr.id === 'attr-gemstones' || attr.name.toLowerCase().includes('gemstone')) {
+                      val = product.gemstoneDetails;
+                    } else if (attr.id === 'attr-components' || attr.name.toLowerCase().includes('components') || attr.name.toLowerCase().includes('set')) {
+                      val = product.setComponents;
+                    } else if (attr.id === 'attr-closure' || attr.name.toLowerCase().includes('closure')) {
+                      val = product.closureType;
+                    } else if (attr.id === 'attr-kurti-length' || attr.name.toLowerCase().includes('kurti length')) {
+                      val = product.kurtiLength;
+                    } else if (attr.id === 'attr-cut-style' || attr.name.toLowerCase().includes('silhouette') || attr.name.toLowerCase().includes('cut')) {
+                      val = product.cutStyle;
+                    } else if (attr.id === 'attr-sleeve-style' || attr.name.toLowerCase().includes('sleeve style')) {
+                      val = product.sleeveStyle;
+                    } else if (attr.id === 'attr-embroidery' || attr.name.toLowerCase().includes('embroidery') || attr.name.toLowerCase().includes('print')) {
+                      val = product.embroideryDetails;
                     }
                   }
                   if (!val) return null;
@@ -747,7 +975,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 <div className="space-y-3">
                   {reviews.length === 0 ? (
                     <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200 text-center text-xs text-neutral-500">
-                      <p>No customer reviews yet for this saree.</p>
+                      <p>No customer reviews yet for this {itemSingular.toLowerCase()}.</p>
                       <button
                         type="button"
                         onClick={() => setShowReviewForm(true)}
@@ -813,7 +1041,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
               <div className="pt-3 pb-2 border-t border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-neutral-50/80 p-3.5 rounded-2xl border border-neutral-200/70 mb-2">
                 <div>
                   <span className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
-                    <span>Number of Sarees (Quantity)</span>
+                    <span>Quantity ({itemPlural})</span>
                     {product.stockStatus === 'limited' && (
                       <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded-full">
                         Max {product.stockCount} left
@@ -821,7 +1049,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                     )}
                   </span>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Subtotal for {quantity} {quantity === 1 ? 'saree' : 'sarees'}:{' '}
+                    Subtotal for {quantity} {quantity === 1 ? itemSingular.toLowerCase() : itemPlural.toLowerCase()}:{' '}
                     <strong className="text-neutral-950 font-bold tabular-nums">
                       {formatPrice(product.price * quantity)}
                     </strong>
@@ -883,129 +1111,368 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 ) : (
                   <>
                     <ShoppingBag className="w-4 h-4" />
-                    <span>Add {quantity > 1 ? `${quantity} Sarees` : 'to Shopping Bag'}</span>
+                    <span>Add {quantity > 1 ? `${quantity} ${itemPlural}` : 'to Shopping Bag'}</span>
                   </>
                 )}
               </button>
 
               <button
-                onClick={handleInstantBuy}
-                disabled={isOutOfStock}
+                onClick={carouselAddedItemsCount > 0 ? handleBuyEnsembleNow : handleInstantBuy}
+                disabled={isOutOfStock && carouselAddedItemsCount === 0}
                 className={`flex-1 py-3.5 px-4 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition ${
-                  isOutOfStock
+                  isOutOfStock && carouselAddedItemsCount === 0
                     ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
-                    : 'bg-amber-500 hover:bg-amber-400 text-neutral-950 shadow-amber-500/20 font-bold'
+                    : 'bg-amber-500 hover:bg-amber-400 text-neutral-950 shadow-amber-500/20 font-bold cursor-pointer'
                 }`}
               >
                 <span>
-                  {isOutOfStock
+                  {isOutOfStock && carouselAddedItemsCount === 0
                     ? 'Currently Sold Out'
+                    : carouselAddedItemsCount > 0
+                    ? `Buy Now (${formatPrice(ensembleCombinedTotal)})`
                     : quantity > 1
-                    ? `Buy ${quantity} Sarees (${formatPrice(product.price * quantity)})`
+                    ? `Buy ${quantity} ${itemPlural} (${formatPrice(product.price * quantity)})`
                     : 'Buy Now'}
                 </span>
+                <ArrowRight className="w-4 h-4 stroke-[2.5]" />
               </button>
             </div>
           </div>
         </div>
 
-        {/* Suggested Items (Single Carousel for all recommendations: Blouses, Jewelry, Sarees) */}
+        {/* Suggested Items & Dedicated Already Selected Products Column */}
         {suggestedItems.length > 0 && (
-          <div className="border-t border-neutral-200/90 bg-white p-4 sm:p-6 select-none">
-            {/* Header with Title and Scroll Controls */}
-            <div className="flex items-center justify-between mb-3.5">
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm sm:text-base font-semibold text-neutral-900 tracking-tight">
-                  Suggested Items
-                </h4>
-                <span className="text-[11px] text-neutral-400 font-medium">
-                  ({suggestedItems.length} items)
-                </span>
-              </div>
-
-              {/* Navigation Arrows */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => scrollCarousel(-220)}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border border-neutral-200 shadow-2xs hover:shadow-xs flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
-                  aria-label="Previous items"
-                  title="Scroll left"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollCarousel(220)}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border border-neutral-200 shadow-2xs hover:shadow-xs flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
-                  aria-label="Next items"
-                  title="Scroll right"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Single Carousel Container */}
-            <div className="relative group/carousel">
-              {/* Left Floating Button for larger screens */}
-              <button
-                type="button"
-                onClick={() => scrollCarousel(-220)}
-                className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
-                aria-label="Previous items"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-
-              {/* Scrollable Row of Suggested Products */}
-              <div
-                ref={carouselScrollRef}
-                className="flex items-center gap-3 overflow-x-auto scrollbar-none scroll-smooth px-1 py-1"
-              >
-                {suggestedItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={(e) => handleViewSuggestedProduct(item, e)}
-                    className="group/card relative w-24 sm:w-28 md:w-32 aspect-[3/4] rounded-2xl border border-neutral-200/90 hover:border-amber-500 overflow-hidden bg-neutral-50 shrink-0 shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-amber-500/40"
-                    title={`Click to view ${item.title}`}
-                  >
-                    {/* Product Photo */}
-                    <img
-                      src={item.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
-                      alt={item.title}
-                      className="w-full h-full object-cover group-hover/card:scale-106 transition-transform duration-300"
-                      loading="lazy"
-                    />
-
-                    {/* Subtle Category Tag */}
-                    {item.category && (
-                      <span className="absolute top-1.5 left-1.5 z-10 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider bg-black/70 text-amber-200 backdrop-blur-xs px-1.5 py-0.5 rounded-md truncate max-w-[90%]">
-                        {item.category}
+          <div className="border-t border-neutral-200/90 bg-neutral-50/40 p-4 sm:p-6 select-none">
+            {addedCarouselItems.length > 0 ? (
+              /* Two-Column Responsive Layout: Available Suggestions on Left, Already Selected Column on Right */
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                {/* Left Column: Remaining Unselected Suggestions (if any) */}
+                <div className={unselectedSuggestedItems.length > 0 ? "lg:col-span-7 space-y-3" : "hidden"}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      <h4 className="text-sm font-semibold text-neutral-900 tracking-tight">
+                        Suggested Add-ons
+                      </h4>
+                      <span className="text-[11px] text-neutral-400 font-medium">
+                        ({unselectedSuggestedItems.length} available)
                       </span>
-                    )}
-
-                    {/* Price Badge Overlay at Bottom Left (matching reference design) */}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2 text-white">
-                      <p className="text-[11px] sm:text-xs font-bold leading-tight truncate">
-                        {formatPrice(item.price)}
-                      </p>
                     </div>
-                  </button>
-                ))}
-              </div>
 
-              {/* Right Floating Button for larger screens */}
-              <button
-                type="button"
-                onClick={() => scrollCarousel(220)}
-                className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
-                aria-label="Next items"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => scrollCarousel(-180)}
+                        className="w-7 h-7 rounded-full bg-white border border-neutral-200 shadow-2xs hover:shadow-xs flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-100 transition cursor-pointer"
+                        title="Scroll left"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => scrollCarousel(180)}
+                        className="w-7 h-7 rounded-full bg-white border border-neutral-200 shadow-2xs hover:shadow-xs flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-100 transition cursor-pointer"
+                        title="Scroll right"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    ref={carouselScrollRef}
+                    className="flex items-center gap-3 overflow-x-auto scrollbar-none scroll-smooth py-1"
+                  >
+                    {unselectedSuggestedItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="group/card relative w-28 sm:w-32 aspect-3/4 rounded-2xl border border-neutral-200 bg-white shadow-2xs overflow-hidden shrink-0 text-left hover:border-amber-400 transition"
+                      >
+                        {/* Product image (contain so it adjusts according to natural image size) */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleViewSuggestedProduct(item, e)}
+                          className="absolute inset-0 w-full h-full cursor-pointer focus:outline-hidden p-1.5 flex items-center justify-center bg-neutral-50"
+                          title={`View ${item.title}`}
+                        >
+                          <img
+                            src={item.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                            alt={item.title}
+                            className="max-h-full max-w-full object-contain group-hover/card:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                        </button>
+
+                        {item.category && (
+                          <span className="absolute top-1.5 left-1.5 z-10 pointer-events-none text-[8px] font-bold uppercase tracking-wider bg-black/75 text-amber-200 backdrop-blur-xs px-1.5 py-0.5 rounded-md truncate max-w-[65%]">
+                            {item.category}
+                          </span>
+                        )}
+
+                        {/* + Button on top-right */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleIncrementSuggested(item, e)}
+                          className="absolute top-1.5 right-1.5 z-20 w-7 h-7 rounded-full bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold shadow-md flex items-center justify-center transition active:scale-90 cursor-pointer"
+                          title={`Add ${item.title} (+)`}
+                        >
+                          <Plus className="w-4 h-4 stroke-[2.5]" />
+                        </button>
+
+                        <div className="absolute inset-x-0 bottom-0 z-10 pointer-events-none bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-4 pb-1.5 px-2 text-white">
+                          <p className="text-[10px] text-neutral-200 font-medium truncate leading-tight">
+                            {item.title}
+                          </p>
+                          <span className="text-[11px] font-bold text-white tabular-nums block mt-0.5">
+                            {formatPrice(item.price)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right Column: Dedicated "Already Selected Products" Column */}
+                <div className={unselectedSuggestedItems.length > 0 ? "lg:col-span-5 space-y-3" : "lg:col-span-12 space-y-3"}>
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50 via-rose-50/40 to-amber-50/70 border-2 border-amber-300/80 shadow-xs space-y-3.5">
+                    <div className="flex items-center justify-between pb-2 border-b border-amber-200/80">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <h4 className="font-serif font-bold text-sm text-neutral-950">
+                          Already Selected Products
+                        </h4>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-neutral-950">
+                        {addedCarouselItems.length} {addedCarouselItems.length === 1 ? 'Item' : 'Items'} Selected
+                      </span>
+                    </div>
+
+                    {/* List of Already Selected Products with image, title, price, and +/- controls */}
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {addedCarouselItems.map(({ item, quantity: itmQty }) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between gap-2.5 p-2 rounded-xl bg-white border border-amber-200/80 shadow-2xs"
+                        >
+                          <div
+                            onClick={() => handleViewSuggestedProduct(item)}
+                            className="flex items-center gap-2 min-w-0 cursor-pointer group/item hover:opacity-85 transition"
+                            title={`View details of ${item.title}`}
+                          >
+                            <div className="w-10 h-12 rounded-lg bg-neutral-100 border border-neutral-200 overflow-hidden flex items-center justify-center shrink-0 p-0.5 group-hover/item:border-amber-400">
+                              <img
+                                src={item.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                                alt={item.title}
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-neutral-900 text-xs truncate max-w-[130px] sm:max-w-[180px] group-hover/item:text-amber-800 transition" title={item.title}>
+                                {item.title}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[11px] font-bold text-amber-950 tabular-nums">
+                                  {formatPrice(item.price)}
+                                </span>
+                                {item.category && (
+                                  <span className="text-[9px] px-1 py-0.2 rounded bg-neutral-100 text-neutral-600 truncate max-w-[80px]">
+                                    {item.category}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Quantity Controls (- / + / Remove) */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="flex items-center border border-neutral-300 rounded-lg bg-neutral-50 overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={(e) => handleDecrementSuggested(item, e)}
+                                className="p-1 hover:bg-neutral-200 text-neutral-700 transition cursor-pointer"
+                                title="Decrease (-)"
+                              >
+                                <Minus className="w-3 h-3 stroke-[2.5]" />
+                              </button>
+                              <span className="px-2 text-xs font-bold text-neutral-900 tabular-nums min-w-[18px] text-center">
+                                {itmQty}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => handleIncrementSuggested(item, e)}
+                                className="p-1 hover:bg-neutral-200 text-neutral-700 transition cursor-pointer"
+                                title="Increase (+)"
+                              >
+                                <Plus className="w-3 h-3 stroke-[2.5]" />
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFromCart(item.id);
+                              }}
+                              className="p-1 text-neutral-400 hover:text-rose-600 transition cursor-pointer"
+                              title="Remove product"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Cumulative Cost Breakdown */}
+                    <div className="pt-2.5 border-t border-amber-200/80 space-y-1.5 text-xs">
+                      <div className="flex justify-between text-neutral-600 text-[11px]">
+                        <span>This {product.productType || 'Item'} ({quantity}×):</span>
+                        <span className="font-semibold text-neutral-900 tabular-nums">
+                          {formatPrice(currentSareeSubtotal)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-neutral-600 text-[11px]">
+                        <span>Selected Add-ons ({carouselAddedItemsCount} pcs):</span>
+                        <span className="font-semibold text-neutral-900 tabular-nums">
+                          {formatPrice(carouselAddedTotalCost)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-baseline pt-1 border-t border-amber-200/60">
+                        <div>
+                          <span className="font-bold text-neutral-950 text-xs uppercase tracking-wider block">
+                            Cumulative Total Cost
+                          </span>
+                          <span className="text-[10px] text-neutral-500">
+                            Total {totalEnsembleItemsCount} items in bundle
+                          </span>
+                        </div>
+                        <span className="text-base sm:text-lg font-bold font-serif text-neutral-950 tabular-nums">
+                          {formatPrice(ensembleCombinedTotal)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Bundle Action Buttons: Go to Cart, Buy Now */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      {/* 1. Go to Cart */}
+                      <button
+                        type="button"
+                        onClick={handleGoToCart}
+                        className="py-2.5 px-3 rounded-xl border border-amber-400 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition active:scale-98 cursor-pointer"
+                        title="Open shopping cart drawer"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5" />
+                        <span>Go to Cart</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500 text-neutral-950 font-semibold">
+                          {cartCount}
+                        </span>
+                      </button>
+
+                      {/* 2. Buy Now (Instant Checkout) */}
+                      <button
+                        type="button"
+                        onClick={handleBuyEnsembleNow}
+                        className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-md hover:shadow-lg shadow-amber-500/20 transition active:scale-98 cursor-pointer"
+                        title="Proceed directly to checkout with bundle"
+                      >
+                        <span>Buy Now</span>
+                        <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Single Carousel view when NO items are selected yet */
+              <div>
+                <div className="flex items-center justify-between mb-3.5">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm sm:text-base font-semibold text-neutral-900 tracking-tight">
+                      Suggested Items
+                    </h4>
+                    <span className="text-[11px] text-neutral-400 font-medium">
+                      ({suggestedItems.length} items)
+                    </span>
+                    <span className="text-[10px] text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full font-medium hidden sm:inline">
+                      Tap + to select & create bundle
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => scrollCarousel(-220)}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border border-neutral-200 shadow-2xs hover:shadow-xs flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
+                      title="Scroll left"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollCarousel(220)}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border border-neutral-200 shadow-2xs hover:shadow-xs flex items-center justify-center text-neutral-700 hover:text-black hover:bg-neutral-50 transition cursor-pointer"
+                      title="Scroll right"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="relative group/carousel">
+                  <div
+                    ref={carouselScrollRef}
+                    className="flex items-center gap-3 overflow-x-auto scrollbar-none scroll-smooth px-1 py-1"
+                  >
+                    {suggestedItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="group/card relative w-28 sm:w-32 md:w-36 aspect-[3/4] rounded-2xl border border-neutral-200/90 hover:border-amber-400/80 bg-neutral-50 shadow-2xs overflow-hidden shrink-0 transition-all duration-200 text-left"
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => handleViewSuggestedProduct(item, e)}
+                          className="absolute inset-0 w-full h-full cursor-pointer focus:outline-hidden text-left p-1 flex items-center justify-center bg-white"
+                          title={`Click to view ${item.title}`}
+                        >
+                          <img
+                            src={item.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                            alt={item.title}
+                            className="max-h-full max-w-full object-contain group-hover/card:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                        </button>
+
+                        {item.category && (
+                          <span className="absolute top-2 left-2 z-10 pointer-events-none text-[8px] sm:text-[9px] font-bold uppercase tracking-wider bg-black/75 text-amber-200 backdrop-blur-xs px-1.5 py-0.5 rounded-md truncate max-w-[60%]">
+                            {item.category}
+                          </span>
+                        )}
+
+                        <div className="absolute top-2 right-2 z-20">
+                          <button
+                            type="button"
+                            onClick={(e) => handleIncrementSuggested(item, e)}
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold shadow-md border border-amber-400 flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
+                            title={`Add ${item.title} (+)`}
+                          >
+                            <Plus className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+                        </div>
+
+                        <div className="absolute inset-x-0 bottom-0 z-10 pointer-events-none bg-gradient-to-t from-black/90 via-black/55 to-transparent pt-6 pb-2 px-2 text-white">
+                          <p className="text-[10px] text-neutral-200 font-medium truncate leading-tight">
+                            {item.title}
+                          </p>
+                          <span className="text-[11px] sm:text-xs font-bold text-white tabular-nums block mt-0.5">
+                            {formatPrice(item.price)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

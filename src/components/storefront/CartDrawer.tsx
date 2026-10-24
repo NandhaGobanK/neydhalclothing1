@@ -2,6 +2,7 @@ import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
 import { Product } from '../../types/store';
+import { isProductInActiveCategories } from '../../utils/productValidation';
 import { X, Trash2, Plus, Minus, ArrowRight, ShoppingBag, ShieldCheck, Truck, Sparkles, AlertCircle, Check } from 'lucide-react';
 
 export const CartDrawer: React.FC = () => {
@@ -10,6 +11,7 @@ export const CartDrawer: React.FC = () => {
     setIsCartOpen,
     cart,
     products,
+    categories,
     addToCart,
     updateCartQuantity,
     removeFromCart,
@@ -31,32 +33,51 @@ export const CartDrawer: React.FC = () => {
   const [localWarning, setLocalWarning] = React.useState<string | null>(null);
   const [addedCrossSell, setAddedCrossSell] = React.useState<Record<string, boolean>>({});
 
+  // Real-time valid cart items strictly filtered against active boutique categories
+  const validCartItems = React.useMemo(() => {
+    return cart.filter((item) => isProductInActiveCategories(item.product, categories));
+  }, [cart, categories]);
+
   // Cross-sell recommendations derived from items currently in the cart
   const cartCrossSellSuggestions = React.useMemo(() => {
-    if (cart.length === 0) return [];
-    const cartProductIds = new Set(cart.map((i) => i.product.id));
+    if (validCartItems.length === 0) return [];
+    const cartProductIds = new Set(validCartItems.map((i) => i.product.id));
+    const activeCategoryNames = (categories || [])
+      .map((c) => (c?.name ? String(c.name).toLowerCase().trim() : ''))
+      .filter(Boolean);
 
     // Gather all linked cross-sell IDs and category fallbacks from items in the cart
     const linkedIds = new Set<string>();
     const fallbackCategories = new Set<string>();
 
-    cart.forEach((item) => {
+    validCartItems.forEach((item) => {
       if (item.product.crossSellProductIds) {
         item.product.crossSellProductIds.forEach((id) => linkedIds.add(id));
       }
       if (item.product.crossSellCategoryNames) {
-        item.product.crossSellCategoryNames.forEach((cat) => fallbackCategories.add(cat.toLowerCase()));
+        item.product.crossSellCategoryNames.forEach((cat) => {
+          const catClean = cat.toLowerCase().trim();
+          if (activeCategoryNames.some((ac) => ac === catClean || ac.includes(catClean) || catClean.includes(ac))) {
+            fallbackCategories.add(catClean);
+          }
+        });
       }
     });
 
     if (fallbackCategories.size === 0) {
-      fallbackCategories.add('designer blouses');
-      fallbackCategories.add('temple jewelry');
+      if (activeCategoryNames.some((ac) => ac.includes('blouse'))) {
+        fallbackCategories.add('designer blouses');
+      }
     }
 
     // 1. Direct handpicked matches not yet in cart
     const directMatches = products.filter(
-      (p) => linkedIds.has(p.id) && !cartProductIds.has(p.id) && p.stockStatus !== 'out_of_stock'
+      (p) =>
+        linkedIds.has(p.id) &&
+        !cartProductIds.has(p.id) &&
+        p.stockStatus !== 'out_of_stock' &&
+        p.isVisible !== false &&
+        isProductInActiveCategories(p, categories)
     );
 
     // 2. Category fallback matches not yet in cart
@@ -65,12 +86,14 @@ export const CartDrawer: React.FC = () => {
         !linkedIds.has(p.id) &&
         !cartProductIds.has(p.id) &&
         p.stockStatus !== 'out_of_stock' &&
+        p.isVisible !== false &&
         p.category &&
-        fallbackCategories.has(p.category.toLowerCase())
+        fallbackCategories.has(p.category.toLowerCase().trim()) &&
+        isProductInActiveCategories(p, categories)
     );
 
     return [...directMatches, ...catMatches].slice(0, 3);
-  }, [cart, products]);
+  }, [validCartItems, products, categories]);
 
   const handleQuickAddCrossSell = (item: Product) => {
     addToCart(item, 1);
@@ -181,7 +204,7 @@ export const CartDrawer: React.FC = () => {
         )}
 
         {/* Content */}
-        {cart.length === 0 ? (
+        {validCartItems.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
             <div className="w-16 h-16 rounded-full bg-rose-50 flex items-center justify-center text-rose-800 mb-4">
               <ShoppingBag className="w-8 h-8 stroke-1" />
@@ -203,7 +226,7 @@ export const CartDrawer: React.FC = () => {
           <>
             {/* Items list */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-5 divide-y divide-neutral-100 space-y-4">
-              {cart.map((item) => {
+              {validCartItems.map((item) => {
                 const liveProd = products.find((p) => p.id === item.product.id) || item.product;
                 const availableStock = Math.max(0, liveProd.stockCount ?? 99);
                 const isAtMaxStock = item.quantity >= availableStock;

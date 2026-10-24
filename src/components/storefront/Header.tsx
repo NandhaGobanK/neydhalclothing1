@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
       ];
     }
     return [
-      { id: 'all', label: 'All Sarees' },
+      { id: 'all', label: 'All Products' },
       ...publishedFabrics.map((fab) => ({ id: fab, label: fab })),
     ];
   }, [boutiqueCategories, publishedFabrics]);

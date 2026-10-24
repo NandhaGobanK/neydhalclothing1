@@ -62,6 +62,7 @@ import {
   isDisputeActiveForType,
   isDisputeResolvedForType,
 } from '../utils/disputeRedressals';
+import { isProductInActiveCategories } from '../utils/productValidation';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'aara_boutique_products_v3',
@@ -549,20 +550,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return DEFAULT_SAREE_CATEGORIES;
   });
 
-  // Active, visible wishlist derived state: instantly purges any deleted or hidden product from badges & lists
+  // Active, visible wishlist derived state: instantly purges any deleted, hidden, or removed-category product from badges & lists
   const activeWishlist = useMemo(() => {
     const activeVisibleIds = new Set(
-      products.filter((p) => p.isVisible !== false).map((p) => p.id)
+      products
+        .filter((p) => p.isVisible !== false && isProductInActiveCategories(p, categories))
+        .map((p) => p.id)
     );
     return wishlist.filter((id) => activeVisibleIds.has(id));
-  }, [wishlist, products]);
+  }, [wishlist, products, categories]);
 
   // Automatic Wishlist Removal & Dynamic Adjustment for Deleted or Hidden Products
   useEffect(() => {
     if (products.length > 0) {
       setWishlist((prevWishlist) => {
         const activeVisibleIds = new Set(
-          products.filter((p) => p.isVisible !== false).map((p) => p.id)
+          products
+            .filter((p) => p.isVisible !== false && isProductInActiveCategories(p, categories))
+            .map((p) => p.id)
         );
         const cleaned = prevWishlist.filter((id) => activeVisibleIds.has(id));
         if (cleaned.length !== prevWishlist.length) {
@@ -572,7 +577,81 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return prevWishlist;
       });
     }
-  }, [products]);
+  }, [products, categories]);
+
+  // Real-time synchronization: when a category is removed, immediately purge all orphaned products created under that category
+  // from products, cart, wishlist, and linked crossSellProductIds
+  useEffect(() => {
+    if (categories.length === 0 || products.length === 0) return;
+
+    const orphaned = products.filter((p) => !isProductInActiveCategories(p, categories));
+    if (orphaned.length === 0) return;
+
+    const orphanedIds = new Set(orphaned.map((p) => p.id));
+
+    // 1. Mark as deleted & clean SKU in registry & Firestore
+    orphaned.forEach((p) => {
+      markProductAsDeleted(p.id);
+      if (p.productCode) {
+        const cleanSku = p.productCode.trim().toUpperCase();
+        deleteDoc(doc(db, 'sku_codes', cleanSku)).catch(() => {});
+        deleteDoc(doc(db, 'skus', cleanSku)).catch(() => {});
+        setSkus((prev) => prev.filter((s) => s.code?.trim().toUpperCase() !== cleanSku));
+      }
+      deleteDoc(doc(db, 'products', p.id)).catch(() => {});
+    });
+
+    // 2. Remove orphaned products from products state & storage, and purge from other products' crossSellProductIds
+    setProducts((prev) => {
+      const cleaned = prev
+        .filter((p) => !orphanedIds.has(p.id))
+        .map((p) => {
+          if (p.crossSellProductIds && p.crossSellProductIds.some((id) => orphanedIds.has(id))) {
+            const cleanedCross = p.crossSellProductIds.filter((id) => !orphanedIds.has(id));
+            setDoc(doc(db, 'products', p.id), sanitizeForFirestore({ crossSellProductIds: cleanedCross }), { merge: true }).catch(() => {});
+            return { ...p, crossSellProductIds: cleanedCross };
+          }
+          return p;
+        });
+      saveToStorage(STORAGE_KEYS.PRODUCTS, cleaned);
+      return cleaned;
+    });
+
+    // 3. Purge orphaned products from cart state & storage
+    setCart((prev) => {
+      const cleanedCart = prev.filter((item) => !orphanedIds.has(item.product.id));
+      if (cleanedCart.length !== prev.length) {
+        saveToStorage(STORAGE_KEYS.CART, cleanedCart);
+        return cleanedCart;
+      }
+      return prev;
+    });
+
+    // 4. Purge orphaned products from wishlist state & storage
+    setWishlist((prev) => {
+      const cleanedWishlist = prev.filter((id) => !orphanedIds.has(id));
+      if (cleanedWishlist.length !== prev.length) {
+        saveToStorage('aara_boutique_wishlist_v3', cleanedWishlist);
+        return cleanedWishlist;
+      }
+      return prev;
+    });
+  }, [categories, products]);
+
+  // Real-time Cart Auto-Sanitization: immediately remove any item from cart if product was deleted or category was removed
+  useEffect(() => {
+    if (cart.length === 0) return;
+    const deletedIds = getDeletedProductIds();
+    const cleaned = cart.filter((item) => {
+      if (deletedIds.has(item.product.id)) return false;
+      if (!isProductInActiveCategories(item.product, categories)) return false;
+      return true;
+    });
+    if (cleaned.length !== cart.length) {
+      setCart(cleaned);
+      saveToStorage(STORAGE_KEYS.CART, cleaned);
+    }
+  }, [cart, categories]);
 
   const toggleWishlist = (productId: string) => {
     const target = products.find((p) => p.id === productId);
@@ -1257,8 +1336,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   const publicProducts = useMemo(() => {
-    return products.filter((p) => p.isVisible);
-  }, [products]);
+    return products.filter((p) => p.isVisible && isProductInActiveCategories(p, categories));
+  }, [products, categories]);
 
   const staffMembers = useMemo(() => {
     return settings.staffMembers || [];
@@ -1266,6 +1345,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Cart operations
   const addToCart = (product: Product, quantity = 1) => {
+    if (!isProductInActiveCategories(product, categories)) {
+      setCartStockWarning('Cannot add item; this product category is no longer available in the boutique.');
+      return;
+    }
     const liveProd = products.find((p) => p.id === product.id) || product;
     const availableStock = Math.max(0, liveProd.stockCount ?? 99);
 
@@ -3625,9 +3708,69 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const deleteCategory = async (id: string) => {
+    const targetCat = categories.find((c) => c.id === id);
+    const catName = (targetCat?.name || '').trim().toLowerCase();
+    const catId = id.trim().toLowerCase();
+
     const updated = categories.filter((c) => c.id !== id);
     setCategories(updated);
     saveToStorage('aara_boutique_categories_v3', updated);
+
+    // Identify all products created under this category
+    const productsToDelete = products.filter((p) => {
+      const pCat = (p.category || '').trim().toLowerCase();
+      if (catName && (pCat === catName || pCat.includes(catName) || catName.includes(pCat))) return true;
+      if (pCat === catId) return true;
+      if (targetCat?.name && p.category === targetCat.name) return true;
+      // If it's a jewelry category and no other jewelry categories remain in updated:
+      if (catName.includes('jewel') && p.productType === 'jewelry') {
+        const hasOtherJewelry = updated.some((c) => Boolean(c?.name && c.name.toLowerCase().includes('jewel')));
+        if (!hasOtherJewelry) return true;
+      }
+      return false;
+    });
+
+    const productIdsToDelete = new Set(productsToDelete.map((p) => p.id));
+
+    if (productsToDelete.length > 0) {
+      productsToDelete.forEach((p) => {
+        markProductAsDeleted(p.id);
+        if (p.productCode) {
+          const cleanSku = p.productCode.trim().toUpperCase();
+          deleteDoc(doc(db, 'sku_codes', cleanSku)).catch(() => {});
+          deleteDoc(doc(db, 'skus', cleanSku)).catch(() => {});
+          setSkus((prev) => prev.filter((s) => s.code?.trim().toUpperCase() !== cleanSku));
+        }
+        deleteDoc(doc(db, 'products', p.id)).catch(() => {});
+      });
+
+      setProducts((prev) => {
+        const next = prev
+          .filter((p) => !productIdsToDelete.has(p.id))
+          .map((p) => {
+            if (p.crossSellProductIds && p.crossSellProductIds.some((xId) => productIdsToDelete.has(xId))) {
+              const cleanedCross = p.crossSellProductIds.filter((xId) => !productIdsToDelete.has(xId));
+              setDoc(doc(db, 'products', p.id), sanitizeForFirestore({ crossSellProductIds: cleanedCross }), { merge: true }).catch(() => {});
+              return { ...p, crossSellProductIds: cleanedCross };
+            }
+            return p;
+          });
+        saveToStorage(STORAGE_KEYS.PRODUCTS, next);
+        return next;
+      });
+
+      setCart((prev) => {
+        const next = prev.filter((item) => !productIdsToDelete.has(item.product.id));
+        saveToStorage(STORAGE_KEYS.CART, next);
+        return next;
+      });
+
+      setWishlist((prev) => {
+        const next = prev.filter((itemId) => !productIdsToDelete.has(itemId));
+        saveToStorage('aara_boutique_wishlist_v3', next);
+        return next;
+      });
+    }
 
     // Remove directly from Firestore /categories/{id}
     await deleteDoc(doc(db, 'categories', id)).catch((err) =>

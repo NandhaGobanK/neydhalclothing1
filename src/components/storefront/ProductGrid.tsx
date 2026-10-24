@@ -3,6 +3,7 @@ import { useStore } from '../../context/StoreContext';
 import { ProductCard } from './ProductCard';
 import { Product } from '../../types/store';
 import { Search, SlidersHorizontal, X, Sparkles, ArrowUpDown } from 'lucide-react';
+import { getCategoryPluralName } from '../../utils/productValidation';
 
 interface ProductGridProps {
   onOpenDetails: (product: Product) => void;
@@ -217,7 +218,11 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-            <span>{restockedOnly ? '✓ Viewing Restocked Sarees' : '✨ Filter Restocked Sarees'}</span>
+            <span>
+              {restockedOnly
+                ? `✓ Viewing Restocked ${selectedCategory !== 'all' ? getCategoryPluralName(selectedCategory) : 'Products'}`
+                : `✨ Filter Restocked ${selectedCategory !== 'all' ? getCategoryPluralName(selectedCategory) : 'Products'}`}
+            </span>
           </button>
         </div>
 
@@ -319,12 +324,14 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         </div>
       </div>
 
-      {/* Grid of Sarees */}
+      {/* Grid of Products */}
       {filteredProducts.length === 0 ? (
         <div className="py-16 text-center bg-white rounded-2xl border border-neutral-200 p-8">
-          <p className="font-serif text-xl font-bold text-neutral-800">No Sarees Found</p>
+          <p className="font-serif text-xl font-bold text-neutral-800">
+            No {selectedCategory !== 'all' ? getCategoryPluralName(selectedCategory) : 'Products'} Found
+          </p>
           <p className="text-xs text-neutral-500 mt-1 max-w-md mx-auto">
-            We couldn't find any sarees matching your selected filters. Try choosing a different fabric or resetting your search.
+            We couldn't find any {selectedCategory !== 'all' ? getCategoryPluralName(selectedCategory).toLowerCase() : 'products'} matching your selected filters. Try choosing a different option or resetting your search.
           </p>
           <button
             onClick={resetFilters}

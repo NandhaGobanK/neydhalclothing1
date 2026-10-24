@@ -18,6 +18,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { formatPrice } from '../../utils/upi';
+import { getCategoryPluralName, getCategorySingularName } from '../../utils/productValidation';
 
 interface CategoryBrowserProps {
   onOpenDetails: (product: Product) => void;
@@ -352,7 +353,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                 }`}
               >
                 <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" />
-                <span>{restockedOnly ? '✓ Restocked Sarees' : '✨ Restocked Only'}</span>
+                <span>{restockedOnly ? `✓ Restocked ${getCategoryPluralName(activeCategory)}` : '✨ Restocked Only'}</span>
               </button>
 
               {/* Fabric Filter */}
@@ -692,7 +693,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
           <div className="p-12 text-center bg-white rounded-3xl border border-neutral-200 space-y-2">
             <Sparkles className="w-8 h-8 text-amber-500 mx-auto" />
             <h3 className="font-serif text-base font-bold text-neutral-900">No Restocked Collections Right Now</h3>
-            <p className="text-xs text-neutral-500">All current sarees are at normal inventory levels.</p>
+            <p className="text-xs text-neutral-500">All current products are at normal inventory levels.</p>
             <button
               type="button"
               onClick={() => setCategoryRestockFilter('all')}
@@ -716,34 +717,40 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                     className="group relative bg-white rounded-2xl border border-neutral-200/90 overflow-hidden shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-between"
                   >
                     {/* Visual Category Preview Image */}
-                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-100">
+                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-950 flex items-center justify-center">
+                      <img
+                        src={category.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                        alt=""
+                        aria-hidden="true"
+                        className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110 pointer-events-none"
+                      />
                       <img
                         src={category.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={category.name}
-                        className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500"
+                        className="relative z-1 max-h-full max-w-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+                      <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/95 via-black/40 to-transparent pointer-events-none" />
 
                       {/* Restocked Badge on Category Icon / Card */}
                       {isRestocked && (
-                        <div className="absolute top-3 left-3 bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-md border border-emerald-400 flex items-center gap-1 z-10 animate-in zoom-in-75">
+                        <div className="absolute top-3 left-3 bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-md border border-emerald-400 flex items-center gap-1 z-30 animate-in zoom-in-75">
                           <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
                           <span>Restocked</span>
                         </div>
                       )}
 
                       {/* Item Count Pill */}
-                      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                      <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-sm z-30">
                         {count} {count === 1 ? 'Design' : 'Designs'}
                       </div>
 
-                      {/* Category Title Overlay */}
-                      <div className="absolute bottom-3 left-3 right-3 text-white">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300">
+                      {/* Category Title & Labels Overlay (Prominent z-30) */}
+                      <div className="absolute inset-x-0 bottom-0 z-30 p-3.5 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent text-white pointer-events-none">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300 drop-shadow block">
                           Explore Collection
                         </span>
-                        <h3 className="font-serif font-bold text-lg sm:text-xl text-white group-hover:text-amber-200 transition">
+                        <h3 className="font-serif font-bold text-lg sm:text-xl text-white group-hover:text-amber-200 transition drop-shadow-md">
                           {category.name}
                         </h3>
                       </div>
