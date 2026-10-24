@@ -7,6 +7,7 @@ import {
   getCategorySingularName,
   getCategoryPluralName,
 } from '../../utils/productValidation';
+import { compressImage } from '../../utils/imageCompress';
 import {
   Plus,
   Eye,
