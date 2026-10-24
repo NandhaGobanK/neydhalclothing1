@@ -61,17 +61,14 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
 
-  // Authentication states
+  // Authentication states: Google Auth with Firestore separation
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [loginEmailOrPhone, setLoginEmailOrPhone] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [unregisteredReseller, setUnregisteredReseller] = useState<{ email: string } | null>(null);
 
   // Reseller registration fields
   const [regBusinessName, setRegBusinessName] = useState('');
   const [regContactName, setRegContactName] = useState('');
   const [regWhatsapp, setRegWhatsapp] = useState('');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('');
   const [regCity, setRegCity] = useState('');
   const [regGst, setRegGst] = useState('');
 
@@ -80,14 +77,51 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
   const handleGoogleResellerSignIn = async () => {
     setAuthError('');
+    setUnregisteredReseller(null);
     setIsSubmittingAuth(true);
     try {
-      const res = await resellerLoginWithGoogle();
+      const res = await resellerLoginWithGoogle({ mode: 'signin' });
       if (!res.success) {
+        if (res.isNotRegistered) {
+          setUnregisteredReseller({ email: res.email || '' });
+        }
         setAuthError(res.error || 'Google Sign-in failed for Reseller Portal.');
       }
     } catch (err: any) {
       setAuthError(err?.message || 'Google authentication error occurred.');
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  const handleGoogleResellerRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setUnregisteredReseller(null);
+    if (!regBusinessName.trim() || !regContactName.trim()) {
+      setAuthError('Business name and contact person name are required.');
+      return;
+    }
+    const cleanPhone = regWhatsapp.replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setAuthError('Please provide a valid 10-digit WhatsApp number.');
+      return;
+    }
+    setIsSubmittingAuth(true);
+    try {
+      const res = await resellerLoginWithGoogle({
+        mode: 'register',
+        businessName: regBusinessName.trim(),
+        contactName: regContactName.trim(),
+        whatsappNumber: cleanPhone,
+        city: regCity.trim(),
+        gstOrPan: regGst.trim() || undefined,
+      });
+      if (!res.success) {
+        setAuthError(res.error || 'Google registration for reseller enterprise failed.');
+      }
+    } catch (err: any) {
+      setAuthError(err?.message || 'Registration error occurred.');
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -138,82 +172,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     return Math.round(retailPriceOrProduct * (1 - wholesaleDiscountRate));
   };
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    if (!loginEmailOrPhone.trim()) {
-      setAuthError('Please enter your registered WhatsApp number or email.');
-      return;
-    }
-    setIsSubmittingAuth(true);
-    try {
-      const res = await resellerLogin(loginEmailOrPhone.trim(), loginPassword);
-      if (!res.success) {
-        setAuthError(res.error || 'Reseller login failed. Check credentials.');
-      }
-    } catch (err: any) {
-      setAuthError(err?.message || 'Login error occurred.');
-    } finally {
-      setIsSubmittingAuth(false);
-    }
-  };
 
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    if (!regBusinessName.trim() || !regContactName.trim()) {
-      setAuthError('Business name and contact person name are required.');
-      return;
-    }
-    const cleanPhone = regWhatsapp.replace(/\D/g, '').slice(-10);
-    if (!cleanPhone || cleanPhone.length < 10) {
-      setAuthError('Please provide a valid 10-digit WhatsApp number.');
-      return;
-    }
-    setIsSubmittingAuth(true);
-    try {
-      const res = await resellerRegister({
-        businessName: regBusinessName.trim(),
-        name: regContactName.trim(),
-        whatsappNumber: cleanPhone,
-        phone: cleanPhone,
-        email: regEmail.trim().toLowerCase(),
-        password: regPassword.trim() || undefined,
-        city: regCity.trim(),
-        gstOrPan: regGst.trim() || undefined,
-      });
-      if (!res.success) {
-        setAuthError(res.error || 'Registration failed. Try again.');
-      }
-    } catch (err: any) {
-      setAuthError(err?.message || 'Registration error');
-    } finally {
-      setIsSubmittingAuth(false);
-    }
-  };
-
-  const handleQuickDemoReseller = async () => {
-    setIsSubmittingAuth(true);
-    setAuthError('');
-    try {
-      const res = await resellerLogin('9840123456');
-      if (!res.success) {
-        await resellerRegister({
-          businessName: 'Sri Meenakshi Saree Resellers',
-          name: 'Meenakshi Sundaram',
-          whatsappNumber: '9840123456',
-          phone: '9840123456',
-          email: 'meenakshi.reseller@example.com',
-          city: 'Madurai',
-          state: 'Tamil Nadu',
-        });
-      }
-    } catch (err) {
-      setAuthError('Could not sign in demo reseller');
-    } finally {
-      setIsSubmittingAuth(false);
-    }
-  };
 
   const wholesaleProducts = useMemo(() => {
     return (products || []).filter((p) => p.isVisible !== false && p.isWholesaleAvailable !== false);
@@ -399,23 +358,23 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
             </div>
 
             {/* Top Right Action Controls: Logout, Return to Patron Store, Close */}
-            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap justify-end z-10">
               {currentReseller && (
                 <button
                   type="button"
                   onClick={resellerLogout}
-                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs whitespace-nowrap active:scale-95"
                   title="Sign out of Reseller session"
                 >
-                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Logout</span>
+                  <LogOut className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>Reseller Logout</span>
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap active:scale-95"
                 title="Return to Customer Store"
               >
                 <span>&larr; Patron Store</span>
@@ -424,7 +383,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white transition cursor-pointer active:scale-95"
                 aria-label="Close portal"
                 title="Close"
               >
@@ -491,136 +450,160 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
           )}
         </div>
 
-        {/* Unauthenticated View: Reseller Login / Registration */}
+        {/* Unauthenticated View: Reseller Google Login / Registration */}
         {!currentReseller ? (
-          <div className="p-6 sm:p-10 max-w-lg mx-auto w-full space-y-5">
-            <div className="flex items-center bg-neutral-100 p-1 rounded-2xl border border-neutral-200">
+          <div className="p-6 sm:p-10 max-w-lg mx-auto w-full space-y-6">
+            {/* Mode Switcher Tabs */}
+            <div className="flex items-center bg-neutral-100 p-1.5 rounded-2xl border border-neutral-200">
               <button
                 type="button"
                 onClick={() => {
                   setAuthMode('login');
                   setAuthError('');
+                  setUnregisteredReseller(null);
                 }}
-                className={`flex-1 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
+                className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 ${
                   authMode === 'login'
-                    ? 'bg-purple-900 text-white shadow-sm'
+                    ? 'bg-purple-900 text-white shadow-md'
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
-                Reseller Sign In
+                <Store className="w-3.5 h-3.5" />
+                <span>Reseller Sign In</span>
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setAuthMode('register');
                   setAuthError('');
+                  setUnregisteredReseller(null);
                 }}
-                className={`flex-1 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
+                className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 ${
                   authMode === 'register'
-                    ? 'bg-purple-900 text-white shadow-sm'
+                    ? 'bg-purple-900 text-white shadow-md'
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
-                Register as Reseller
+                <Building className="w-3.5 h-3.5" />
+                <span>Register as Reseller</span>
               </button>
             </div>
 
-            {authError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
+            {/* Unregistered Alert Notification */}
+            {unregisteredReseller && (
+              <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 text-xs space-y-2.5 animate-in fade-in">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-purple-950">Reseller Account Not Found</p>
+                    <p className="text-[11px] text-purple-800 mt-0.5">
+                      No B2B reseller account is registered for <strong>{unregisteredReseller.email}</strong>. Please complete enterprise registration below to access wholesale catalog and discounts.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('register');
+                    setAuthError('');
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-98"
+                >
+                  <span>Register Enterprise Now</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Error Notification */}
+            {authError && !unregisteredReseller && (
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 animate-in fade-in">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                 <span>{authError}</span>
               </div>
             )}
 
-            {/* Primary Action: Google Authentication for Resellers (Firebase Auth) */}
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={handleGoogleResellerSignIn}
-                disabled={isSubmittingAuth}
-                className="w-full py-3 px-4 rounded-xl bg-white hover:bg-neutral-50 text-neutral-800 border-2 border-neutral-200 font-bold text-xs flex items-center justify-center gap-3 transition shadow-xs hover:shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-                  <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                  <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                  <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                </svg>
-                <span>{isSubmittingAuth ? 'Authenticating...' : 'Continue with Google (Reseller ID)'}</span>
-              </button>
-              <p className="text-[10px] text-center text-neutral-400">
-                Secure B2B Google authentication via Firebase
-              </p>
-            </div>
-
-            <div className="relative flex items-center justify-center my-2">
-              <div className="border-t border-neutral-200 w-full" />
-              <span className="bg-white px-3 text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
-                or sign in with credentials
-              </span>
-            </div>
-
             {authMode === 'login' ? (
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                    Registered WhatsApp Number or Email
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                      <Phone className="w-4 h-4" />
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      value={loginEmailOrPhone}
-                      onChange={(e) => setLoginEmailOrPhone(e.target.value)}
-                      placeholder="e.g. 9840123456 or reseller@business.com"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
-                    />
-                  </div>
+              <div className="space-y-4">
+                <div className="text-center space-y-1">
+                  <h3 className="font-serif text-lg font-bold text-neutral-900">
+                    B2B Partner Sign In
+                  </h3>
+                  <p className="text-xs text-neutral-500 leading-relaxed max-w-xs mx-auto">
+                    Sign in with your verified Google email to unlock 20% flat wholesale margins, neutral dropshipping, and high-res media packs.
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                    Portal Password (Optional for OTP/Fast Login)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                      <Lock className="w-4 h-4" />
-                    </span>
-                    <input
-                      type="password"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="Enter password (optional)"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
-                    />
-                  </div>
-                </div>
-
+                {/* Primary Action: Google Authentication for Resellers (Firebase Auth) */}
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleGoogleResellerSignIn}
                   disabled={isSubmittingAuth}
-                  className="w-full py-3 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-neutral-50 text-neutral-800 border-2 border-neutral-300 hover:border-neutral-400 font-bold text-xs sm:text-sm flex items-center justify-center gap-3 transition shadow-xs hover:shadow-md cursor-pointer disabled:opacity-50 active:scale-98"
                 >
-                  {isSubmittingAuth ? 'Verifying...' : 'Sign In to Reseller Portal'}
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                  </svg>
+                  <span>{isSubmittingAuth ? 'Verifying with Google...' : 'Sign In with Google (Reseller ID)'}</span>
                 </button>
-              </form>
+
+                <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-center space-y-1">
+                  <p className="text-[11px] text-purple-900 font-bold">
+                    Secure B2B Role Authorization
+                  </p>
+                  <p className="text-[10px] text-neutral-500">
+                    Verifies your email against registered B2B reseller accounts in our dedicated database.
+                  </p>
+                </div>
+
+                <div className="text-center pt-2">
+                  <p className="text-xs text-neutral-500">
+                    New reseller partner?{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('register');
+                        setAuthError('');
+                        setUnregisteredReseller(null);
+                      }}
+                      className="text-purple-800 hover:text-purple-900 font-bold underline cursor-pointer"
+                    >
+                      Register your enterprise
+                    </button>
+                  </p>
+                </div>
+              </div>
             ) : (
-              <form onSubmit={handleRegisterSubmit} className="space-y-3">
+              <form onSubmit={handleGoogleResellerRegister} className="space-y-3.5">
+                <div className="text-center space-y-1 pb-1">
+                  <h3 className="font-serif text-lg font-bold text-neutral-900">
+                    Register Reseller Enterprise
+                  </h3>
+                  <p className="text-xs text-neutral-500 leading-relaxed max-w-xs mx-auto">
+                    Complete your enterprise details and authenticate with Google to activate your wholesale account.
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
                     Reseller Business Name *
                   </label>
-                  <input
-                    type="text"
-                    required
-                    value={regBusinessName}
-                    onChange={(e) => setRegBusinessName(e.target.value)}
-                    placeholder="e.g. Meenakshi Saree Collections"
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                  />
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                      <Building className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={regBusinessName}
+                      onChange={(e) => setRegBusinessName(e.target.value)}
+                      placeholder="e.g. Sri Meenakshi Saree Collections"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -628,98 +611,110 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                     <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
                       Contact Name *
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={regContactName}
-                      onChange={(e) => setRegContactName(e.target.value)}
-                      placeholder="Your Name"
-                      className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                    />
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                        <User className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={regContactName}
+                        onChange={(e) => setRegContactName(e.target.value)}
+                        placeholder="Proprietor Name"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                      />
+                    </div>
                   </div>
+
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
                       WhatsApp Number *
                     </label>
-                    <input
-                      type="tel"
-                      required
-                      maxLength={10}
-                      value={regWhatsapp}
-                      onChange={(e) => setRegWhatsapp(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                      placeholder="10-digit mobile"
-                      className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                    />
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                        <Phone className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="tel"
+                        required
+                        maxLength={10}
+                        value={regWhatsapp}
+                        onChange={(e) => setRegWhatsapp(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        placeholder="10-digit mobile"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                      Business Email
+                      City / Location
                     </label>
-                    <input
-                      type="email"
-                      value={regEmail}
-                      onChange={(e) => setRegEmail(e.target.value)}
-                      placeholder="reseller@gmail.com"
-                      className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                    />
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                        <MapPin className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        value={regCity}
+                        onChange={(e) => setRegCity(e.target.value)}
+                        placeholder="e.g. Madurai, Salem"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                      />
+                    </div>
                   </div>
+
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                      City / Location
+                      GST or PAN (Optional)
                     </label>
                     <input
                       type="text"
-                      value={regCity}
-                      onChange={(e) => setRegCity(e.target.value)}
-                      placeholder="e.g. Madurai, Salem"
-                      className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
+                      value={regGst}
+                      onChange={(e) => setRegGst(e.target.value)}
+                      placeholder="33AAAAA0000A1Z5"
+                      className="w-full px-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                    GST or PAN Number (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={regGst}
-                    onChange={(e) => setRegGst(e.target.value)}
-                    placeholder="33AAAAA0000A1Z5"
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                  />
                 </div>
 
                 <button
                   type="submit"
                   disabled={isSubmittingAuth}
-                  className="w-full py-3 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-50 mt-2"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-3 transition shadow-md hover:shadow-lg cursor-pointer disabled:opacity-50 active:scale-98 mt-2"
                 >
-                  {isSubmittingAuth ? 'Registering...' : 'Register as Reseller Partner'}
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                  </svg>
+                  <span>{isSubmittingAuth ? 'Creating Enterprise Account...' : 'Register Enterprise with Google'}</span>
                 </button>
+
+                <div className="text-center pt-2">
+                  <p className="text-xs text-neutral-500">
+                    Already registered as reseller?{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('login');
+                        setAuthError('');
+                        setUnregisteredReseller(null);
+                      }}
+                      className="text-purple-800 hover:text-purple-900 font-bold underline cursor-pointer"
+                    >
+                      Sign In with Google
+                    </button>
+                  </p>
+                </div>
               </form>
             )}
 
-            {/* Instant Demo Reseller Login */}
-            <div className="pt-4 border-t border-neutral-200">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-2 text-center">
-                Instant 1-Click Demo Reseller Account
-              </p>
-              <button
-                type="button"
-                onClick={handleQuickDemoReseller}
-                className="w-full py-2.5 px-4 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 transition text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 text-purple-600" />
-                <span>Log in as "Sri Meenakshi Saree Resellers" (20% Wholesale Tier)</span>
-              </button>
-            </div>
-
             {/* Return to Customer Login */}
-            <div className="pt-2 text-center">
+            <div className="pt-2 text-center border-t border-neutral-200">
               <button
                 type="button"
                 onClick={onClose}

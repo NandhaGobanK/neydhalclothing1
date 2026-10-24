@@ -251,7 +251,7 @@ function MainAppContent() {
         </>
       ) : !currentCustomer ? (
         <>
-          <CustomerLoginPage onSuccess={() => {}} />
+          <CustomerLoginPage onSuccess={() => {}} onOpenAdmin={handleOpenAdmin} />
           {/* Admin Auth Modal if triggered via secret shortcut (Ctrl+Shift+A) or #admin */}
           {showAdminAuthModal && (
             <AdminAuthModal

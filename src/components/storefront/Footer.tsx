@@ -14,19 +14,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoErr, setLogoErr] = React.useState(false);
 
-  // Secret admin trigger via copyright symbol
-  const footerClickCount = React.useRef(0);
-  const handleSecretAdminTrigger = () => {
-    footerClickCount.current += 1;
-    if (footerClickCount.current >= 3) {
-      footerClickCount.current = 0;
-      onOpenAdmin();
-    }
-    setTimeout(() => {
-      footerClickCount.current = 0;
-    }, 1500);
-  };
-
   React.useEffect(() => {
     setLogoErr(false);
   }, [settings.logoUrl]);
@@ -210,18 +197,21 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenInstructions 
           </div>
         </div>
 
-        {/* Bottom Bar: Copyright & Boutique Branding */}
+        {/* Bottom Bar: Copyright & Discreet B2B Access */}
         <div className="pt-8 border-t border-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-neutral-400">
           <p>
-            <span
-              onClick={handleSecretAdminTrigger}
-              className="cursor-default select-none hover:text-neutral-300"
-              title="Protected Atelier System"
-            >
-              ©
-            </span>{' '}
-            {new Date().getFullYear()} {settings.boutiqueName}. All rights reserved.
+            © {new Date().getFullYear()} {settings.boutiqueName}. All rights reserved.
           </p>
+
+          <button
+            type="button"
+            onClick={() => setIsResellerPortalOpen(true)}
+            className="text-[11px] text-neutral-500 hover:text-neutral-300 inline-flex items-center gap-1.5 cursor-pointer transition select-none active:opacity-75"
+            title="B2B"
+          >
+            <Store className="w-3.5 h-3.5 text-neutral-500 hover:text-neutral-300" />
+            <span>B2B</span>
+          </button>
         </div>
       </div>
     </footer>

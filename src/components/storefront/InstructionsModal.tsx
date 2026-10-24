@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   WifiOff,
   BellRing,
+  Store,
+  KeyRound,
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
@@ -26,7 +28,7 @@ export const InstructionsModal: React.FC<InstructionsModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { settings } = useStore();
+  const { settings, setIsResellerPortalOpen } = useStore();
   const { isInstallable, isInstalled, platform, browserName, install } = usePWAInstall();
 
   const [pwaPlatformTab, setPwaPlatformTab] = useState<'desktop' | 'android' | 'ios'>(

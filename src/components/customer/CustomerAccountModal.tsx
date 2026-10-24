@@ -96,15 +96,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
         {/* Top Header */}
         <div className="bg-gradient-to-r from-rose-950 via-neutral-900 to-rose-900 text-white p-5 sm:p-6 shrink-0 relative">
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
-            aria-label="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
-
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div className="w-13 h-13 rounded-2xl bg-amber-500/20 border-2 border-amber-400 text-amber-300 flex items-center justify-center text-xl font-serif font-bold shadow-md">
@@ -132,18 +123,28 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 flex-wrap sm:flex-nowrap">
               <button
                 type="button"
                 onClick={() => {
                   customerLogout();
                   onClose();
                 }}
-                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border border-white/15 active:scale-95 whitespace-nowrap"
                 title="Log out of your customer account"
               >
                 <LogOut className="w-3.5 h-3.5 text-rose-400" />
                 <span>Log Out</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer border border-white/15 active:scale-95"
+                aria-label="Close"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>

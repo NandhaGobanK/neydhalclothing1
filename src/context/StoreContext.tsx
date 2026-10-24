@@ -46,6 +46,7 @@ import {
 import {
   collection,
   doc,
+  getDoc,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -282,7 +283,18 @@ interface StoreContextType {
   // Customer Authentication & Data Privacy (Strict Data Isolation)
   currentCustomer: CustomerUser | null;
   customerLogin: (emailOrPhone: string, password?: string) => Promise<{ success: boolean; customer?: CustomerUser; error?: string }>;
-  customerLoginWithGoogle: () => Promise<{ success: boolean; customer?: CustomerUser; error?: string }>;
+  customerLoginWithGoogle: (options?: {
+    mode?: 'signin' | 'register';
+    phone?: string;
+    name?: string;
+  }) => Promise<{
+    success: boolean;
+    customer?: CustomerUser;
+    error?: string;
+    isNotRegistered?: boolean;
+    email?: string;
+    displayName?: string;
+  }>;
   customerRegister: (data: Omit<CustomerUser, 'id' | 'createdAt' | 'savedAddresses'>) => Promise<{ success: boolean; customer?: CustomerUser; error?: string }>;
   customerLogout: () => void;
   updateCustomerProfile: (updates: Partial<CustomerUser>) => Promise<void>;
@@ -298,7 +310,26 @@ interface StoreContextType {
   currentReseller: ResellerUser | null;
   resellers: ResellerUser[];
   resellerLogin: (emailOrPhone: string, password?: string) => Promise<{ success: boolean; reseller?: ResellerUser; error?: string }>;
-  resellerLoginWithGoogle: (businessName?: string, whatsappNumber?: string) => Promise<{ success: boolean; reseller?: ResellerUser; error?: string }>;
+  resellerLoginWithGoogle: (
+    optionsOrBusinessName?:
+      | string
+      | {
+          mode?: 'signin' | 'register';
+          businessName?: string;
+          whatsappNumber?: string;
+          contactName?: string;
+          city?: string;
+          state?: string;
+          gstOrPan?: string;
+        },
+    legacyWhatsapp?: string
+  ) => Promise<{
+    success: boolean;
+    reseller?: ResellerUser;
+    error?: string;
+    isNotRegistered?: boolean;
+    email?: string;
+  }>;
   resellerRegister: (data: Omit<ResellerUser, 'id' | 'createdAt' | 'wholesaleDiscountPercent' | 'status'>) => Promise<{ success: boolean; reseller?: ResellerUser; error?: string }>;
   resellerLogout: () => void;
   resellerOrders: Order[];
@@ -579,23 +610,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [currentReseller, setCurrentReseller] = useState<ResellerUser | null>(() =>
     loadFromStorage<ResellerUser | null>(STORAGE_KEYS.CURRENT_RESELLER, null)
   );
-  const [resellers, setResellers] = useState<ResellerUser[]>(() =>
-    loadFromStorage<ResellerUser[]>('aara_boutique_resellers_v3', [
-      {
-        id: 'res_demo_meenakshi',
-        businessName: 'Sri Meenakshi Saree Resellers',
-        name: 'Meenakshi Sundaram',
-        email: 'meenakshi.reseller@example.com',
-        phone: '9840123456',
-        whatsappNumber: '9840123456',
-        city: 'Madurai',
-        state: 'Tamil Nadu',
-        wholesaleDiscountPercent: 20,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      },
-    ])
-  );
+  const [resellers, setResellers] = useState<ResellerUser[]>(() => {
+    const stored = loadFromStorage<ResellerUser[]>('aara_boutique_resellers_v3', []);
+    return stored.filter((r) => r.id !== 'res_demo_meenakshi');
+  });
   const [isResellerPortalOpen, setIsResellerPortalOpen] = useState(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
@@ -913,7 +931,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return { success: true, customer: newCust };
   };
 
-  const customerLoginWithGoogle = async () => {
+  const customerLoginWithGoogle = async (options?: {
+    mode?: 'signin' | 'register';
+    phone?: string;
+    name?: string;
+  }) => {
+    const mode = options?.mode || 'signin';
     try {
       const authResult = await googleSignIn();
       if (!authResult?.user) {
@@ -921,20 +944,50 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       const fbUser = authResult.user;
       const email = (fbUser.email || '').toLowerCase().trim();
-      const phone = fbUser.phoneNumber ? fbUser.phoneNumber.replace(/\D/g, '').slice(-10) : '';
-      const name = fbUser.displayName || (email ? email.split('@')[0] : 'Valued Patron');
+      const name = (options?.name || fbUser.displayName || (email ? email.split('@')[0] : 'Valued Patron')).trim();
+      const phoneInput = (options?.phone || (fbUser.phoneNumber ? fbUser.phoneNumber.replace(/\D/g, '').slice(-10) : '')).trim();
 
-      // Check if customer profile exists by email or UID
-      const found = customers.find(
-        (c) => (email && c.email.toLowerCase() === email) || c.id === fbUser.uid
-      );
+      // Check if customer profile exists in Firestore /customers collection
+      let existingCustomer: CustomerUser | null = null;
+      try {
+        const docSnap = await getDoc(doc(db, 'customers', fbUser.uid));
+        if (docSnap.exists()) {
+          existingCustomer = { id: docSnap.id, ...docSnap.data() } as CustomerUser;
+        } else {
+          const foundInCache = customers.find(
+            (c) => c.id === fbUser.uid || (email && c.email && c.email.toLowerCase() === email)
+          );
+          if (foundInCache) {
+            existingCustomer = foundInCache;
+          }
+        }
+      } catch (err) {
+        const foundInCache = customers.find(
+          (c) => c.id === fbUser.uid || (email && c.email && c.email.toLowerCase() === email)
+        );
+        if (foundInCache) existingCustomer = foundInCache;
+      }
 
-      if (found) {
+      if (mode === 'signin') {
+        if (!existingCustomer) {
+          // Customer is NOT registered yet!
+          // Unset auth and inform user to register with Google first.
+          await googleSignOut().catch(() => {});
+          return {
+            success: false,
+            isNotRegistered: true,
+            email,
+            displayName: fbUser.displayName || undefined,
+            error: `No patron account registered for "${email}". Please click "Register with Google" to create your verified patron account.`,
+          };
+        }
+
+        // Authenticated existing registered customer
         const updated: CustomerUser = {
-          ...found,
-          name: found.name || name,
-          email: found.email || email,
-          avatarUrl: fbUser.photoURL || found.avatarUrl,
+          ...existingCustomer,
+          name: existingCustomer.name || name,
+          email: existingCustomer.email || email,
+          avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
           authMethod: 'google',
         };
         setCurrentCustomer(updated);
@@ -944,22 +997,40 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return { success: true, customer: updated };
       }
 
-      // New Google Customer
+      // mode === 'register'
+      if (existingCustomer) {
+        // Already registered, proceed to log in
+        const updated: CustomerUser = {
+          ...existingCustomer,
+          name: existingCustomer.name || name,
+          email: existingCustomer.email || email,
+          phone: phoneInput || existingCustomer.phone || '',
+          avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
+          authMethod: 'google',
+        };
+        setCurrentCustomer(updated);
+        saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, updated);
+        setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        setDoc(doc(db, 'customers', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(() => {});
+        return { success: true, customer: updated };
+      }
+
+      // Create new verified customer in Firestore /customers collection
       const newCust: CustomerUser = {
-        id: fbUser.uid || `cust_${Date.now()}`,
+        id: fbUser.uid,
         name,
         email,
-        phone,
+        phone: phoneInput,
         avatarUrl: fbUser.photoURL || undefined,
         savedAddresses: [],
         createdAt: new Date().toISOString(),
         authMethod: 'google',
       };
 
-      setCustomers((prev) => [newCust, ...prev]);
+      setCustomers((prev) => [newCust, ...prev.filter((c) => c.id !== newCust.id)]);
       setCurrentCustomer(newCust);
       saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, newCust);
-      setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust)).catch(() => {});
+      await setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust));
       return { success: true, customer: newCust };
     } catch (err: any) {
       const isPopupClosed = err?.code === 'auth/popup-closed-by-user' || err?.message?.includes('popup-closed');
@@ -988,6 +1059,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const customerLogout = () => {
     setCurrentCustomer(null);
     saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, null);
+    googleSignOut().catch(() => {});
   };
 
   const updateCustomerProfile = async (updates: Partial<CustomerUser>) => {
@@ -1053,7 +1125,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return { success: false, error: 'No registered reseller account found with this mobile or email. Please register.' };
   };
 
-  const resellerLoginWithGoogle = async (businessName?: string, whatsappNumber?: string) => {
+  const resellerLoginWithGoogle = async (
+    optionsOrBusinessName?:
+      | string
+      | {
+          mode?: 'signin' | 'register';
+          businessName?: string;
+          whatsappNumber?: string;
+          contactName?: string;
+          city?: string;
+          state?: string;
+          gstOrPan?: string;
+        },
+    legacyWhatsapp?: string
+  ) => {
+    const options =
+      typeof optionsOrBusinessName === 'object' && optionsOrBusinessName !== null
+        ? optionsOrBusinessName
+        : {
+            mode: 'signin' as const,
+            businessName: optionsOrBusinessName as string | undefined,
+            whatsappNumber: legacyWhatsapp,
+          };
+
+    const mode = options.mode || 'signin';
+
     try {
       const authResult = await googleSignIn();
       if (!authResult?.user) {
@@ -1061,19 +1157,52 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       const fbUser = authResult.user;
       const email = (fbUser.email || '').toLowerCase().trim();
-      const name = fbUser.displayName || 'Reseller Partner';
+      const defaultName = fbUser.displayName || 'Reseller Partner';
 
-      // Check if reseller exists by email or UID
-      const found = resellers.find(
-        (r) => (email && r.email.toLowerCase() === email) || r.id === fbUser.uid
-      );
+      // Check if reseller exists in Firestore /resellers collection
+      let existingReseller: ResellerUser | null = null;
+      try {
+        const docSnap = await getDoc(doc(db, 'resellers', fbUser.uid));
+        if (docSnap.exists()) {
+          existingReseller = { id: docSnap.id, ...docSnap.data() } as ResellerUser;
+        } else {
+          const found = resellers.find(
+            (r) => r.id === fbUser.uid || (email && r.email && r.email.toLowerCase() === email)
+          );
+          if (found && found.id !== 'res_demo_meenakshi') {
+            existingReseller = found;
+          }
+        }
+      } catch (err) {
+        const found = resellers.find(
+          (r) => r.id === fbUser.uid || (email && r.email && r.email.toLowerCase() === email)
+        );
+        if (found && found.id !== 'res_demo_meenakshi') existingReseller = found;
+      }
 
-      if (found) {
+      if (mode === 'signin') {
+        if (!existingReseller) {
+          // No reseller account found for this Google email
+          await googleSignOut().catch(() => {});
+          return {
+            success: false,
+            isNotRegistered: true,
+            email,
+            error: `No registered B2B reseller account found for "${email}". Please complete registration to access wholesale pricing.`,
+          };
+        }
+
+        if (existingReseller.status === 'suspended') {
+          await googleSignOut().catch(() => {});
+          return { success: false, error: 'Your reseller account has been suspended by boutique administration.' };
+        }
+
         const updated: ResellerUser = {
-          ...found,
-          name: found.name || name,
-          email: found.email || email,
-          avatarUrl: fbUser.photoURL || found.avatarUrl,
+          ...existingReseller,
+          name: existingReseller.name || defaultName,
+          email: existingReseller.email || email,
+          avatarUrl: fbUser.photoURL || existingReseller.avatarUrl,
+          authMethod: 'google',
         };
         setCurrentReseller(updated);
         saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, updated);
@@ -1082,27 +1211,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return { success: true, reseller: updated };
       }
 
-      // New Google Reseller Partner
-      const cleanPhone = whatsappNumber ? whatsappNumber.replace(/\D/g, '').slice(-10) : (fbUser.phoneNumber ? fbUser.phoneNumber.replace(/\D/g, '').slice(-10) : '9840123456');
+      // mode === 'register'
+      if (existingReseller) {
+        // Already registered, authenticate them
+        setCurrentReseller(existingReseller);
+        saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, existingReseller);
+        return { success: true, reseller: existingReseller };
+      }
+
+      // Register new reseller enterprise in Firestore /resellers collection
+      const cleanPhone = (options.whatsappNumber || '').replace(/\D/g, '').slice(-10) || '9840123456';
+      const bName = (options.businessName || `${defaultName}'s Handloom Enterprise`).trim();
+      const cName = (options.contactName || defaultName).trim();
+
       const newReseller: ResellerUser = {
-        id: fbUser.uid || `res_${Date.now()}`,
-        businessName: businessName?.trim() || `${name}'s Handloom Enterprise`,
-        name,
+        id: fbUser.uid,
+        businessName: bName,
+        name: cName,
         email,
         phone: cleanPhone,
         whatsappNumber: cleanPhone,
         avatarUrl: fbUser.photoURL || undefined,
+        city: options.city?.trim() || '',
+        state: options.state?.trim() || 'Tamil Nadu',
+        gstOrPan: options.gstOrPan?.trim() || undefined,
         wholesaleDiscountPercent: 20,
         status: 'active',
+        authMethod: 'google',
         createdAt: new Date().toISOString(),
         totalSales: 0,
         totalOrdersCount: 0,
       };
 
-      setResellers((prev) => [newReseller, ...prev]);
+      setResellers((prev) => [newReseller, ...prev.filter((r) => r.id !== newReseller.id)]);
       setCurrentReseller(newReseller);
       saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, newReseller);
-      setDoc(doc(db, 'resellers', newReseller.id), sanitizeForFirestore(newReseller)).catch(() => {});
+      await setDoc(doc(db, 'resellers', newReseller.id), sanitizeForFirestore(newReseller));
       return { success: true, reseller: newReseller };
     } catch (err: any) {
       const isPopupClosed = err?.code === 'auth/popup-closed-by-user' || err?.message?.includes('popup-closed');
@@ -1136,6 +1280,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const resellerLogout = () => {
     setCurrentReseller(null);
     saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, null);
+    googleSignOut().catch(() => {});
   };
 
   const placeResellerOrder = async (input: {
@@ -1714,6 +1859,57 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, 'categories');
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync for Customers Collection (/customers)
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'customers'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: CustomerUser[] = [];
+          snapshot.forEach((d) => {
+            list.push({ id: d.id, ...d.data() } as CustomerUser);
+          });
+          setCustomers(list);
+          saveToStorage('aara_boutique_customers_v3', list);
+        } else {
+          setCustomers([]);
+          saveToStorage('aara_boutique_customers_v3', []);
+        }
+      },
+      (error) => {
+        console.warn('Firestore customers listener warning:', error);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync for Resellers Collection (/resellers)
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'resellers'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: ResellerUser[] = [];
+          snapshot.forEach((d) => {
+            const data = d.data() as ResellerUser;
+            if (d.id !== 'res_demo_meenakshi') {
+              list.push({ ...data, id: d.id });
+            }
+          });
+          setResellers(list);
+          saveToStorage('aara_boutique_resellers_v3', list);
+        } else {
+          setResellers([]);
+          saveToStorage('aara_boutique_resellers_v3', []);
+        }
+      },
+      (error) => {
+        console.warn('Firestore resellers listener warning:', error);
       }
     );
     return () => unsub();

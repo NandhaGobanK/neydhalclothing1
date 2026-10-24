@@ -419,6 +419,7 @@ export interface ResellerUser {
   state?: string;
   wholesaleDiscountPercent: number; // e.g. 20% discount on boutique retail prices
   status: 'active' | 'pending' | 'suspended';
+  authMethod?: 'google' | 'password';
   createdAt: string;
   totalSales?: number;
   totalOrdersCount?: number;

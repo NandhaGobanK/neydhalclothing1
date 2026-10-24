@@ -87,22 +87,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   const showTrackOrder = settings.storefrontDisplay?.showTrackOrder !== false;
 
-  // Secret owner access: Triple-click logo opens admin portal discreetly
-  const clickCountRef = React.useRef(0);
-  const clickTimerRef = React.useRef<any>(null);
-
   const handleLogoEmblemClick = (e: React.MouseEvent) => {
-    clickCountRef.current += 1;
-    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-
-    if (clickCountRef.current >= 3) {
-      e.preventDefault();
-      clickCountRef.current = 0;
-      onOpenAdmin();
-    } else {
-      clickTimerRef.current = setTimeout(() => {
-        clickCountRef.current = 0;
-      }, 1200);
+    e.preventDefault();
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
