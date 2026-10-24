@@ -1,7 +1,8 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
-import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle, Download } from 'lucide-react';
+import { downloadSingleImage } from '../../utils/imageDownload';
 
 interface OrderSuccessModalProps {
   onClose: () => void;
@@ -60,17 +61,43 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
               Ordered Heirlooms ({lastPlacedOrder.items.length})
             </h3>
             <div className="divide-y divide-neutral-200/60">
-              {lastPlacedOrder.items.map((item) => (
-                <div key={item.product.id} className="py-2 first:pt-0 last:pb-0 flex justify-between items-center">
-                  <div>
-                    <p className="font-medium text-neutral-900">{item.product.title}</p>
-                    <p className="text-[11px] text-neutral-500">{item.product.fabric} (Qty: {item.quantity})</p>
+              {lastPlacedOrder.items.map((item) => {
+                const img = item.product.images?.[0];
+                return (
+                  <div key={item.product.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {img && (
+                        <img
+                          src={img}
+                          alt={item.product.title}
+                          className="w-10 h-12 object-cover rounded-lg border border-neutral-200 shrink-0 bg-neutral-100"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-medium text-neutral-900 truncate">{item.product.title}</p>
+                        <p className="text-[11px] text-neutral-500">{item.product.fabric} (Qty: {item.quantity})</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {img && (
+                        <button
+                          type="button"
+                          onClick={() => downloadSingleImage(img, `${item.product.title}_${item.product.productCode || 'sku'}.jpg`)}
+                          className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 hover:text-emerald-700 border border-neutral-200 transition cursor-pointer flex items-center gap-1 text-[10px] font-semibold"
+                          title="Download photo"
+                        >
+                          <Download className="w-3 h-3 text-emerald-600" />
+                          <span className="hidden sm:inline">Save Photo</span>
+                        </button>
+                      )}
+                      <span className="font-bold tabular-nums text-neutral-900">
+                        {formatPrice(item.product.price * item.quantity)}
+                      </span>
+                    </div>
                   </div>
-                  <span className="font-bold tabular-nums text-neutral-900">
-                    {formatPrice(item.product.price * item.quantity)}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="space-y-1 pt-2 mt-2 border-t border-neutral-200 text-xs">
               <div className="flex justify-between text-neutral-600">

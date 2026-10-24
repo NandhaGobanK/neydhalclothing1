@@ -68,7 +68,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ onClose, onSucce
         setErrorMessage(loginRes.error || 'Access denied for this Google account.');
       }
     } catch (err: any) {
-      console.error('Google Auth Failed:', err);
+      console.warn('Google Auth notice:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setErrorMessage('Sign-in cancelled. Please complete Google sign-in to access the portal.');
       } else if (err.code === 'auth/unauthorized-domain') {

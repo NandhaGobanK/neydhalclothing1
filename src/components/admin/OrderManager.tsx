@@ -493,7 +493,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   };
 
   // Dynamic Queue Filter: Defaults to 'unassigned' so assigned orders clear from the Order Page and move to staff/admin buckets
-  const [activeQueueFilter, setActiveQueueFilter] = useState<'unassigned' | 'all' | 'mine' | 'deleted_logs'>('unassigned');
+  const [activeQueueFilter, setActiveQueueFilter] = useState<'unassigned' | 'all' | 'mine' | 'deleted_logs' | 'reseller'>('unassigned');
   const [assignmentToast, setAssignmentToast] = useState<{
     orderNumber: string;
     staffName: string;
@@ -523,6 +523,10 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
     const myId = currentUser?.staffId || (isAdmin ? 'admin' : '');
     return orders.filter((o) => o.assignedStaffId === myId);
   }, [orders, currentUser, isAdmin]);
+
+  const resellerOrdersList = useMemo(() => {
+    return orders.filter((o) => o.orderType === 'reseller');
+  }, [orders]);
 
   const adminBucketCount = useMemo(() => {
     return orders.filter((o) => o.assignedStaffId === 'admin').length;
@@ -601,9 +605,12 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
     if (activeQueueFilter === 'mine') {
       return myBucketOrders;
     }
+    if (activeQueueFilter === 'reseller') {
+      return resellerOrdersList;
+    }
     // Default is 'unassigned' queue: Once assigned, order clears from the order page and moves to assigned staff/admin bucket
     return unassignedOrders;
-  }, [orders, globalOrderSearch, activeQueueFilter, unassignedOrders, myBucketOrders]);
+  }, [orders, globalOrderSearch, activeQueueFilter, unassignedOrders, myBucketOrders, resellerOrdersList]);
 
   const handleStatusChange = (order: Order, newStatus: OrderStatus) => {
     // User Requirement 5: Order must be assigned before changing stages and working on it
@@ -1182,6 +1189,27 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
             <button
               type="button"
               onClick={() => {
+                setActiveQueueFilter('reseller');
+                setGlobalOrderSearch('');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                activeQueueFilter === 'reseller' && !globalOrderSearch
+                  ? 'bg-purple-950 text-white shadow-xs font-bold border border-purple-800'
+                  : resellerOrdersList.length > 0
+                  ? 'bg-purple-50 hover:bg-purple-100 text-purple-950 border border-purple-300 font-bold'
+                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+              }`}
+            >
+              <span>🤝 Reseller B2B Orders</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                activeQueueFilter === 'reseller' && !globalOrderSearch ? 'bg-purple-800 text-white' : 'bg-purple-200 text-purple-950'
+              }`}>
+                {resellerOrdersList.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setActiveQueueFilter('deleted_logs');
                 setGlobalOrderSearch('');
               }}
@@ -1641,6 +1669,15 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                     <span className="text-xs text-neutral-500 font-mono hidden md:inline">
                       {order.customer.phone}
                     </span>
+                    {order.orderType === 'reseller' && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-300 flex items-center gap-1">
+                        <span>🤝 Reseller: {order.resellerBusinessName || order.resellerName}</span>
+                        {order.dropshipRecipient && <span className="text-purple-700 font-semibold">(Dropship)</span>}
+                        {order.resellerMargin !== undefined && order.resellerMargin > 0 && (
+                          <span className="text-emerald-700 font-bold">· Margin {formatPrice(order.resellerMargin)}</span>
+                        )}
+                      </span>
+                    )}
                     <span className="text-xs text-neutral-400">·</span>
                     <span className="text-xs font-medium text-neutral-600">
                       {order.items.length} {order.items.length === 1 ? 'saree' : 'sarees'}

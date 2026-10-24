@@ -18,7 +18,17 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   onOpenAccount,
   onOpenOrders,
 }) => {
-  const { cartCount, wishlist, customerOrdersCount, customerUnreadChatCount, settings, isTrackOrderOpen } = useStore();
+  const {
+    cartCount,
+    wishlist,
+    customerOrdersCount,
+    customerUnreadChatCount,
+    settings,
+    isTrackOrderOpen,
+    currentCustomer,
+    setIsCustomerAccountModalOpen,
+    setIsCustomerAuthModalOpen,
+  } = useStore();
 
   const isDark = settings.themeMode === 'dark';
   const themeKey = settings.theme || 'royal_crimson';
@@ -43,7 +53,9 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   };
 
   const handleOrdersClick = () => {
-    if (onOpenOrders) {
+    if (currentCustomer) {
+      setIsCustomerAccountModalOpen(true);
+    } else if (onOpenOrders) {
       onOpenOrders();
     } else if (onOpenAccount) {
       onOpenAccount();
@@ -72,7 +84,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     },
     {
       id: 'orders' as const,
-      label: 'My Orders',
+      label: currentCustomer ? 'My Account' : 'My Orders',
       icon: Package,
       badge:
         customerUnreadChatCount > 0

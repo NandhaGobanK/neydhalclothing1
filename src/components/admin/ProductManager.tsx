@@ -244,6 +244,10 @@ export const ProductManager: React.FC = () => {
   const [blousePieceIncluded, setBlousePieceIncluded] = useState(true);
   const [lengthMeters, setLengthMeters] = useState(6.3);
   const [occasion, setOccasion] = useState('Bridal & Wedding');
+  const [isWholesaleAvailable, setIsWholesaleAvailable] = useState<boolean>(true);
+  const [customWholesalePrice, setCustomWholesalePrice] = useState<number | undefined>(undefined);
+  const [resellerOnly, setResellerOnly] = useState<boolean>(false);
+  const [channelFilter, setChannelFilter] = useState<'all' | 'wholesale' | 'retail_only'>('all');
 
   // Product Type Selector State ('saree' | 'blouse' | 'jewelry' | 'kurti')
   const [productType, setProductType] = useState<ProductType>('saree');
@@ -562,6 +566,9 @@ export const ProductManager: React.FC = () => {
 
     setCrossSellProductIds([]);
     setCrossSellSearchQuery('');
+    setIsWholesaleAvailable(true);
+    setCustomWholesalePrice(undefined);
+    setResellerOnly(false);
 
     setIsEditingModalOpen(true);
   };
@@ -838,10 +845,12 @@ export const ProductManager: React.FC = () => {
     }
     setCustomAttributesValues(initialAttrs);
 
-    // Populate cross-sell configuration
     setCrossSellProductIds(prod.crossSellProductIds || []);
     setCrossSellCategoryNames(prod.crossSellCategoryNames || []);
     setCrossSellSearchQuery('');
+    setIsWholesaleAvailable(prod.isWholesaleAvailable !== false);
+    setCustomWholesalePrice(prod.wholesalePrice);
+    setResellerOnly(Boolean(prod.resellerOnly));
 
     setIsEditingModalOpen(true);
   };
@@ -1033,6 +1042,9 @@ export const ProductManager: React.FC = () => {
       customAttributes: updatedCustomAttrs,
       crossSellProductIds,
       crossSellCategoryNames,
+      isWholesaleAvailable,
+      wholesalePrice: customWholesalePrice ? Number(customWholesalePrice) : undefined,
+      resellerOnly,
     };
 
     if (editingProduct) {
@@ -1099,9 +1111,19 @@ export const ProductManager: React.FC = () => {
     return map;
   }, [products, categories]);
 
-  const displayedProducts = showAllSareesFlat
-    ? products.filter((p) => isProductInActiveCategories(p, categories))
-    : currentCategoryProducts;
+  const displayedProducts = useMemo(() => {
+    const base = showAllSareesFlat
+      ? products.filter((p) => isProductInActiveCategories(p, categories))
+      : currentCategoryProducts;
+
+    if (channelFilter === 'wholesale') {
+      return base.filter((p) => p.isWholesaleAvailable !== false);
+    }
+    if (channelFilter === 'retail_only') {
+      return base.filter((p) => p.isWholesaleAvailable === false);
+    }
+    return base;
+  }, [showAllSareesFlat, products, categories, currentCategoryProducts, channelFilter]);
 
   const filteredProducts = useMemo(() => {
     if (!tableSearchQuery.trim()) return displayedProducts;
@@ -1534,6 +1556,45 @@ export const ProductManager: React.FC = () => {
                 Clear
               </button>
             )}
+
+            {/* Wholesale & Reseller Channel Categorization Filter */}
+            <div className="flex items-center gap-1 shrink-0 border-l border-neutral-200 pl-2">
+              <button
+                type="button"
+                onClick={() => setChannelFilter('all')}
+                className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition cursor-pointer ${
+                  channelFilter === 'all'
+                    ? 'bg-neutral-900 text-white'
+                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setChannelFilter('wholesale')}
+                className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                  channelFilter === 'wholesale'
+                    ? 'bg-purple-950 text-white shadow-2xs font-bold'
+                    : 'bg-purple-50 text-purple-900 hover:bg-purple-100'
+                }`}
+                title="View products categorized for B2B Resellers"
+              >
+                <span>🤝 Reseller Catalog</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setChannelFilter('retail_only')}
+                className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition cursor-pointer ${
+                  channelFilter === 'retail_only'
+                    ? 'bg-neutral-900 text-white'
+                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                }`}
+                title="View retail storefront exclusive products"
+              >
+                Retail Only
+              </button>
+            </div>
           </div>
 
           {/* Product Inventory Table */}
@@ -2363,6 +2424,60 @@ export const ProductManager: React.FC = () => {
                   ) : (
                     <div className="text-neutral-500 text-xs">
                       Selling at full MRP ({formatPrice(price || 0)}). No discount offer badge will be displayed.
+                    </div>
+                  )}
+                </div>
+
+                {/* Reseller B2B Wholesale Pricing & Channel Categorization Card */}
+                <div className="sm:col-span-2 p-3.5 rounded-2xl bg-purple-50/90 border border-purple-200 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5 text-purple-950 font-bold text-xs">
+                      <span>🤝 B2B Reseller Portal Availability & Margins</span>
+                    </div>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-purple-900">
+                      <input
+                        type="checkbox"
+                        checked={isWholesaleAvailable}
+                        onChange={(e) => setIsWholesaleAvailable(e.target.checked)}
+                        className="rounded text-purple-700"
+                      />
+                      <span>Available for Resellers</span>
+                    </label>
+                  </div>
+
+                  {isWholesaleAvailable && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 text-xs">
+                      <div>
+                        <label className="block text-purple-900 font-semibold mb-1">
+                          Wholesale Price (₹) (Optional Override)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={customWholesalePrice || ''}
+                          onChange={(e) => setCustomWholesalePrice(e.target.value ? Number(e.target.value) : undefined)}
+                          placeholder={`Default 20% tier: ₹${Math.round((price || 0) * 0.8)}`}
+                          className="w-full p-2.5 rounded-xl border border-purple-300 bg-white text-neutral-900 font-bold text-xs"
+                        />
+                        <p className="text-[10px] text-purple-700 mt-1">
+                          Leave blank to use standard 20% discount (₹{Math.round((price || 0) * 0.8)}).
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col justify-center bg-white/70 p-2.5 rounded-xl border border-purple-200">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-purple-950">
+                          <input
+                            type="checkbox"
+                            checked={resellerOnly}
+                            onChange={(e) => setResellerOnly(e.target.checked)}
+                            className="rounded text-purple-700"
+                          />
+                          <span>Reseller Exclusive (Hide from public store)</span>
+                        </label>
+                        <p className="text-[10px] text-purple-700 mt-1">
+                          When checked, this piece is categorized exclusively for registered Resellers.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

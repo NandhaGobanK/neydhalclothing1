@@ -148,6 +148,43 @@
         "orderSnapshot": { "type": "object" }
       },
       "required": ["id", "orderId", "orderNumber", "deletedBy", "deletedAt"]
+    },
+    "CustomerUser": {
+      "title": "CustomerUser",
+      "description": "Registered boutique customer account for private orders, addresses, and data isolation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "password": { "type": "string", "maxLength": 100 },
+        "savedAddresses": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "authMethod": { "type": "string" }
+      },
+      "required": ["id", "name", "phone", "createdAt"]
+    },
+    "ResellerUser": {
+      "title": "ResellerUser",
+      "description": "Registered wholesale B2B reseller partner account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "businessName": { "type": "string", "maxLength": 200 },
+        "name": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "whatsappNumber": { "type": "string", "maxLength": 50 },
+        "password": { "type": "string", "maxLength": 100 },
+        "gstOrPan": { "type": "string", "maxLength": 50 },
+        "city": { "type": "string", "maxLength": 100 },
+        "state": { "type": "string", "maxLength": 100 },
+        "wholesaleDiscountPercent": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "pending", "suspended"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "businessName", "name", "whatsappNumber", "createdAt"]
     }
   },
   "firestore": {
@@ -170,6 +207,14 @@
     "/orders/{orderId}": {
       "schema": { "$ref": "Order" },
       "description": "Customer orders and UPI transactions"
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "CustomerUser" },
+      "description": "Customer profiles and isolated private data"
+    },
+    "/resellers/{resellerId}": {
+      "schema": { "$ref": "ResellerUser" },
+      "description": "Registered B2B resellers and wholesale partners"
     },
     "/deleted_orders_log/{logId}": {
       "schema": { "$ref": "DeletedOrderAuditLog" },

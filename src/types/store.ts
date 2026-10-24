@@ -87,6 +87,9 @@ export interface Product {
   restockedAt?: string; // Timestamp of latest restock event
   crossSellProductIds?: string[]; // Handpicked linked product IDs for cross-selling (e.g. matching blouse, jewelry)
   crossSellCategoryNames?: string[]; // Fallback cross-sell category names (e.g. ['Designer Blouses', 'Temple Jewelry'])
+  isWholesaleAvailable?: boolean; // Available for B2B Reseller Portal wholesale
+  wholesalePrice?: number; // Custom wholesale rate for resellers
+  resellerOnly?: boolean; // Exclusive for resellers only (hidden from public retail storefront)
 }
 
 export interface SareeCategory {
@@ -396,6 +399,7 @@ export interface CustomerUser {
   email: string;
   phone: string;
   password?: string;
+  avatarUrl?: string;
   savedAddresses: CustomerAddress[];
   createdAt: string;
   authMethod?: 'password' | 'google' | 'guest';
@@ -409,6 +413,7 @@ export interface ResellerUser {
   phone: string;
   whatsappNumber: string;
   password?: string;
+  avatarUrl?: string;
   gstOrPan?: string;
   city?: string;
   state?: string;

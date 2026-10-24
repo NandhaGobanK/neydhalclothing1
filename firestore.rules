@@ -69,6 +69,16 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Customer Profiles & Isolated Data Accounts
+    match /customers/{customerId} {
+      allow read, write: if true;
+    }
+
+    // Dedicated B2B Resellers Registry & Wholesale Partners
+    match /resellers/{resellerId} {
+      allow read, write: if true;
+    }
+
     // Boutique Staff Accounts & Permissions
     match /staff/{staffId} {
       // Allow read and write for staff management

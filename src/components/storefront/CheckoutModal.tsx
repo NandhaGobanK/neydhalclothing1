@@ -38,16 +38,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
     cartGrandTotal,
     settings,
     placeOrder,
+    currentCustomer,
   } = useStore();
 
+  const defaultAddr = currentCustomer?.savedAddresses?.find((a) => a.isDefault) || currentCustomer?.savedAddresses?.[0];
+
   // Form states
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [pincode, setPincode] = useState('');
+  const [name, setName] = useState(currentCustomer?.name || '');
+  const [phone, setPhone] = useState(currentCustomer?.phone || '');
+  const [email, setEmail] = useState(currentCustomer?.email || '');
+  const [address, setAddress] = useState(defaultAddr?.address || '');
+  const [city, setCity] = useState(defaultAddr?.city || '');
+  const [state, setState] = useState(defaultAddr?.state || 'Tamil Nadu');
+  const [pincode, setPincode] = useState(defaultAddr?.pincode || '');
   const [notes, setNotes] = useState('');
 
   // Payment states
@@ -288,6 +291,41 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               <span className="w-6 h-6 rounded-full bg-rose-950 text-amber-200 text-xs flex items-center justify-center font-sans font-bold">1</span>
               <span>Delivery & Shipping Address</span>
             </h3>
+
+            {/* Customer Privacy & Account Linked Status */}
+            {currentCustomer && (
+              <div className="mb-3.5 p-3 rounded-2xl bg-emerald-50/90 border border-emerald-300 text-emerald-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                  <span>
+                    Linked to <strong>{currentCustomer.name}</strong> (+91 {currentCustomer.phone}) · Private customer profile
+                  </span>
+                </div>
+                {currentCustomer.savedAddresses && currentCustomer.savedAddresses.length > 1 && (
+                  <select
+                    onChange={(e) => {
+                      const selected = currentCustomer.savedAddresses.find((a) => a.id === e.target.value);
+                      if (selected) {
+                        setName(selected.name || currentCustomer.name);
+                        setPhone(selected.phone || currentCustomer.phone);
+                        setAddress(selected.address);
+                        setCity(selected.city);
+                        setState(selected.state);
+                        setPincode(selected.pincode);
+                      }
+                    }}
+                    className="text-[11px] font-semibold bg-white px-2 py-1 rounded-lg border border-emerald-300 text-neutral-800"
+                  >
+                    <option value="">Choose Saved Address...</option>
+                    {currentCustomer.savedAddresses.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.city} - {a.address.slice(0, 24)}... {a.isDefault ? '(Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>

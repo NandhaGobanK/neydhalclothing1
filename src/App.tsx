@@ -23,6 +23,10 @@ import { CategoryBrowser } from './components/storefront/CategoryBrowser';
 import { WishlistBrowser } from './components/storefront/WishlistBrowser';
 import { BottomNavBar } from './components/storefront/BottomNavBar';
 import { getCategorySingularName, getCategoryPluralName } from './utils/productValidation';
+import { ResellerPortal } from './components/reseller/ResellerPortal';
+import { CustomerAuthModal } from './components/customer/CustomerAuthModal';
+import { CustomerAccountModal } from './components/customer/CustomerAccountModal';
+import { CustomerLoginPage } from './components/customer/CustomerLoginPage';
 
 function MainAppContent() {
   const {
@@ -49,6 +53,13 @@ function MainAppContent() {
     incomingChatAlert,
     dismissChatAlert,
     setActiveCustomerChatOrderId,
+    isCustomerAuthModalOpen,
+    setIsCustomerAuthModalOpen,
+    isCustomerAccountModalOpen,
+    setIsCustomerAccountModalOpen,
+    isResellerPortalOpen,
+    setIsResellerPortalOpen,
+    currentCustomer,
   } = useStore();
 
   // Keep device activity & 15-minute idle detection active across the app
@@ -98,6 +109,29 @@ function MainAppContent() {
         search.includes('instructions')
       ) {
         setIsInstructionsOpen(true);
+      }
+
+      // 4. Reseller B2B Portal deep-link (#reseller, ?reseller, /reseller)
+      if (
+        hash.includes('reseller') ||
+        pathname === '/reseller' ||
+        search.includes('reseller')
+      ) {
+        setIsResellerPortalOpen(true);
+      }
+
+      // 5. Customer Account & Login deep-link (#account, #login, ?account)
+      if (
+        hash.includes('account') ||
+        hash.includes('login') ||
+        pathname === '/account' ||
+        search.includes('account')
+      ) {
+        if (currentCustomer) {
+          setIsCustomerAccountModalOpen(true);
+        } else {
+          setIsCustomerAuthModalOpen(true);
+        }
       }
 
       // 3. Direct product link handling (?product=...)
@@ -180,7 +214,7 @@ function MainAppContent() {
       {/* Offline Connectivity Status Pill */}
       <OfflineIndicator />
 
-      {/* Admin Portal vs Public Storefront Routing */}
+      {/* Admin Portal vs Dedicated Reseller Portal vs Customer Login Gate vs Authenticated Storefront */}
       {currentView === 'admin' ? (
         isAdminLoggedIn ? (
           <AdminLayout onReturnToStore={handleReturnToStore} />
@@ -190,6 +224,37 @@ function MainAppContent() {
             onSuccess={handleAdminAuthSuccess}
           />
         )
+      ) : isResellerPortalOpen ? (
+        <>
+          <ResellerPortal
+            isOpen={true}
+            onClose={() => {
+              setIsResellerPortalOpen(false);
+              if (typeof window !== 'undefined' && window.location.hash.includes('reseller')) {
+                window.history.replaceState(null, '', window.location.pathname);
+              }
+            }}
+            onOpenProductModal={(p) => setActiveProductModal(p)}
+          />
+          {activeProductModal && (
+            <ProductDetailModal
+              product={activeProductModal}
+              onClose={() => setActiveProductModal(null)}
+              onSelectProduct={(p) => setActiveProductModal(p)}
+            />
+          )}
+        </>
+      ) : !currentCustomer ? (
+        <>
+          <CustomerLoginPage onSuccess={() => {}} />
+          {/* Admin Auth Modal if triggered via secret shortcut (Ctrl+Shift+A) or #admin */}
+          {showAdminAuthModal && (
+            <AdminAuthModal
+              onClose={() => setShowAdminAuthModal(false)}
+              onSuccess={handleAdminAuthSuccess}
+            />
+          )}
+        </>
       ) : (
         <>
           {/* Public Storefront Announcement Bar */}
@@ -451,6 +516,26 @@ function MainAppContent() {
               onSuccess={handleAdminAuthSuccess}
             />
           )}
+
+          {/* Customer Authentication Modal (Login / Register) */}
+          <CustomerAuthModal
+            isOpen={isCustomerAuthModalOpen}
+            onClose={() => setIsCustomerAuthModalOpen(false)}
+            onSuccess={() => {
+              setIsCustomerAuthModalOpen(false);
+              setIsCustomerAccountModalOpen(true);
+            }}
+          />
+
+          {/* Dedicated Customer Account & Private Data Isolation Portal */}
+          <CustomerAccountModal
+            isOpen={isCustomerAccountModalOpen}
+            onClose={() => setIsCustomerAccountModalOpen(false)}
+            onOpenProductDetails={(prodId: string) => {
+              const match = products.find((p) => p.id === prodId);
+              if (match) setActiveProductModal(match);
+            }}
+          />
         </>
       )}
 

@@ -40,7 +40,9 @@ import {
   Lock,
   Bell,
   Volume2,
+  Download,
 } from 'lucide-react';
+import { downloadSingleImage } from '../../utils/imageDownload';
 
 interface TrackOrderModalProps {
   onClose: () => void;
@@ -1215,13 +1217,31 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <span className="font-serif font-bold text-sm text-neutral-900 tabular-nums block">
-                          {formatPrice(item.product.price * item.quantity)}
-                        </span>
-                        <span className="text-[10px] text-neutral-400">
-                          ({formatPrice(item.product.price)} each)
-                        </span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {item.product.images?.[0] && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadSingleImage(
+                                item.product.images[0],
+                                `${item.product.title}_${item.product.productCode || 'sku'}.jpg`
+                              )
+                            }
+                            className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 hover:text-emerald-700 border border-neutral-200 transition cursor-pointer flex items-center gap-1 text-[10px] font-semibold"
+                            title="Download photo"
+                          >
+                            <Download className="w-3 h-3 text-emerald-600" />
+                            <span className="hidden sm:inline">Save</span>
+                          </button>
+                        )}
+                        <div className="text-right">
+                          <span className="font-serif font-bold text-sm text-neutral-900 tabular-nums block">
+                            {formatPrice(item.product.price * item.quantity)}
+                          </span>
+                          <span className="text-[10px] text-neutral-400">
+                            ({formatPrice(item.product.price)} each)
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}
