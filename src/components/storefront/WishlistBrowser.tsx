@@ -74,7 +74,7 @@ export const WishlistBrowser: React.FC<WishlistBrowserProps> = ({
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-bold transition shadow-sm cursor-pointer"
             >
               <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Discover Handloom Sarees</span>
+              <span>Discover Products</span>
             </button>
           </div>
         ) : (

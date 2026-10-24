@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen, Heart, Sparkles } from 'lucide-react';
+import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen, Heart, Sparkles, User, Store } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 
 interface HeaderProps {
@@ -28,6 +28,11 @@ export const Header: React.FC<HeaderProps> = ({
     publicProducts,
     categories: boutiqueCategories,
     customerUnreadChatCount,
+    currentCustomer,
+    setIsCustomerAuthModalOpen,
+    setIsCustomerAccountModalOpen,
+    currentReseller,
+    setIsResellerPortalOpen,
   } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoError, setLogoError] = React.useState(false);
@@ -110,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
           href="#"
           onClick={handleLogoEmblemClick}
           className="text-xl sm:text-2xl font-serif font-bold tracking-wider text-amber-100 hover:text-white transition whitespace-nowrap shrink-0 flex items-center gap-3 select-none"
-          title="Neydhal Handloom Sarees"
+          title={`${settings.boutiqueName} Boutique`}
         >
           {settings.logoUrl && !logoError ? (
             <img
@@ -173,6 +178,18 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <button
+            onClick={() => setIsResellerPortalOpen(true)}
+            className="hover:text-purple-300 transition-colors whitespace-nowrap shrink-0 pb-1 text-purple-200/90 flex items-center gap-1.5 cursor-pointer"
+            title="Open B2B Reseller Portal"
+          >
+            <Store className="w-4 h-4 text-purple-400" />
+            <span>Reseller Portal</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-purple-600 text-white shadow-2xs">
+              B2B
+            </span>
+          </button>
+
+          <button
             onClick={onOpenInstructions}
             className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 pb-1 text-neutral-300 flex items-center gap-1.5 cursor-pointer"
             title="View store shopping & app installation instructions"
@@ -182,8 +199,38 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Zone 3: Actions (Track Order on mobile/desktop, Wishlist, Cart bag, Discreet Admin) */}
-        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+        {/* Zone 3: Actions (Reseller, Customer Account, Track Order, Wishlist, Cart bag, Discreet Admin) */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Reseller Hub Button */}
+          <button
+            onClick={() => setIsResellerPortalOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+            title={currentReseller ? `Reseller: ${currentReseller.businessName}` : 'Reseller B2B Portal & Wholesale Margins'}
+          >
+            <Store className="w-3.5 h-3.5 text-purple-400" />
+            <span className="hidden md:inline">{currentReseller ? 'Reseller Hub' : 'Reseller'}</span>
+          </button>
+
+          {/* Customer Account / Sign In Button */}
+          {currentCustomer ? (
+            <button
+              onClick={() => setIsCustomerAccountModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+              title={`My Account (${currentCustomer.name})`}
+            >
+              <User className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline max-w-[90px] truncate">{currentCustomer.name.split(' ')[0]}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsCustomerAuthModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="Customer Sign In / Register"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign In</span>
+            </button>
+          )}
           {showTrackOrder && (
             <button
               onClick={() => setIsTrackOrderOpen(true)}
@@ -203,7 +250,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onSelectWishlist}
               className="relative p-2.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-amber-200 transition-colors flex items-center justify-center cursor-pointer"
               aria-label="View Saved Wishlist"
-              title="Saved Sarees Wishlist"
+              title="Saved Wishlist"
             >
               <Heart className="w-5 h-5" />
               {wishlist.length > 0 && (

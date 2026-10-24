@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Product } from '../../types/store';
 import { formatPrice, calculateDiscount } from '../../utils/upi';
-import { Play, ShoppingBag, Eye, Star, Plus, Minus, Check, Heart, Sparkles } from 'lucide-react';
+import { Play, ShoppingBag, Eye, Star, Plus, Minus, Check, Heart, Sparkles, Download } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
+import { downloadSingleImage } from '../../utils/imageDownload';
 
 interface ProductCardProps {
   product: Product;
@@ -70,26 +71,45 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           )}
         </div>
 
-        {/* Add to Wishlist Heart Option (User Request) */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleWishlist(product.id);
-          }}
-          className={`absolute top-3 right-3 z-25 w-8 h-8 rounded-full flex items-center justify-center shadow-md backdrop-blur-md transition-all duration-200 cursor-pointer ${
-            inWishlist
-              ? 'bg-rose-600 text-white ring-2 ring-white scale-105 shadow-rose-900/30'
-              : 'bg-white/85 text-neutral-700 hover:text-rose-600 hover:bg-white hover:scale-105'
-          }`}
-          title={inWishlist ? 'Remove from Wishlist' : 'Add to Wishlist'}
-          aria-label={inWishlist ? 'Remove from Wishlist' : 'Add to Wishlist'}
-        >
-          <Heart
-            className="w-4 h-4 transition-transform active:scale-125"
-            fill={inWishlist ? 'currentColor' : 'none'}
-          />
-        </button>
+        {/* Top-Right Action Controls (Wishlist Heart & Quick Image Download) */}
+        <div className="absolute top-3 right-3 z-25 flex flex-col gap-1.5 items-end">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleWishlist(product.id);
+            }}
+            className={`w-8 h-8 rounded-full flex items-center justify-center shadow-md backdrop-blur-md transition-all duration-200 cursor-pointer ${
+              inWishlist
+                ? 'bg-rose-600 text-white ring-2 ring-white scale-105 shadow-rose-900/30'
+                : 'bg-white/85 text-neutral-700 hover:text-rose-600 hover:bg-white hover:scale-105'
+            }`}
+            title={inWishlist ? 'Remove from Wishlist' : 'Add to Wishlist'}
+            aria-label={inWishlist ? 'Remove from Wishlist' : 'Add to Wishlist'}
+          >
+            <Heart
+              className="w-4 h-4 transition-transform active:scale-125"
+              fill={inWishlist ? 'currentColor' : 'none'}
+            />
+          </button>
+
+          {/* Quick Image Download Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const img = product.images[0];
+              if (img) {
+                downloadSingleImage(img, `${product.title}_${product.productCode || 'sku'}.jpg`);
+              }
+            }}
+            className="w-8 h-8 rounded-full bg-white/85 hover:bg-white text-neutral-700 hover:text-emerald-700 shadow-md backdrop-blur-md flex items-center justify-center transition-all duration-200 hover:scale-105 cursor-pointer opacity-90 hover:opacity-100"
+            title="Download product photo"
+            aria-label="Download product photo"
+          >
+            <Download className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
         {/* Prominent Out-of-Stock Center Overlay */}
         {isOutOfStock && (

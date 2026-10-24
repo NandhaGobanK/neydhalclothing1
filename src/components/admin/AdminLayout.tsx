@@ -240,7 +240,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-900 flex flex-col">
       {/* Top Admin Header */}
-      <header className="sticky top-0 z-30 bg-neutral-950 text-white border-b border-neutral-800 shadow-md">
+      <header className="sticky top-0 z-40 bg-neutral-950 text-white border-b border-neutral-800 shadow-md">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           {/* Top Row: Brand, User Identity Badge, and Quick Action Buttons */}
           <div className="py-2 sm:py-2.5 flex items-center justify-between flex-wrap gap-2 sm:gap-3 border-b border-neutral-800/80">

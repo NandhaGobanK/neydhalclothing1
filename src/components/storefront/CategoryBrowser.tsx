@@ -717,17 +717,11 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                     className="group relative bg-white rounded-2xl border border-neutral-200/90 overflow-hidden shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-between"
                   >
                     {/* Visual Category Preview Image */}
-                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-950 flex items-center justify-center">
-                      <img
-                        src={category.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
-                        alt=""
-                        aria-hidden="true"
-                        className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110 pointer-events-none"
-                      />
+                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-900 flex items-center justify-center">
                       <img
                         src={category.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={category.name}
-                        className="relative z-1 max-h-full max-w-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
+                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                       />
                       <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/95 via-black/40 to-transparent pointer-events-none" />
@@ -742,7 +736,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
 
                       {/* Item Count Pill */}
                       <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-sm z-30">
-                        {count} {count === 1 ? 'Design' : 'Designs'}
+                        {count} {count === 1 ? getCategorySingularName(category.name) : getCategoryPluralName(category.name)}
                       </div>
 
                       {/* Category Title & Labels Overlay (Prominent z-30) */}

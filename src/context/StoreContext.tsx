@@ -21,6 +21,9 @@ import {
   OrderStatusHistory,
   InvestigationComment,
   DeletedOrderAuditLog,
+  CustomerUser,
+  CustomerAddress,
+  ResellerUser,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -70,6 +73,8 @@ const STORAGE_KEYS = {
   SETTINGS: 'aara_boutique_settings_v3',
   CART: 'aara_boutique_cart_v3',
   CURRENT_USER: 'aara_boutique_user_v3',
+  CURRENT_CUSTOMER: 'aara_boutique_customer_v3',
+  CURRENT_RESELLER: 'aara_boutique_reseller_v3',
   REVIEWS: 'aara_boutique_reviews_v3',
   DELETED_ORDERS_LOG: 'aara_boutique_deleted_orders_log_v3',
 };
@@ -273,6 +278,37 @@ interface StoreContextType {
   recordCustomerOrder: (orderNumber: string, phone?: string) => void;
   hideCustomerOrder: (orderIdOrNumber: string) => void;
   unhideCustomerOrder: (orderIdOrNumber: string) => void;
+
+  // Customer Authentication & Data Privacy (Strict Data Isolation)
+  currentCustomer: CustomerUser | null;
+  customerLogin: (emailOrPhone: string, password?: string) => Promise<{ success: boolean; customer?: CustomerUser; error?: string }>;
+  customerRegister: (data: Omit<CustomerUser, 'id' | 'createdAt' | 'savedAddresses'>) => Promise<{ success: boolean; customer?: CustomerUser; error?: string }>;
+  customerLogout: () => void;
+  updateCustomerProfile: (updates: Partial<CustomerUser>) => Promise<void>;
+  addCustomerAddress: (address: Omit<CustomerAddress, 'id'>) => Promise<void>;
+  deleteCustomerAddress: (id: string) => Promise<void>;
+  setDefaultAddress: (id: string) => Promise<void>;
+  isCustomerAuthModalOpen: boolean;
+  setIsCustomerAuthModalOpen: (open: boolean) => void;
+  isCustomerAccountModalOpen: boolean;
+  setIsCustomerAccountModalOpen: (open: boolean) => void;
+
+  // Dedicated Reseller Portal & B2B Wholesale Management
+  currentReseller: ResellerUser | null;
+  resellers: ResellerUser[];
+  resellerLogin: (emailOrPhone: string, password?: string) => Promise<{ success: boolean; reseller?: ResellerUser; error?: string }>;
+  resellerRegister: (data: Omit<ResellerUser, 'id' | 'createdAt' | 'wholesaleDiscountPercent' | 'status'>) => Promise<{ success: boolean; reseller?: ResellerUser; error?: string }>;
+  resellerLogout: () => void;
+  resellerOrders: Order[];
+  placeResellerOrder: (input: {
+    items: CartItem[];
+    dropshipRecipient: Order['dropshipRecipient'];
+    resellerMargin: number;
+    upiTransactionId: string;
+    notes?: string;
+  }) => Promise<Order>;
+  isResellerPortalOpen: boolean;
+  setIsResellerPortalOpen: (open: boolean) => void;
 
   // Dynamic Product Specifications / Custom Attributes
   productAttributes: ProductAttributeDefinition[];
@@ -527,6 +563,39 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [remoteLogoutNotice, setRemoteLogoutNotice] = useState<string | null>(null);
   const clearRemoteLogoutNotice = () => setRemoteLogoutNotice(null);
 
+  // Customer Account & Privacy State
+  const [currentCustomer, setCurrentCustomer] = useState<CustomerUser | null>(() =>
+    loadFromStorage<CustomerUser | null>(STORAGE_KEYS.CURRENT_CUSTOMER, null)
+  );
+  const [customers, setCustomers] = useState<CustomerUser[]>(() =>
+    loadFromStorage<CustomerUser[]>('aara_boutique_customers_v3', [])
+  );
+  const [isCustomerAuthModalOpen, setIsCustomerAuthModalOpen] = useState(false);
+  const [isCustomerAccountModalOpen, setIsCustomerAccountModalOpen] = useState(false);
+
+  // Dedicated Reseller Portal State
+  const [currentReseller, setCurrentReseller] = useState<ResellerUser | null>(() =>
+    loadFromStorage<ResellerUser | null>(STORAGE_KEYS.CURRENT_RESELLER, null)
+  );
+  const [resellers, setResellers] = useState<ResellerUser[]>(() =>
+    loadFromStorage<ResellerUser[]>('aara_boutique_resellers_v3', [
+      {
+        id: 'res_demo_meenakshi',
+        businessName: 'Sri Meenakshi Saree Resellers',
+        name: 'Meenakshi Sundaram',
+        email: 'meenakshi.reseller@example.com',
+        phone: '9840123456',
+        whatsappNumber: '9840123456',
+        city: 'Madurai',
+        state: 'Tamil Nadu',
+        wholesaleDiscountPercent: 20,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      },
+    ])
+  );
+  const [isResellerPortalOpen, setIsResellerPortalOpen] = useState(false);
+
   // Customer Browsing State & Wishlist
   const [wishlist, setWishlist] = useState<string[]>(() =>
     loadFromStorage('aara_boutique_wishlist_v3', [])
@@ -747,27 +816,32 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const allCustomerOrders = useMemo(() => {
     if (!orders || orders.length === 0) return [];
-    const savedNumbers = new Set(customerOrderNumbers.map((n) => n.trim().toUpperCase()));
-    if (lastPlacedOrder?.orderNumber) {
-      savedNumbers.add(lastPlacedOrder.orderNumber.trim().toUpperCase());
+
+    // 1. If customer is authenticated, enforce strict customer privacy & data isolation!
+    if (currentCustomer) {
+      const cleanCustPhone = (currentCustomer.phone || '').replace(/\D/g, '').slice(-10);
+      const custEmail = (currentCustomer.email || '').trim().toLowerCase();
+
+      return orders.filter((o) => {
+        if (o.orderType === 'reseller') return false; // Reseller orders handled independently
+        if (o.customerId && o.customerId === currentCustomer.id) return true;
+        if (custEmail && o.customerEmail && o.customerEmail.toLowerCase() === custEmail) return true;
+        if (custEmail && o.customer?.email && o.customer.email.toLowerCase() === custEmail) return true;
+        const ordPhone = (o.customer?.phone || '').replace(/\D/g, '').slice(-10);
+        return Boolean(cleanCustPhone && ordPhone && cleanCustPhone === ordPhone);
+      });
     }
-    const savedPhone = typeof window !== 'undefined' ? (localStorage.getItem('aara_customer_phone') || '').trim() : '';
-    const cleanSavedPhone = savedPhone.replace(/\D/g, '').slice(-10);
 
-    const distinctOrderMap = new Map<string, Order>();
-    orders.forEach((o) => {
-      const matchNumber = savedNumbers.has(o.orderNumber.trim().toUpperCase());
-      const orderPhone = (o.customer?.phone || '').replace(/\D/g, '').slice(-10);
-      const matchPhone = cleanSavedPhone && orderPhone && orderPhone === cleanSavedPhone;
-      if (matchNumber || matchPhone) {
-        distinctOrderMap.set(o.id, o);
-      }
-    });
+    // 2. If visitor is NOT logged in: strictly isolate to the order placed in current active session!
+    // Never show another customer's data!
+    if (lastPlacedOrder?.orderNumber) {
+      return orders.filter((o) => o.id === lastPlacedOrder.id || o.orderNumber === lastPlacedOrder.orderNumber);
+    }
 
-    return Array.from(distinctOrderMap.values());
-  }, [orders, customerOrderNumbers, lastPlacedOrder]);
+    return [];
+  }, [orders, currentCustomer, lastPlacedOrder]);
 
-  // Customer orders visible in My Orders dashboard (all orders preserved)
+  // Customer orders visible in My Orders dashboard (strictly isolated)
   const customerOrders = useMemo(() => {
     return allCustomerOrders;
   }, [allCustomerOrders]);
@@ -777,6 +851,242 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   const customerOrdersCount = customerOrders.length;
+
+  // Reseller Orders strictly filtered & categorized independently
+  const resellerOrders = useMemo(() => {
+    if (!orders || orders.length === 0 || !currentReseller) return [];
+    const cleanResellerPhone = (currentReseller.whatsappNumber || currentReseller.phone || '').replace(/\D/g, '').slice(-10);
+    return orders.filter((o) => {
+      if (o.orderType !== 'reseller') return false;
+      if (o.resellerId && o.resellerId === currentReseller.id) return true;
+      const oPhone = (o.customer?.phone || '').replace(/\D/g, '').slice(-10);
+      return Boolean(cleanResellerPhone && oPhone && cleanResellerPhone === oPhone);
+    });
+  }, [orders, currentReseller]);
+
+  // Customer Authentication & Management Methods
+  const customerLogin = async (emailOrPhone: string, password?: string) => {
+    const cleanInput = emailOrPhone.trim().toLowerCase();
+    const cleanPhone = emailOrPhone.replace(/\D/g, '').slice(-10);
+
+    const found = customers.find(
+      (c) =>
+        (cleanPhone && c.phone && c.phone.replace(/\D/g, '').slice(-10) === cleanPhone) ||
+        (c.email && c.email.toLowerCase() === cleanInput)
+    );
+
+    if (found) {
+      if (found.password && password && found.password !== password) {
+        return { success: false, error: 'Incorrect password.' };
+      }
+      setCurrentCustomer(found);
+      saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, found);
+      return { success: true, customer: found };
+    }
+
+    // Auto-create customer account on phone login
+    const newCust: CustomerUser = {
+      id: `cust_${Date.now()}`,
+      name: cleanPhone ? `Customer ${cleanPhone.slice(-4)}` : cleanInput.split('@')[0],
+      email: cleanInput.includes('@') ? cleanInput : '',
+      phone: cleanPhone || '',
+      password: password || undefined,
+      savedAddresses: [],
+      createdAt: new Date().toISOString(),
+      authMethod: password ? 'password' : 'guest',
+    };
+
+    setCustomers((prev) => [newCust, ...prev]);
+    setCurrentCustomer(newCust);
+    saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, newCust);
+    setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust)).catch(() => {});
+    return { success: true, customer: newCust };
+  };
+
+  const customerRegister = async (data: Omit<CustomerUser, 'id' | 'createdAt' | 'savedAddresses'>) => {
+    const newCust: CustomerUser = {
+      ...data,
+      id: `cust_${Date.now()}`,
+      savedAddresses: [],
+      createdAt: new Date().toISOString(),
+    };
+    setCustomers((prev) => [newCust, ...prev]);
+    setCurrentCustomer(newCust);
+    saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, newCust);
+    setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust)).catch(() => {});
+    return { success: true, customer: newCust };
+  };
+
+  const customerLogout = () => {
+    setCurrentCustomer(null);
+    saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, null);
+  };
+
+  const updateCustomerProfile = async (updates: Partial<CustomerUser>) => {
+    if (!currentCustomer) return;
+    const updated = { ...currentCustomer, ...updates };
+    setCurrentCustomer(updated);
+    saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, updated);
+    setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    setDoc(doc(db, 'customers', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(() => {});
+  };
+
+  const addCustomerAddress = async (address: Omit<CustomerAddress, 'id'>) => {
+    if (!currentCustomer) return;
+    const newAddr: CustomerAddress = {
+      ...address,
+      id: `addr_${Date.now()}`,
+    };
+    let updatedAddrs = currentCustomer.savedAddresses || [];
+    if (newAddr.isDefault) {
+      updatedAddrs = updatedAddrs.map((a) => ({ ...a, isDefault: false }));
+    }
+    updatedAddrs = [newAddr, ...updatedAddrs];
+    await updateCustomerProfile({ savedAddresses: updatedAddrs });
+  };
+
+  const deleteCustomerAddress = async (id: string) => {
+    if (!currentCustomer) return;
+    const updatedAddrs = (currentCustomer.savedAddresses || []).filter((a) => a.id !== id);
+    await updateCustomerProfile({ savedAddresses: updatedAddrs });
+  };
+
+  const setDefaultAddress = async (id: string) => {
+    if (!currentCustomer) return;
+    const updatedAddrs = (currentCustomer.savedAddresses || []).map((a) => ({
+      ...a,
+      isDefault: a.id === id,
+    }));
+    await updateCustomerProfile({ savedAddresses: updatedAddrs });
+  };
+
+  // Dedicated Reseller Portal Methods
+  const resellerLogin = async (emailOrPhone: string, password?: string) => {
+    const cleanInput = emailOrPhone.trim().toLowerCase();
+    const cleanPhone = emailOrPhone.replace(/\D/g, '').slice(-10);
+
+    const found = resellers.find(
+      (r) =>
+        (cleanPhone &&
+          (r.whatsappNumber?.replace(/\D/g, '').slice(-10) === cleanPhone ||
+            r.phone?.replace(/\D/g, '').slice(-10) === cleanPhone)) ||
+        (r.email && r.email.toLowerCase() === cleanInput)
+    );
+
+    if (found) {
+      if (found.password && password && found.password !== password) {
+        return { success: false, error: 'Incorrect reseller password.' };
+      }
+      setCurrentReseller(found);
+      saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, found);
+      return { success: true, reseller: found };
+    }
+
+    return { success: false, error: 'No registered reseller account found with this mobile or email. Please register.' };
+  };
+
+  const resellerRegister = async (
+    data: Omit<ResellerUser, 'id' | 'createdAt' | 'wholesaleDiscountPercent' | 'status'>
+  ) => {
+    const newReseller: ResellerUser = {
+      ...data,
+      id: `res_${Date.now()}`,
+      wholesaleDiscountPercent: 20, // Default 20% wholesale discount tier
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      totalSales: 0,
+      totalOrdersCount: 0,
+    };
+    setResellers((prev) => [newReseller, ...prev]);
+    setCurrentReseller(newReseller);
+    saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, newReseller);
+    setDoc(doc(db, 'resellers', newReseller.id), sanitizeForFirestore(newReseller)).catch(() => {});
+    return { success: true, reseller: newReseller };
+  };
+
+  const resellerLogout = () => {
+    setCurrentReseller(null);
+    saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, null);
+  };
+
+  const placeResellerOrder = async (input: {
+    items: CartItem[];
+    dropshipRecipient: Order['dropshipRecipient'];
+    resellerMargin: number;
+    upiTransactionId: string;
+    notes?: string;
+  }): Promise<Order> => {
+    if (!currentReseller) throw new Error('Reseller not authenticated');
+
+    const subtotal = input.items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    const shippingFee = 0; // Wholesale bulk orders free delivery
+    const totalAmount = subtotal;
+    const prefix = 'RES';
+    const orderNumber = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const newOrder: Order = {
+      id: `order-${Date.now()}`,
+      orderNumber,
+      createdAt: new Date().toISOString(),
+      customer: {
+        name: input.dropshipRecipient?.name || currentReseller.name,
+        phone: input.dropshipRecipient?.phone || currentReseller.whatsappNumber,
+        email: currentReseller.email || '',
+        address: input.dropshipRecipient?.address || currentReseller.businessName,
+        city: input.dropshipRecipient?.city || currentReseller.city || 'Salem',
+        state: input.dropshipRecipient?.state || currentReseller.state || 'Tamil Nadu',
+        pincode: input.dropshipRecipient?.pincode || '636001',
+      },
+      items: input.items,
+      subtotal,
+      shippingFee,
+      totalAmount,
+      upiTransactionId: input.upiTransactionId.trim(),
+      refundDetails: {
+        refundStatus: 'not_required',
+      },
+      status: 'Pending',
+      checkoutMethod: 'submit_order',
+      notes: input.notes,
+      orderType: 'reseller',
+      resellerId: currentReseller.id,
+      resellerName: currentReseller.name,
+      resellerBusinessName: currentReseller.businessName,
+      resellerMargin: input.resellerMargin,
+      dropshipRecipient: input.dropshipRecipient,
+      lastUpdatedBy: `reseller:${currentReseller.businessName}`,
+      assignmentHistory: [
+        {
+          id: `log-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          staffId: 'unassigned',
+          staffName: 'Wholesale B2B Queue',
+          assignedBy: 'Reseller Portal',
+          action: 'Reseller Dropship Order Placed',
+          note: `Partner: ${currentReseller.businessName}. Wholesale Total: ₹${totalAmount}, Reseller Margin: ₹${input.resellerMargin}`,
+        },
+      ],
+    };
+
+    setOrders((prev) => [newOrder, ...prev]);
+
+    // Deduct stock for ordered items
+    input.items.forEach((item) => {
+      const prod = products.find((p) => p.id === item.product.id);
+      if (prod) {
+        const remainingCount = Math.max(0, (prod.stockCount ?? 1) - item.quantity);
+        const nextStatus =
+          remainingCount === 0 ? 'out_of_stock' : remainingCount <= 2 ? 'limited' : prod.stockStatus;
+        updateProduct(prod.id, {
+          stockCount: remainingCount,
+          stockStatus: nextStatus,
+        });
+      }
+    });
+
+    setDoc(doc(db, 'orders', newOrder.id), sanitizeForFirestore(newOrder)).catch(() => {});
+    return newOrder;
+  };
 
   // Active deep-link live chat order IDs
   const [activeAdminChatOrderId, setActiveAdminChatOrderId] = useState<string | null>(null);
@@ -1928,6 +2238,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       status: 'Pending',
       checkoutMethod,
       notes,
+      customerId: currentCustomer?.id,
+      customerEmail: currentCustomer?.email || customer.email,
+      orderType: 'retail',
       assignedStaffId: undefined,
       assignedStaffName: undefined,
       lastUpdatedBy: 'customer',
@@ -4393,6 +4706,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         recordCustomerOrder,
         hideCustomerOrder,
         unhideCustomerOrder,
+        currentCustomer,
+        customerLogin,
+        customerRegister,
+        customerLogout,
+        updateCustomerProfile,
+        addCustomerAddress,
+        deleteCustomerAddress,
+        setDefaultAddress,
+        isCustomerAuthModalOpen,
+        setIsCustomerAuthModalOpen,
+        isCustomerAccountModalOpen,
+        setIsCustomerAccountModalOpen,
+        currentReseller,
+        resellers,
+        resellerLogin,
+        resellerRegister,
+        resellerLogout,
+        resellerOrders,
+        placeResellerOrder,
+        isResellerPortalOpen,
+        setIsResellerPortalOpen,
         productAttributes,
         addProductAttribute,
         updateProductAttribute,

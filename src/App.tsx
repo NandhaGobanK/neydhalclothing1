@@ -22,6 +22,7 @@ import { useStaffIdleTracker } from './hooks/useStaffIdleTracker';
 import { CategoryBrowser } from './components/storefront/CategoryBrowser';
 import { WishlistBrowser } from './components/storefront/WishlistBrowser';
 import { BottomNavBar } from './components/storefront/BottomNavBar';
+import { getCategorySingularName, getCategoryPluralName } from './utils/productValidation';
 
 function MainAppContent() {
   const {
@@ -338,21 +339,15 @@ function MainAppContent() {
                         >
                           <img
                             src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
-                            alt=""
-                            aria-hidden="true"
-                            className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110 pointer-events-none"
-                          />
-                          <img
-                            src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                             alt={cat.name}
-                            className="relative z-1 max-h-full max-w-full object-contain p-1 group-hover:scale-105 transition-transform duration-500 mx-auto my-auto"
+                            className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                             loading="lazy"
                           />
                           <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/95 via-black/40 to-transparent pointer-events-none" />
 
                           <div className="relative z-30 space-y-1">
                             <span className="inline-block text-[9px] font-bold bg-white/95 text-neutral-900 px-1.5 py-0.5 rounded-full backdrop-blur-xs shadow-xs">
-                              {count} {count === 1 ? 'Design' : 'Designs'}
+                              {count} {count === 1 ? getCategorySingularName(cat.name) : getCategoryPluralName(cat.name)}
                             </span>
                             <h3 className="font-serif font-bold text-xs sm:text-sm text-white leading-tight group-hover:text-amber-200 transition drop-shadow-md">
                               {cat.name}
@@ -364,7 +359,7 @@ function MainAppContent() {
                   </div>
                 </section>
 
-                {/* Saree Collection Catalog */}
+                {/* Products Collection Catalog */}
                 <section id="catalog-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
                   <ProductGrid
                     selectedCategory={selectedCategory}

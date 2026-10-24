@@ -227,6 +227,9 @@ export const ProductManager: React.FC = () => {
     return `${storeKeyword}-${catCode}-${prodCode}-${colCode}`;
   }, [settings.boutiqueName, category, categories, title, effectiveColor]);
 
+  const currentSingularCategory = useMemo(() => getCategorySingularName(category), [category]);
+  const currentPluralCategory = useMemo(() => getCategoryPluralName(category), [category]);
+
   const [price, setPrice] = useState<number>(25000);
   const [originalPrice, setOriginalPrice] = useState<number>(30000);
   const [stockStatus, setStockStatus] = useState<'in_stock' | 'out_of_stock' | 'limited'>('in_stock');
@@ -445,6 +448,10 @@ export const ProductManager: React.FC = () => {
 
   const handleSelectProductType = (newType: ProductType) => {
     setProductType(newType);
+    const matchingCat = categories.find((c) => c.name.toLowerCase().includes(newType));
+    if (matchingCat) {
+      setCategory(matchingCat.name);
+    }
     applyProductTemplate(newType, fabric, selectedColorOption);
   };
 
@@ -557,6 +564,51 @@ export const ProductManager: React.FC = () => {
     setCrossSellSearchQuery('');
 
     setIsEditingModalOpen(true);
+  };
+
+  const handleCategoryDropdownChange = (newCatName: string) => {
+    setCategory(newCatName);
+    const catLower = newCatName.toLowerCase();
+    const matchedType: ProductType =
+      catLower.includes('blouse')
+        ? 'blouse'
+        : catLower.includes('jewel') || catLower.includes('necklace') || catLower.includes('jhumka')
+        ? 'jewelry'
+        : catLower.includes('kurti') || catLower.includes('anarkali') || catLower.includes('tunic')
+        ? 'kurti'
+        : 'saree';
+    setProductType(matchedType);
+
+    const singular = getCategorySingularName(newCatName);
+    const colorDesc = selectedColorOption === 'Other' ? (customColor.trim() || 'Handloom') : (selectedColorOption || 'Crimson Red');
+
+    // Only auto-populate or update title & subtitle template if creating new product
+    if (!editingProduct) {
+      if (matchedType === 'saree') {
+        setTitle(`Royal ${colorDesc} Shrimant Kanjivaram Bridal Silk`);
+        setSubtitle('Pure Mulberry Silk with Tested Gold Zari Temple Pallu');
+        setDescription('Individually hand-woven in Kanchipuram, this heirloom drape features classic interlocking temple gopuram borders and delicate peacock motifs. Certified pure silk mark.');
+        setFabric('Kanjivaram Silk');
+      } else if (matchedType === 'blouse') {
+        setTitle(`Aarohi ${colorDesc} Zardozi Hand-Embroidered Raw Silk Blouse`);
+        setSubtitle('Sweetheart Neckline with Heavy Zari Maggam Sleeves');
+        setDescription('Masterpiece designer blouse tailored in rich pure raw silk. Features handcrafted zardozi embroidery, padded cups for a flawless fit, and pure breathable cotton lining.');
+        setFabric('Raw Silk');
+      } else if (matchedType === 'jewelry') {
+        setTitle(`Devasthanam Antique Temple Gold ${colorDesc} Choker & Jhumka Set`);
+        setSubtitle('22K Matte Gold Finish with Kemp Rubies & Pearls');
+        setDescription('Handcrafted heritage temple jewelry set plated in 22K antique matte gold. Adorned with luminous South Sea pearls, emerald accents, and radiant kemp stones.');
+      } else if (matchedType === 'kurti') {
+        setTitle(`Nazakat Hand-Embroidered ${colorDesc} Chikankari Cotton Kurti`);
+        setSubtitle('A-Line Flared Pure Mulmul with Mukaish Accents');
+        setDescription('Bespoke handcrafted ethnic kurti spun from breathable mulmul cotton. Adorned with intricate shadow work chikankari motifs, delicate mukaish rings, and mother-of-pearl buttons.');
+        setFabric('Pure Cotton');
+      } else {
+        setTitle(`Artisan Handcrafted ${colorDesc} ${singular}`);
+        setSubtitle(`Premium handcrafted ${singular.toLowerCase()} with bespoke craftsmanship detailing`);
+        setDescription(`Individually curated ${singular.toLowerCase()} crafted with authentic materials and exceptional attention to artisan detail.`);
+      }
+    }
   };
 
   // Product-Specific Dynamic Specification Field Handlers (Unique to each product)
@@ -1195,7 +1247,7 @@ export const ProductManager: React.FC = () => {
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900">
-                Saree Categories & Collections
+                Product Categories & Collections
               </h2>
               <p className="text-xs text-neutral-500 mt-0.5">
                 First select or create a category, then click to enter inside that specific category and add products directly.
@@ -1207,7 +1259,7 @@ export const ProductManager: React.FC = () => {
                 type="button"
                 onClick={() => setShowAllSareesFlat(true)}
                 className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-800 text-xs font-semibold shadow-2xs transition cursor-pointer"
-                title="Browse all sarees across all categories in a flat list"
+                title="Browse all products across all categories in a flat list"
               >
                 <Package className="w-4 h-4 text-neutral-600" />
                 <span>Flat Inventory ({products.length})</span>
@@ -1238,7 +1290,7 @@ export const ProductManager: React.FC = () => {
                   No Categories Created Yet
                 </h3>
                 <p className="text-xs text-neutral-500 leading-relaxed">
-                  To follow the hierarchical workflow, create a category first (e.g. Poontamil Sarees, Foil Print Sarees, Banarasi Brocades), then click to enter inside it and add products directly.
+                  To follow the hierarchical workflow, create a category first (e.g. Pure Silk Sarees, Designer Blouses, Temple Jewelry), then click to enter inside it and add products directly.
                 </p>
               </div>
               {canEditProducts && (
@@ -1262,24 +1314,18 @@ export const ProductManager: React.FC = () => {
                     onClick={() => setActiveCategoryView(cat)}
                     className="group bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-between border-t-4 border-t-amber-500 hover:border-t-rose-800"
                   >
-                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-950 flex items-center justify-center">
-                      <img
-                        src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
-                        alt=""
-                        aria-hidden="true"
-                        className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110 pointer-events-none"
-                      />
+                    <div className="relative aspect-16/9 sm:aspect-4/3 w-full overflow-hidden bg-neutral-900 flex items-center justify-center">
                       <img
                         src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={cat.name}
-                        className="relative z-1 max-h-full max-w-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
+                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                       />
                       <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/95 via-black/40 to-transparent pointer-events-none" />
 
-                      <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
-                        <span className="bg-white/95 backdrop-blur-xs text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
-                          {count} {count === 1 ? 'Saree' : 'Sarees'}
+                      <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 max-w-[calc(100%-1.5rem)]">
+                        <span className="bg-white/95 backdrop-blur-xs text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs truncate">
+                          {count} {count === 1 ? getCategorySingularName(cat.name) : getCategoryPluralName(cat.name)}
                         </span>
                         {canEditProducts && (
                           <div className="flex items-center gap-1">
@@ -1309,8 +1355,8 @@ export const ProductManager: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Category Title & Labels Overlay (Prominent z-30) */}
-                      <div className="absolute inset-x-0 bottom-0 z-30 p-3.5 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent text-white pointer-events-none">
+                      {/* Category Title & Labels Overlay */}
+                      <div className="absolute inset-x-0 bottom-0 z-20 p-3.5 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent text-white pointer-events-none">
                         <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300 drop-shadow block">
                           Category Collection
                         </span>
@@ -1377,7 +1423,7 @@ export const ProductManager: React.FC = () => {
               <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 flex items-center gap-2 flex-wrap">
                 <span>{activeCategoryView.name}</span>
                 <span className="text-xs font-sans font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                  {currentCategoryProducts.length} {currentCategoryProducts.length === 1 ? 'Saree' : 'Sarees'} inside
+                  {currentCategoryProducts.length} {currentCategoryProducts.length === 1 ? getCategorySingularName(activeCategoryView.name) : getCategoryPluralName(activeCategoryView.name)} inside
                 </span>
               </h2>
               <p className="text-xs text-neutral-500">
@@ -1421,7 +1467,7 @@ export const ProductManager: React.FC = () => {
           </div>
         </div>
       ) : (
-        /* Flat Saree Inventory Header */
+        /* Flat Products Inventory Header */
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <button
@@ -1433,10 +1479,10 @@ export const ProductManager: React.FC = () => {
               <span>Switch to Category-First Workflow</span>
             </button>
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900">
-              Saree Catalog & Inventory (Flat View)
+              Products Catalog & Inventory (Flat View)
             </h2>
             <p className="text-xs text-neutral-500 mt-0.5">
-              Total {products.length} sarees · {products.filter((p) => p.isVisible).length} visible on storefront
+              Total {products.length} products · {products.filter((p) => p.isVisible).length} visible on storefront
             </p>
           </div>
 
@@ -1475,7 +1521,7 @@ export const ProductManager: React.FC = () => {
               onChange={(e) => setTableSearchQuery(e.target.value)}
               placeholder={
                 activeCategoryView
-                  ? `Search sarees within ${activeCategoryView.name}...`
+                  ? `Search ${getCategoryPluralName(activeCategoryView.name).toLowerCase()} within ${activeCategoryView.name}...`
                   : 'Search by Unique SKU Code (e.g. AARA-KAN-CRIM-101) or Name...'
               }
               className="flex-1 bg-transparent text-xs text-neutral-900 focus:outline-hidden"
@@ -1490,7 +1536,7 @@ export const ProductManager: React.FC = () => {
             )}
           </div>
 
-          {/* Saree Inventory Table */}
+          {/* Product Inventory Table */}
           <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-xs">
             {filteredProducts.length === 0 ? (
               <div className="p-12 text-center space-y-3">
@@ -1499,13 +1545,13 @@ export const ProductManager: React.FC = () => {
                 </div>
                 <h3 className="font-serif font-bold text-base text-neutral-900">
                   {activeCategoryView
-                    ? `No sarees inside "${activeCategoryView.name}" yet`
-                    : 'No sarees matching your search'}
+                    ? `No ${getCategoryPluralName(activeCategoryView.name).toLowerCase()} inside "${activeCategoryView.name}" yet`
+                    : 'No products matching your search'}
                 </h3>
                 <p className="text-xs text-neutral-500 max-w-sm mx-auto">
                   {activeCategoryView
-                    ? `Click below to add your first handcrafted saree directly into ${activeCategoryView.name}.`
-                    : 'Try searching with a different SKU code, fabric, or saree title.'}
+                    ? `Click below to add your first handcrafted ${getCategorySingularName(activeCategoryView.name).toLowerCase()} directly into ${activeCategoryView.name}.`
+                    : 'Try searching with a different SKU code, fabric, or title.'}
                 </p>
                 {activeCategoryView && canEditProducts && (
                   <button
@@ -1528,7 +1574,7 @@ export const ProductManager: React.FC = () => {
               key={product.id}
               onClick={() => openEditModal(product)}
               className="bg-neutral-50/70 hover:bg-neutral-100/80 rounded-2xl p-3 border border-neutral-200/80 transition cursor-pointer flex flex-col justify-between space-y-2.5 active:scale-99"
-              title="Tap anywhere to edit this saree"
+              title="Tap anywhere to edit this product"
             >
               <div className="flex gap-3">
                 <img
@@ -1803,7 +1849,7 @@ export const ProductManager: React.FC = () => {
                               openEditModal(product);
                             }}
                             className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition"
-                            title="Edit Saree Details"
+                            title={`Edit ${getCategorySingularName(product.category)} Details`}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -1813,7 +1859,7 @@ export const ProductManager: React.FC = () => {
                               setProductToDelete(product);
                             }}
                             className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition"
-                            title="Delete Saree"
+                            title={`Delete ${getCategorySingularName(product.category)}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1825,7 +1871,7 @@ export const ProductManager: React.FC = () => {
                             openEditModal(product);
                           }}
                           className="px-2 py-1 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 text-[11px] font-medium"
-                          title="View Saree Details"
+                          title={`View ${getCategorySingularName(product.category)} Details`}
                         >
                           View Details
                         </button>
@@ -1854,12 +1900,12 @@ export const ProductManager: React.FC = () => {
                   <span>{PRODUCT_TYPES.find((t) => t.id === productType)?.icon || '🥻'}</span>
                   <span>
                     {editingProduct
-                      ? `Edit ${PRODUCT_TYPES.find((t) => t.id === productType)?.label || 'Product'} Details`
-                      : `Add New ${PRODUCT_TYPES.find((t) => t.id === productType)?.label || 'Product'}`}
+                      ? `Edit ${currentSingularCategory} Details`
+                      : `Add New ${currentSingularCategory}`}
                   </span>
                 </h3>
                 <p className="text-[11px] text-neutral-400 mt-0.5">
-                  Template active: <span className="text-amber-300 font-semibold">{PRODUCT_TYPES.find((t) => t.id === productType)?.label}</span> ({PRODUCT_TYPES.find((t) => t.id === productType)?.badge})
+                  Category: <span className="text-amber-300 font-semibold">{category}</span> ({currentSingularCategory}) · Template: <span className="text-white font-medium">{PRODUCT_TYPES.find((t) => t.id === productType)?.label}</span>
                 </p>
               </div>
               <button
@@ -2068,25 +2114,85 @@ export const ProductManager: React.FC = () => {
                   )}
                 </div>
 
+                {/* Dynamic Category Selector Dropdown */}
+                <div className="sm:col-span-2 p-3.5 rounded-2xl bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-neutral-50 border border-amber-300 shadow-2xs">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Product Category *</span>
+                    </label>
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-200/90 text-amber-950 border border-amber-300">
+                      Entity: {currentSingularCategory}
+                    </span>
+                  </div>
+                  <select
+                    value={category}
+                    onChange={(e) => handleCategoryDropdownChange(e.target.value)}
+                    required
+                    className="w-full p-2.5 rounded-xl border border-amber-300 bg-white text-neutral-900 font-bold text-xs focus:ring-2 focus:ring-amber-500/40 shadow-xs"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name} ({getCategorySingularName(c.name)})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-amber-900/80 mt-1">
+                    Titles, subtitles, template fields, and SKU prefixes dynamically adapt to this category.
+                  </p>
+                </div>
+
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-neutral-800 mb-1">Name *</label>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    {currentSingularCategory} Name *
+                  </label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     required
-                    placeholder="e.g. Maharani Pure Kanjivaram Bridal Silk"
+                    placeholder={
+                      currentSingularCategory.toLowerCase().includes('saree')
+                        ? 'e.g. Maharani Pure Kanjivaram Bridal Silk'
+                        : currentSingularCategory.toLowerCase().includes('blouse')
+                        ? 'e.g. Aarohi Zardozi Hand-Embroidered Raw Silk Blouse'
+                        : currentSingularCategory.toLowerCase().includes('jewel')
+                        ? 'e.g. Devasthanam Antique Temple Gold Choker & Jhumka Set'
+                        : currentSingularCategory.toLowerCase().includes('kurti')
+                        ? 'e.g. Nazakat Hand-Embroidered Chikankari Cotton Kurti'
+                        : `e.g. Handcrafted ${currentSingularCategory}`
+                    }
                     className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block font-semibold text-neutral-700 mb-1">Subtitle / Weave Highlight</label>
+                  <label className="block font-semibold text-neutral-700 mb-1">
+                    {currentSingularCategory.toLowerCase().includes('saree')
+                      ? 'Saree Subtitle / Weave Highlight'
+                      : currentSingularCategory.toLowerCase().includes('blouse')
+                      ? 'Blouse Subtitle / Neckline Highlight'
+                      : currentSingularCategory.toLowerCase().includes('jewel')
+                      ? 'Jewelry Subtitle / Gemstone Highlight'
+                      : currentSingularCategory.toLowerCase().includes('kurti')
+                      ? 'Kurti Subtitle / Silhouette Highlight'
+                      : `${currentSingularCategory} Subtitle / Craftsmanship Highlight`}
+                  </label>
                   <input
                     type="text"
                     value={subtitle}
                     onChange={(e) => setSubtitle(e.target.value)}
-                    placeholder="e.g. Pure Mulberry Silk with 3G Pure Gold Zari"
+                    placeholder={
+                      currentSingularCategory.toLowerCase().includes('saree')
+                        ? 'e.g. Pure Mulberry Silk with 3G Pure Gold Zari'
+                        : currentSingularCategory.toLowerCase().includes('blouse')
+                        ? 'e.g. Sweetheart Neckline with Heavy Zari Maggam Sleeves'
+                        : currentSingularCategory.toLowerCase().includes('jewel')
+                        ? 'e.g. 22K Matte Gold Finish with Kemp Rubies & Pearls'
+                        : currentSingularCategory.toLowerCase().includes('kurti')
+                        ? 'e.g. A-Line Flared Pure Mulmul with Mukaish Accents'
+                        : `e.g. Premium handcrafted ${currentSingularCategory.toLowerCase()} details`
+                    }
                     className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
                   />
                 </div>
@@ -2286,12 +2392,14 @@ export const ProductManager: React.FC = () => {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block font-semibold text-neutral-700 mb-1">Artisan Story / Description</label>
+                  <label className="block font-semibold text-neutral-700 mb-1">
+                    Artisan Story / {currentSingularCategory} Description
+                  </label>
                   <textarea
                     rows={3}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Describe the handloom weaving details, origin, motif meanings, and pallu craftsmanship..."
+                    placeholder={`Describe the artisan craftsmanship, materials, styling origin, and details of this ${currentSingularCategory.toLowerCase()}...`}
                     className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                   />
                 </div>
@@ -2325,9 +2433,11 @@ export const ProductManager: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Saree Images Management */}
+                {/* Dynamic Category Product Images Management */}
                 <div className="sm:col-span-2 space-y-2">
-                  <label className="block font-bold text-neutral-800">Saree Photos (URLs or Upload)</label>
+                  <label className="block font-bold text-neutral-800">
+                    {currentSingularCategory} Photos (URLs or Upload)
+                  </label>
                   
                   {/* Preview image thumbnails */}
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -3055,7 +3165,7 @@ export const ProductManager: React.FC = () => {
                 <div className="sm:col-span-2 flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-200">
                   <div>
                     <p className="font-bold text-neutral-900">Show on Public Storefront</p>
-                    <p className="text-neutral-500 text-[11px]">Toggle whether customers can view & purchase this saree</p>
+                    <p className="text-neutral-500 text-[11px]">Toggle whether customers can view & purchase this {currentSingularCategory.toLowerCase()}</p>
                   </div>
                   <input
                     type="checkbox"
@@ -3079,7 +3189,7 @@ export const ProductManager: React.FC = () => {
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-rose-700 hover:bg-rose-50 border border-rose-200 text-xs font-semibold transition"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Remove Saree</span>
+                    <span>Remove {currentSingularCategory}</span>
                   </button>
                 ) : (
                   <div />
@@ -3097,7 +3207,7 @@ export const ProductManager: React.FC = () => {
                     type="submit"
                     className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold shadow-sm"
                   >
-                    {editingProduct ? 'Save Changes' : 'Publish Saree'}
+                    {editingProduct ? `Save ${currentSingularCategory}` : `Publish ${currentSingularCategory}`}
                   </button>
                 </div>
               </div>
@@ -3106,7 +3216,7 @@ export const ProductManager: React.FC = () => {
         </div>
       )}
 
-      {/* Saree Removal Confirmation Modal (User Request: products be removable from sarees section) */}
+      {/* Product Removal Confirmation Modal */}
       {productToDelete && (
         <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
           <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
@@ -3117,7 +3227,7 @@ export const ProductManager: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-serif text-base font-bold text-white">
-                    Remove Saree from Catalog
+                    Remove {getCategorySingularName(productToDelete.category)} from Catalog
                   </h3>
                   <p className="text-[11px] text-neutral-400">
                     Permanently delete from boutique inventory
@@ -3163,7 +3273,7 @@ export const ProductManager: React.FC = () => {
                   <span>Confirm Permanent Removal</span>
                 </p>
                 <p className="text-[11px] text-rose-800 leading-relaxed">
-                  Are you sure you want to remove this saree? It will be deleted from the boutique catalog, shopping bags, and inventory records. This action cannot be undone.
+                  Are you sure you want to remove this {getCategorySingularName(productToDelete.category).toLowerCase()}? It will be deleted from the boutique catalog, shopping bags, and inventory records. This action cannot be undone.
                 </p>
               </div>
 
@@ -3184,7 +3294,7 @@ export const ProductManager: React.FC = () => {
                   className="py-2.5 px-4 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-sm shadow-rose-900/30"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>Yes, Delete Saree</span>
+                  <span>Yes, Delete {getCategorySingularName(productToDelete.category)}</span>
                 </button>
               </div>
             </div>
@@ -3192,7 +3302,7 @@ export const ProductManager: React.FC = () => {
         </div>
       )}
 
-      {/* Saree Inventory Orders Inspection Modal (User Request 6: clickable inventory to see orders) */}
+      {/* Product Inventory Orders Inspection Modal */}
       {selectedInventoryProduct && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
           <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
@@ -3249,7 +3359,7 @@ export const ProductManager: React.FC = () => {
                 </p>
               </div>
               <div className="bg-white p-3 rounded-xl border border-neutral-200">
-                <span className="text-[10px] uppercase font-bold text-neutral-500 block">Orders Containing Saree</span>
+                <span className="text-[10px] uppercase font-bold text-neutral-500 block">Orders Containing {getCategorySingularName(selectedInventoryProduct.category)}</span>
                 <p className="font-serif text-xl font-bold text-amber-700 mt-0.5">
                   {matchingInventoryOrders.length} {matchingInventoryOrders.length === 1 ? 'order' : 'orders'}
                 </p>

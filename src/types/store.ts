@@ -362,6 +362,61 @@ export interface Order {
   resolvedIssuesHistory?: CustomerDeliveryIssue[]; // Archive of previously resolved dispute issues across distinct categories
   chatMessages?: OrderChatMessage[]; // Direct real-time chat between customer and staff
   isRestocked?: boolean; // Set to true once purchased items have been restocked upon cancellation
+  customerId?: string; // Links to customer account for strict data isolation
+  customerEmail?: string;
+  orderType?: 'retail' | 'reseller'; // Reseller vs regular customer order
+  resellerId?: string; // ID of the authenticated reseller
+  resellerName?: string;
+  resellerBusinessName?: string;
+  resellerMargin?: number; // Reseller's custom margin / markup earned
+  dropshipRecipient?: {
+    name: string;
+    phone: string;
+    address: string;
+    city: string;
+    state: string;
+    pincode: string;
+  };
+}
+
+export interface CustomerAddress {
+  id: string;
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  isDefault?: boolean;
+}
+
+export interface CustomerUser {
+  id: string; // Unique customer identifier (e.g. cust_... or firebase UID)
+  name: string;
+  email: string;
+  phone: string;
+  password?: string;
+  savedAddresses: CustomerAddress[];
+  createdAt: string;
+  authMethod?: 'password' | 'google' | 'guest';
+}
+
+export interface ResellerUser {
+  id: string; // Reseller ID (e.g. res_...)
+  businessName: string;
+  name: string;
+  email: string;
+  phone: string;
+  whatsappNumber: string;
+  password?: string;
+  gstOrPan?: string;
+  city?: string;
+  state?: string;
+  wholesaleDiscountPercent: number; // e.g. 20% discount on boutique retail prices
+  status: 'active' | 'pending' | 'suspended';
+  createdAt: string;
+  totalSales?: number;
+  totalOrdersCount?: number;
 }
 
 export type ThemeMode = 'light' | 'dark';

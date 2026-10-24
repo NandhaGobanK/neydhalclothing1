@@ -121,10 +121,15 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
             <span>Featured Collections</span>
           </div>
           <h2 className={`text-2xl sm:text-3xl font-serif font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-            Explore Catalog
+            {selectedCategory && selectedCategory !== 'all'
+              ? `Explore ${selectedCategory}`
+              : 'Explore All Products'}
           </h2>
           <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
-            Showing {filteredProducts.length} of {publicProducts.length} available items
+            Showing {filteredProducts.length} of {publicProducts.length}{' '}
+            {selectedCategory && selectedCategory !== 'all'
+              ? getCategoryPluralName(selectedCategory).toLowerCase()
+              : 'products'}
           </p>
         </div>
 

@@ -27,7 +27,9 @@ import {
   ChevronLeft,
   ArrowRight,
   Trash2,
+  Download,
 } from 'lucide-react';
+import { downloadSingleImage, downloadAllProductImagesZip } from '../../utils/imageDownload';
 
 interface ProductDetailModalProps {
   product: Product;
@@ -70,6 +72,33 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product:
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<'photos' | 'video' | 'shorts'>('photos');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [imageFitMode, setImageFitMode] = useState<'cover' | 'contain'>('cover');
+  const [isDownloadingSingle, setIsDownloadingSingle] = useState(false);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+
+  const handleDownloadActiveImage = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const currentImg = product.images[selectedImageIndex] || product.images[0];
+    if (!currentImg) return;
+    setIsDownloadingSingle(true);
+    const cleanTitle = (product.title || 'product').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${settings.boutiqueName}_${cleanTitle}_${product.productCode || 'sku'}_img${selectedImageIndex + 1}.jpg`;
+    await downloadSingleImage(currentImg, filename);
+    setIsDownloadingSingle(false);
+    setDownloadNotice('Photo downloaded! ✓');
+    setTimeout(() => setDownloadNotice(null), 3000);
+  };
+
+  const handleDownloadAllZip = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!product.images || product.images.length === 0) return;
+    setIsDownloadingZip(true);
+    await downloadAllProductImagesZip(product.title, product.productCode, product.images);
+    setIsDownloadingZip(false);
+    setDownloadNotice(`All ${product.images.length} photos downloaded! ✓`);
+    setTimeout(() => setDownloadNotice(null), 3500);
+  };
 
   // Suggested items single-carousel state
   const carouselScrollRef = useRef<HTMLDivElement>(null);
@@ -384,7 +413,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product:
     const offerText = discountInfo.hasDiscount
       ? ` (${discountInfo.discountPercentage}% OFF - Save ${formatPrice(discountInfo.discountAmount)})`
       : '';
-    const shareMessage = `Look at this gorgeous ${product.fabric} saree at ${settings.boutiqueName}: ${product.title}\nPrice: ${formatPrice(product.price)}${product.originalPrice ? ` (MRP: ${formatPrice(product.originalPrice)})` : ''}${offerText}\n\nView & Reserve Saree: ${shareUrl}`;
+    const shareMessage = `Look at this gorgeous ${product.title} at ${settings.boutiqueName}:\nCategory: ${product.category || 'Collection'}\nPrice: ${formatPrice(product.price)}${product.originalPrice ? ` (MRP: ${formatPrice(product.originalPrice)})` : ''}${offerText}\n\nView & Reserve ${itemSingular}: ${shareUrl}`;
 
     if (navigator.share) {
       navigator.share({
@@ -412,53 +441,65 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product:
         ref={modalBoxRef}
         className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200"
       >
-        {/* Navigation Back Button when viewing a suggested product */}
-        {historyStack.length > 0 && (
-          <div className="absolute top-4 left-4 z-20">
+        {/* Dedicated Navigation Bar when viewing a suggested product from history stack */}
+        {historyStack.length > 0 ? (
+          <div className="bg-neutral-950 text-white px-3 sm:px-5 py-2.5 flex items-center justify-between border-b border-neutral-800 z-30 shrink-0 gap-2">
             <button
               type="button"
               onClick={handleClose}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-900/85 hover:bg-neutral-950 text-white text-xs font-bold shadow-lg transition backdrop-blur-md cursor-pointer border border-white/20 active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition cursor-pointer border border-white/10 active:scale-95 max-w-[70%] sm:max-w-md truncate"
               title={`Return back to ${historyStack[historyStack.length - 1].title}`}
             >
-              <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
-              <span>Back to {historyStack[historyStack.length - 1].title.length > 18 ? `${historyStack[historyStack.length - 1].title.slice(0, 18)}...` : historyStack[historyStack.length - 1].title}</span>
+              <ChevronLeft className="w-4 h-4 stroke-[2.5] shrink-0" />
+              <span className="truncate">
+                Back to {historyStack[historyStack.length - 1].title}
+              </span>
+            </button>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-2.5 py-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white text-[11px] font-medium transition cursor-pointer border border-white/10 hidden sm:inline-flex"
+                title="Close modal completely"
+              >
+                Close All
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white transition-colors cursor-pointer border border-white/10"
+                aria-label="Close modal"
+                title="Close modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Standard floating close button for root product (when no history stack bar) */
+          <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="p-2 rounded-full bg-neutral-900/60 hover:bg-neutral-900 text-white transition-colors cursor-pointer shadow-md backdrop-blur-xs"
+              aria-label="Close details"
+              title="Close details"
+            >
+              <X className="w-5 h-5" />
             </button>
           </div>
         )}
-
-        {/* Close & Return Back Actions */}
-        <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5">
-          {historyStack.length > 0 && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-2.5 py-1.5 rounded-full bg-neutral-900/60 hover:bg-neutral-900 text-white text-[10px] font-medium transition cursor-pointer backdrop-blur-xs hidden sm:inline-flex items-center gap-1 border border-white/10"
-              title="Close modal completely"
-            >
-              <span>Close All</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleClose}
-            className="p-2 rounded-full bg-neutral-900/60 hover:bg-neutral-900 text-white transition-colors cursor-pointer"
-            aria-label={historyStack.length > 0 ? "Back to previous product" : "Close details"}
-            title={historyStack.length > 0 ? `Back to ${historyStack[historyStack.length - 1].title}` : "Close details"}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2">
           {/* Left Column: Visual Media Gallery & Video */}
           <div className="bg-neutral-100 flex flex-col justify-between border-b md:border-b-0 md:border-r border-neutral-200">
             {/* Media Tabs if video or Instagram shorts is available */}
             {(videoInfo || shortsInfo) && (
-              <div className="p-2.5 bg-neutral-900 flex items-center justify-center gap-1.5 flex-wrap">
+              <div className="p-2.5 bg-neutral-900 flex items-center justify-center gap-1.5 flex-wrap pr-14 md:pr-2.5">
                 <button
                   onClick={() => setActiveTab('photos')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
                     activeTab === 'photos'
                       ? 'bg-amber-500 text-neutral-950 shadow-xs'
                       : 'text-neutral-300 hover:text-white bg-neutral-800/80'
@@ -543,13 +584,63 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product:
                   );
                 })()
               ) : (
-                <div className="w-full h-full flex items-center justify-center p-2 bg-neutral-900/5">
+                <div className="w-full h-full relative overflow-hidden flex items-center justify-center bg-neutral-900 group/img">
                   <img
                     src={product.images[selectedImageIndex] || product.images[0]}
                     alt={product.title}
                     referrerPolicy="no-referrer"
-                    className="max-h-full max-w-full object-contain mx-auto"
+                    className={`w-full h-full ${imageFitMode === 'contain' ? 'object-contain p-2' : 'object-cover object-center'} transition-all duration-300`}
                   />
+                  {/* Floating Action Controls on Image (Download Photo & Fit Mode) */}
+                  <div className="absolute bottom-3 inset-x-3 z-20 flex items-center justify-between pointer-events-none gap-2">
+                    {/* Download Controls */}
+                    <div className="flex items-center gap-1.5 pointer-events-auto flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleDownloadActiveImage}
+                        disabled={isDownloadingSingle}
+                        className="px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-white text-[10px] font-semibold backdrop-blur-xs border border-white/20 transition cursor-pointer flex items-center gap-1 shadow-md opacity-90 hover:opacity-100 disabled:opacity-50"
+                        title="Download high-resolution image"
+                      >
+                        <Download className="w-3 h-3 text-amber-300" />
+                        <span>{isDownloadingSingle ? 'Saving...' : 'Download Photo'}</span>
+                      </button>
+
+                      {product.images.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={handleDownloadAllZip}
+                          disabled={isDownloadingZip}
+                          className="px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-white text-[10px] font-semibold backdrop-blur-xs border border-white/20 transition cursor-pointer flex items-center gap-1 shadow-md opacity-90 hover:opacity-100 disabled:opacity-50"
+                          title={`Download all ${product.images.length} photos in a ZIP archive`}
+                        >
+                          <Download className="w-3 h-3 text-emerald-400" />
+                          <span>{isDownloadingZip ? 'Packaging ZIP...' : `All Photos (.ZIP)`}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Image Fit Mode Switcher Pill */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setImageFitMode((prev) => (prev === 'cover' ? 'contain' : 'cover'));
+                      }}
+                      className="pointer-events-auto shrink-0 px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-white text-[10px] font-semibold backdrop-blur-xs border border-white/20 transition cursor-pointer flex items-center gap-1 shadow-md opacity-90 hover:opacity-100"
+                      title={imageFitMode === 'cover' ? 'Fit entire uncropped image' : 'Fill template view'}
+                    >
+                      <span>{imageFitMode === 'cover' ? '🔍 View Full' : '📐 Fill Template'}</span>
+                    </button>
+                  </div>
+
+                  {downloadNotice && (
+                    <div className="absolute top-3 inset-x-3 z-30 flex justify-center pointer-events-none">
+                      <span className="bg-neutral-950/95 text-emerald-300 border border-emerald-500/60 text-[11px] font-bold px-3 py-1.5 rounded-full shadow-2xl backdrop-blur-xs animate-in fade-in zoom-in-95">
+                        {downloadNotice}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -619,30 +710,55 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product:
                     </span>
                   )}
                 </div>
-                {/* Bold Boxed Circular Share Button Module (User Request) */}
-                <div className="relative shrink-0 flex items-center gap-2 p-1.5 pl-2 pr-3 bg-neutral-100 hover:bg-neutral-200/70 rounded-2xl border-2 border-neutral-900 shadow-sm transition">
-                  <button
-                    type="button"
-                    onClick={handleShare}
-                    className="w-10 h-10 rounded-full border-2 border-neutral-950 bg-amber-500 hover:bg-amber-400 active:scale-95 text-neutral-950 shadow-md hover:shadow-lg transition-all duration-150 flex items-center justify-center font-bold group cursor-pointer ring-2 ring-amber-300/60 shrink-0"
-                    title={`Share ${itemSingular} Link`}
-                    aria-label={`Share ${itemSingular} Link`}
-                  >
-                    <Share2 className="w-5 h-5 stroke-[2.6] text-neutral-950 group-hover:scale-110 transition-transform" />
-                  </button>
-                  <div className="flex flex-col text-left select-none">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-neutral-950 leading-tight">
-                      Share
-                    </span>
-                    <span className="text-[10px] font-semibold text-neutral-600 leading-none">
-                      Link
-                    </span>
+                {/* Action Buttons: Save Photo & Share Link Modules */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Bold Boxed Circular Save Photo Module */}
+                  <div className="relative shrink-0 flex items-center gap-1.5 p-1.5 pl-2 pr-3 bg-neutral-100 hover:bg-neutral-200/70 rounded-2xl border-2 border-neutral-900 shadow-sm transition">
+                    <button
+                      type="button"
+                      onClick={handleDownloadActiveImage}
+                      disabled={isDownloadingSingle || isDownloadingZip}
+                      className="w-10 h-10 rounded-full border-2 border-neutral-950 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-neutral-950 shadow-md hover:shadow-lg transition-all duration-150 flex items-center justify-center font-bold group cursor-pointer ring-2 ring-emerald-300/60 shrink-0 disabled:opacity-50"
+                      title={`Download ${itemSingular} Photo`}
+                      aria-label={`Download ${itemSingular} Photo`}
+                    >
+                      <Download className="w-5 h-5 stroke-[2.6] text-neutral-950 group-hover:scale-110 transition-transform" />
+                    </button>
+                    <div className="flex flex-col text-left select-none">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-neutral-950 leading-tight">
+                        Save
+                      </span>
+                      <span className="text-[10px] font-semibold text-neutral-600 leading-none">
+                        Photo
+                      </span>
+                    </div>
                   </div>
-                  {copiedLink && (
-                    <span className="absolute -bottom-9 right-0 bg-neutral-950 text-emerald-300 border border-emerald-500/60 text-[11px] font-bold px-3 py-1 rounded-full whitespace-nowrap shadow-2xl z-30 animate-in fade-in zoom-in-95">
-                      Link Copied! ✓
-                    </span>
-                  )}
+
+                  {/* Bold Boxed Circular Share Button Module (User Request) */}
+                  <div className="relative shrink-0 flex items-center gap-2 p-1.5 pl-2 pr-3 bg-neutral-100 hover:bg-neutral-200/70 rounded-2xl border-2 border-neutral-900 shadow-sm transition">
+                    <button
+                      type="button"
+                      onClick={handleShare}
+                      className="w-10 h-10 rounded-full border-2 border-neutral-950 bg-amber-500 hover:bg-amber-400 active:scale-95 text-neutral-950 shadow-md hover:shadow-lg transition-all duration-150 flex items-center justify-center font-bold group cursor-pointer ring-2 ring-amber-300/60 shrink-0"
+                      title={`Share ${itemSingular} Link`}
+                      aria-label={`Share ${itemSingular} Link`}
+                    >
+                      <Share2 className="w-5 h-5 stroke-[2.6] text-neutral-950 group-hover:scale-110 transition-transform" />
+                    </button>
+                    <div className="flex flex-col text-left select-none">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-neutral-950 leading-tight">
+                        Share
+                      </span>
+                      <span className="text-[10px] font-semibold text-neutral-600 leading-none">
+                        Link
+                      </span>
+                    </div>
+                    {copiedLink && (
+                      <span className="absolute -bottom-9 right-0 bg-neutral-950 text-emerald-300 border border-emerald-500/60 text-[11px] font-bold px-3 py-1 rounded-full whitespace-nowrap shadow-2xl z-30 animate-in fade-in zoom-in-95">
+                        Link Copied! ✓
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               {copiedLink && (
