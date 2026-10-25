@@ -93,8 +93,11 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
             displayName: res.displayName,
           });
           if (res.displayName) setRegName(res.displayName);
+          // Redirect immediately to register tab with clear warning banner
+          setAuthMode('register');
+        } else {
+          setErrorMsg(res.error || 'Google authentication was not completed. Please try again.');
         }
-        setErrorMsg(res.error || 'Google authentication was not completed. Please try again.');
       } else {
         onSuccess?.();
       }
@@ -360,27 +363,32 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
 
             {/* Unregistered Prompt Alert */}
             {unregisteredNotice && (
-              <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-500/50 text-amber-200 text-xs space-y-2.5 animate-in fade-in">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold text-amber-100">Patron Registration Required</p>
-                    <p className="text-[11px] text-amber-300/90 mt-0.5">
-                      No account is currently registered for <strong>{unregisteredNotice.email}</strong>. Please register to unlock boutique catalog access.
+              <div className="p-4 rounded-2xl bg-amber-950/80 border border-amber-500/60 text-amber-200 text-xs space-y-2.5 animate-in fade-in shadow-lg">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-amber-100 text-sm">Patron Registration Required</p>
+                    <p className="text-xs text-amber-200/90 leading-relaxed">
+                      No patron account is registered for <strong className="text-white underline">{unregisteredNotice.email}</strong>.
+                    </p>
+                    <p className="text-[11px] text-amber-300/80 leading-relaxed">
+                      Please enter your 10-digit mobile number below and click <strong>Register Patron with Google</strong>. Once registered, you can sign in directly.
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('register');
-                    setErrorMsg('');
-                  }}
-                  className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm active:scale-98"
-                >
-                  <span>Register with this Google Account</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                {authMode === 'signin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('register');
+                      setErrorMsg('');
+                    }}
+                    className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm active:scale-98"
+                  >
+                    <span>Proceed to Registration</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             )}
 

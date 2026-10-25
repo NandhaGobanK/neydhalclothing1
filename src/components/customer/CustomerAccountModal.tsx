@@ -42,6 +42,11 @@ import {
   RotateCcw,
   Phone,
   Printer,
+  Maximize2,
+  Minimize2,
+  Minus,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 import { AppNotification } from '../../types/store';
@@ -97,6 +102,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [cancelReason, setCancelReason] = useState('Found another weave / Changed mind');
   const [cancelStatusMsg, setCancelStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Live Master Weaver Support Controls (Maximize / Minimize)
+  const [isChatMinimized, setIsChatMinimized] = useState(false);
+  const [isChatMaximized, setIsChatMaximized] = useState(false);
+
   // Notifications alert system state
   const [notificationPermission, setNotificationPermission] = useState<string>(() => {
     return getNotificationPermission();
@@ -110,6 +119,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       setActiveTab('orders');
     }
   }, [initialOrderId]);
+
+  useEffect(() => {
+    setIsChatMaximized(false);
+  }, [selectedCustomerOrderId]);
 
   const copyOrderText = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -199,6 +212,132 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           bg: 'bg-neutral-100 text-neutral-800 border-neutral-300',
           icon: Clock,
           label: status,
+        };
+    }
+  };
+
+  // Distinctive Color Coding when Orders Shift Stages
+  const getOrderStageTheme = (status: OrderStatus) => {
+    switch (status) {
+      case 'Pending':
+        return {
+          stageIndex: 0,
+          stageName: 'Pending Confirmation',
+          badgeBg: 'bg-amber-100 text-amber-950 border-amber-300',
+          cardBorder: 'border-l-4 border-l-amber-500 border-amber-200/90',
+          cardBg: 'bg-gradient-to-r from-amber-50/50 via-white to-white',
+          bannerBg: 'bg-amber-50 border-amber-300 text-amber-950',
+          stepBg: 'bg-amber-500 text-white',
+          stepRing: 'ring-4 ring-amber-200',
+          stepText: 'text-amber-900',
+          accentText: 'text-amber-900',
+          dotColor: 'bg-amber-500',
+          stageLabel: 'Stage 1 of 4: Placed & In Queue',
+          stageDesc: 'Awaiting artisan review & master weaver loom allocation',
+          legendLabel: 'Pending (Stage 1)',
+        };
+      case 'Confirmed':
+        return {
+          stageIndex: 1,
+          stageName: 'Confirmed & In Packing',
+          badgeBg: 'bg-purple-100 text-purple-950 border-purple-300',
+          cardBorder: 'border-l-4 border-l-purple-600 border-purple-200/90',
+          cardBg: 'bg-gradient-to-r from-purple-50/50 via-white to-white',
+          bannerBg: 'bg-purple-50 border-purple-300 text-purple-950',
+          stepBg: 'bg-purple-600 text-white',
+          stepRing: 'ring-4 ring-purple-200',
+          stepText: 'text-purple-900',
+          accentText: 'text-purple-900',
+          dotColor: 'bg-purple-600',
+          stageLabel: 'Stage 2 of 4: Loom Verification & Packing',
+          stageDesc: 'Artisan quality check complete; saree is being packed in royal silk box',
+          legendLabel: 'Confirmed (Stage 2)',
+        };
+      case 'Shipped':
+        return {
+          stageIndex: 2,
+          stageName: 'Dispatched / In Transit',
+          badgeBg: 'bg-blue-100 text-blue-950 border-blue-300',
+          cardBorder: 'border-l-4 border-l-blue-600 border-blue-200/90',
+          cardBg: 'bg-gradient-to-r from-blue-50/50 via-white to-white',
+          bannerBg: 'bg-blue-50 border-blue-300 text-blue-950',
+          stepBg: 'bg-blue-600 text-white',
+          stepRing: 'ring-4 ring-blue-200',
+          stepText: 'text-blue-900',
+          accentText: 'text-blue-900',
+          dotColor: 'bg-blue-600',
+          stageLabel: 'Stage 3 of 4: Dispatched / In Transit',
+          stageDesc: 'Consignment handed over to courier partner with active tracking waybill',
+          legendLabel: 'Dispatched (Stage 3)',
+        };
+      case 'Delivered':
+        return {
+          stageIndex: 3,
+          stageName: 'Delivered',
+          badgeBg: 'bg-emerald-100 text-emerald-950 border-emerald-300',
+          cardBorder: 'border-l-4 border-l-emerald-600 border-emerald-200/90',
+          cardBg: 'bg-gradient-to-r from-emerald-50/50 via-white to-white',
+          bannerBg: 'bg-emerald-50 border-emerald-300 text-emerald-950',
+          stepBg: 'bg-emerald-600 text-white',
+          stepRing: 'ring-4 ring-emerald-200',
+          stepText: 'text-emerald-900',
+          accentText: 'text-emerald-900',
+          dotColor: 'bg-emerald-600',
+          stageLabel: 'Stage 4 of 4: Delivered to Patron ✓',
+          stageDesc: 'Handcrafted heirloom delivered safely to your address',
+          legendLabel: 'Delivered (Stage 4)',
+        };
+      case 'Cancelled':
+      case 'Rejected':
+        return {
+          stageIndex: -1,
+          stageName: 'Cancelled',
+          badgeBg: 'bg-rose-100 text-rose-950 border-rose-300',
+          cardBorder: 'border-l-4 border-l-rose-500 border-rose-200/90',
+          cardBg: 'bg-gradient-to-r from-rose-50/50 via-white to-white',
+          bannerBg: 'bg-rose-50 border-rose-300 text-rose-950',
+          stepBg: 'bg-rose-600 text-white',
+          stepRing: 'ring-4 ring-rose-200',
+          stepText: 'text-rose-900',
+          accentText: 'text-rose-900',
+          dotColor: 'bg-rose-500',
+          stageLabel: 'Order Cancelled',
+          stageDesc: 'This order has been cancelled',
+          legendLabel: 'Cancelled',
+        };
+      case 'Refunded':
+        return {
+          stageIndex: -1,
+          stageName: 'Refund Settled',
+          badgeBg: 'bg-teal-100 text-teal-950 border-teal-300',
+          cardBorder: 'border-l-4 border-l-teal-600 border-teal-200/90',
+          cardBg: 'bg-gradient-to-r from-teal-50/50 via-white to-white',
+          bannerBg: 'bg-teal-50 border-teal-300 text-teal-950',
+          stepBg: 'bg-teal-600 text-white',
+          stepRing: 'ring-4 ring-teal-200',
+          stepText: 'text-teal-900',
+          accentText: 'text-teal-900',
+          dotColor: 'bg-teal-600',
+          stageLabel: 'Refund Settled ✓',
+          stageDesc: 'Payment refund has been processed',
+          legendLabel: 'Refunded',
+        };
+      default:
+        return {
+          stageIndex: 0,
+          stageName: status,
+          badgeBg: 'bg-neutral-100 text-neutral-800 border-neutral-300',
+          cardBorder: 'border-l-4 border-l-neutral-400 border-neutral-200',
+          cardBg: 'bg-white',
+          bannerBg: 'bg-neutral-50 border-neutral-200 text-neutral-800',
+          stepBg: 'bg-neutral-800 text-white',
+          stepRing: 'ring-4 ring-neutral-200',
+          stepText: 'text-neutral-700',
+          accentText: 'text-neutral-700',
+          dotColor: 'bg-neutral-400',
+          stageLabel: `Status: ${status}`,
+          stageDesc: '',
+          legendLabel: status,
         };
     }
   };
@@ -619,6 +758,31 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         );
                       })}
                     </div>
+
+                    {/* Stage Colour Coding Legend Bar */}
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-neutral-50/90 border border-neutral-200/80 flex items-center justify-between gap-2 flex-wrap text-[11px]">
+                      <span className="font-bold text-neutral-500 uppercase tracking-wide text-[10px]">
+                        Stage Progression Colour Coding:
+                      </span>
+                      <div className="flex items-center gap-2.5 sm:gap-3.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1.5 text-amber-950 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                          <span>Pending (Stage 1)</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 text-purple-950 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                          <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
+                          <span>Confirmed & Packing (Stage 2)</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 text-blue-950 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                          <span>Dispatched (Stage 3)</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 text-emerald-950 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                          <span>Delivered (Stage 4)</span>
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {filteredCustomerOrders.length === 0 ? (
@@ -651,6 +815,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     <div className="space-y-3.5">
                       {filteredCustomerOrders.map((ord) => {
                         const badge = getStatusBadge(ord.status);
+                        const stageTheme = getOrderStageTheme(ord.status);
                         const BadgeIcon = badge.icon;
                         const itemCount = ord.items.reduce((sum, item) => sum + (item.quantity || 1), 0);
                         const courier = resolveCourierDetails(ord.shippingDetails?.courierName, settings.courierServices);
@@ -664,17 +829,18 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           <div
                             key={ord.id}
                             onClick={() => setSelectedCustomerOrderId(ord.id)}
-                            className="bg-white rounded-2xl border border-neutral-200 p-4 sm:p-5 shadow-2xs hover:shadow-md transition cursor-pointer group"
+                            className={`rounded-2xl border p-4 sm:p-5 shadow-2xs hover:shadow-md transition cursor-pointer group ${stageTheme.cardBorder} ${stageTheme.cardBg}`}
                           >
                             {/* Top Card Row */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-200/60 pb-3">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono text-xs font-bold text-neutral-950 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded">
+                                <span className="font-mono text-xs font-bold text-neutral-950 bg-white border border-neutral-200 px-2 py-0.5 rounded shadow-2xs">
                                   #{ord.orderNumber}
                                 </span>
-                                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${badge.bg}`}>
+                                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 shadow-2xs ${stageTheme.badgeBg}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${stageTheme.dotColor} animate-pulse`} />
                                   <BadgeIcon className="w-3 h-3" />
-                                  <span>{badge.label}</span>
+                                  <span>{stageTheme.stageName}</span>
                                 </span>
                                 <span className="text-[11px] text-neutral-400">
                                   {new Date(ord.createdAt).toLocaleDateString('en-GB')} at{' '}
@@ -682,7 +848,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                                 </span>
                               </div>
 
-                              <div className="flex items-center gap-3 justify-between sm:justify-end">
+                              <div className="flex items-center gap-2.5 justify-between sm:justify-end">
+                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-md border ${stageTheme.bannerBg} hidden sm:inline-block`}>
+                                  {stageTheme.stageLabel}
+                                </span>
                                 <span className="font-serif font-bold text-sm sm:text-base text-neutral-900 tabular-nums">
                                   {formatPrice(ord.totalAmount)}
                                 </span>
@@ -813,9 +982,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         </button>
                       </div>
 
-                      {/* Status Badge */}
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusBadge(selectedCustomerOrder.status).bg}`}>
-                        {getStatusBadge(selectedCustomerOrder.status).label}
+                      {/* Status Badge with Stage Color */}
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-2xs ${getOrderStageTheme(selectedCustomerOrder.status).badgeBg}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${getOrderStageTheme(selectedCustomerOrder.status).dotColor} animate-pulse`} />
+                        <span>{getOrderStageTheme(selectedCustomerOrder.status).stageName}</span>
                       </span>
 
                       {/* Device Alerts Active / Enable Button */}
@@ -845,6 +1015,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  {/* Dynamic Stage Color Progression Callout Banner */}
+                  <div className={`p-3.5 sm:p-4 rounded-2xl border ${getOrderStageTheme(selectedCustomerOrder.status).bannerBg} flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs`}>
+                    <div className="flex items-center gap-3">
+                      <span className={`w-3.5 h-3.5 rounded-full ${getOrderStageTheme(selectedCustomerOrder.status).dotColor} animate-ping shrink-0`} />
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest block opacity-75">
+                          Order Stage Shift & Tracking
+                        </span>
+                        <h4 className="font-bold text-xs sm:text-sm">
+                          {getOrderStageTheme(selectedCustomerOrder.status).stageLabel}
+                        </h4>
+                      </div>
+                    </div>
+                    <p className="text-xs font-medium opacity-90 max-w-md">
+                      {getOrderStageTheme(selectedCustomerOrder.status).stageDesc}
+                    </p>
                   </div>
 
                   {/* Customer Delivery Destination Card */}
@@ -953,17 +1141,54 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         </div>
                       )}
 
-                      {/* 4-Step Visual Progression Stepper */}
+                      {/* 4-Step Visual Progression Stepper with Stage Colour Coding */}
                       <div className="pt-2">
-                        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wide block mb-3">
-                          Live Delivery Progression
-                        </span>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wide">
+                            Live Delivery Progression
+                          </span>
+                          <span className="text-[10px] font-bold text-neutral-500 hidden sm:inline">
+                            Stages: <span className="text-amber-600">Pending</span> → <span className="text-purple-600">Confirmed</span> → <span className="text-blue-600">Dispatched</span> → <span className="text-emerald-600">Delivered</span>
+                          </span>
+                        </div>
                         <div className="grid grid-cols-4 gap-2 pt-1">
                           {[
-                            { name: 'Pending', icon: Clock },
-                            { name: 'Confirmed', icon: CheckCircle },
-                            { name: 'Shipped', icon: Truck },
-                            { name: 'Delivered', icon: Package },
+                            {
+                              name: 'Pending',
+                              icon: Clock,
+                              activeBg: 'bg-amber-500 text-white shadow-md',
+                              doneBg: 'bg-amber-600 text-white',
+                              ring: 'ring-4 ring-amber-200',
+                              activeText: 'text-amber-900 font-bold',
+                              doneText: 'text-amber-800 font-semibold',
+                            },
+                            {
+                              name: 'Confirmed',
+                              icon: CheckCircle,
+                              activeBg: 'bg-purple-600 text-white shadow-md',
+                              doneBg: 'bg-purple-700 text-white',
+                              ring: 'ring-4 ring-purple-200',
+                              activeText: 'text-purple-900 font-bold',
+                              doneText: 'text-purple-800 font-semibold',
+                            },
+                            {
+                              name: 'Shipped',
+                              icon: Truck,
+                              activeBg: 'bg-blue-600 text-white shadow-md',
+                              doneBg: 'bg-blue-700 text-white',
+                              ring: 'ring-4 ring-blue-200',
+                              activeText: 'text-blue-900 font-bold',
+                              doneText: 'text-blue-800 font-semibold',
+                            },
+                            {
+                              name: 'Delivered',
+                              icon: Package,
+                              activeBg: 'bg-emerald-600 text-white shadow-md',
+                              doneBg: 'bg-emerald-700 text-white',
+                              ring: 'ring-4 ring-emerald-200',
+                              activeText: 'text-emerald-900 font-bold',
+                              doneText: 'text-emerald-800 font-semibold',
+                            },
                           ].map((step, idx) => {
                             const currentStep = getStatusStepIndex(selectedCustomerOrder.status);
                             const isDone = currentStep >= idx;
@@ -972,21 +1197,23 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             return (
                               <div key={step.name} className="flex flex-col items-center text-center">
                                 <div
-                                  className={`w-9 h-9 rounded-full flex items-center justify-center transition ${
-                                    isDone
-                                      ? 'bg-emerald-600 text-white'
+                                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+                                    isCurrent
+                                      ? `${step.activeBg} ${step.ring} scale-105`
+                                      : isDone
+                                      ? step.doneBg
                                       : 'bg-neutral-100 text-neutral-400'
-                                  } ${isCurrent ? 'ring-4 ring-emerald-100' : ''}`}
+                                  }`}
                                 >
-                                  <StepIcon className="w-4 h-4" />
+                                  <StepIcon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                                 </div>
                                 <span
-                                  className={`text-[11px] mt-1.5 font-semibold ${
+                                  className={`text-[11px] mt-1.5 transition ${
                                     isCurrent
-                                      ? 'text-emerald-800 font-bold'
+                                      ? step.activeText
                                       : isDone
-                                      ? 'text-neutral-800'
-                                      : 'text-neutral-400'
+                                      ? step.doneText
+                                      : 'text-neutral-400 font-normal'
                                   }`}
                                 >
                                   {step.name}
@@ -1283,26 +1510,162 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Interactive Live Concierge Chat Desk for This Order */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4 text-purple-700" />
-                        <h4 className="font-bold text-xs sm:text-sm text-neutral-900">
-                          Boutique Concierge & Dispatch Desk
-                        </h4>
+                  {/* Interactive Live Concierge Chat Desk for This Order (Maximizable & Minimizable) */}
+                  {isChatMinimized ? (
+                    /* Minimized Chat Bar */
+                    <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#2c053d] via-[#3a0852] to-[#250334] text-white flex items-center justify-between gap-3 shadow-md border border-purple-400/40 animate-in fade-in">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shrink-0">
+                          <MessageSquare className="w-4.5 h-4.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-serif font-bold text-xs sm:text-sm text-white truncate">
+                              Live Master Weaver Support
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-400/30 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              <span>Atelier Online</span>
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-purple-200/80 truncate mt-0.5">
+                            {selectedCustomerOrder.assignedStaffName
+                              ? `Concierge: ${selectedCustomerOrder.assignedStaffName} · Chat minimized`
+                              : 'Salem handloom workshop desk · Click Expand Chat to message'}
+                          </p>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
-                        Live Master Weaver Support
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setIsChatMinimized(false)}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-95"
+                          title="Expand Live Chat Desk"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                          <span>Expand Chat</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsChatMinimized(false);
+                            setIsChatMaximized(true);
+                          }}
+                          className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-purple-200 hover:text-white transition cursor-pointer"
+                          title="Maximize Chat Window"
+                        >
+                          <Maximize2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
+                  ) : (
+                    /* Standard Inline Chat View */
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="w-4 h-4 text-purple-700" />
+                          <h4 className="font-bold text-xs sm:text-sm text-neutral-900">
+                            Boutique Concierge & Dispatch Desk
+                          </h4>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-200 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>Live Master Weaver Support</span>
+                          </span>
+                        </div>
 
-                    <OrderLiveChat
-                      order={selectedCustomerOrder}
-                      mode="customer"
-                      className="border border-neutral-200 rounded-2xl shadow-2xs overflow-hidden"
-                    />
-                  </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setIsChatMinimized(true)}
+                            className="px-2.5 py-1 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                            title="Minimize Live Master Weaver Support"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                            <span>Minimize</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsChatMaximized(true)}
+                            className="px-2.5 py-1 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-900 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                            title="Maximize Live Master Weaver Support to full screen"
+                          >
+                            <Maximize2 className="w-3.5 h-3.5" />
+                            <span>Maximize</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <OrderLiveChat
+                        order={selectedCustomerOrder}
+                        mode="customer"
+                        className="border border-neutral-200 rounded-2xl shadow-2xs overflow-hidden"
+                      />
+                    </div>
+                  )}
+
+                  {/* Maximized Master Weaver Chat Modal Dialog Overlay */}
+                  {isChatMaximized && (
+                    <div className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 animate-in fade-in duration-200">
+                      <div className="w-full max-w-4xl h-[92vh] sm:h-[88vh] bg-white rounded-3xl shadow-2xl flex flex-col border border-purple-400/40 overflow-hidden animate-in zoom-in-95 duration-200">
+                        {/* Maximized Header */}
+                        <div className="px-5 py-4 bg-gradient-to-r from-purple-950 via-[#3a0852] to-purple-900 text-white flex items-center justify-between border-b border-purple-700/40 shrink-0">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300">
+                              <MessageSquare className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-serif font-bold text-sm sm:text-base text-white">
+                                  Live Master Weaver Support
+                                </h3>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span>Atelier Dispatch Active</span>
+                                </span>
+                                <span className="font-mono text-xs text-amber-300 bg-amber-950/60 border border-amber-400/40 px-2 py-0.5 rounded">
+                                  #{selectedCustomerOrder.orderNumber}
+                                </span>
+                              </div>
+                              <p className="text-xs text-purple-200/80 mt-0.5">
+                                {selectedCustomerOrder.assignedStaffName
+                                  ? `Dedicated Weaver Concierge: ${selectedCustomerOrder.assignedStaffName}`
+                                  : 'Direct concierge channel with Salem handloom artisan masters & packaging team'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsChatMaximized(false)}
+                              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-neutral-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                              title="Restore standard size"
+                            >
+                              <Minimize2 className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Restore Window</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsChatMaximized(false)}
+                              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition cursor-pointer"
+                              title="Close Fullscreen View"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Maximized Chat Body */}
+                        <div className="flex-1 overflow-hidden p-3 sm:p-4 bg-neutral-50 flex flex-col min-h-0">
+                          <OrderLiveChat
+                            order={selectedCustomerOrder}
+                            mode="customer"
+                            className="flex-1 border border-neutral-200 rounded-2xl shadow-inner overflow-hidden h-full"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Customer Order Actions (Cancellation Request) */}
                   {settings.storefrontDisplay?.allowPublicCancellation &&

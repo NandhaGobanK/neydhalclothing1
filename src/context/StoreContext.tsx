@@ -1353,6 +1353,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           );
           if (foundInCache) {
             existingCustomer = foundInCache;
+          } else if (email) {
+            try {
+              const querySnapshot = await getDocs(collection(db, 'customers'));
+              const foundDoc = querySnapshot.docs.find((d) => {
+                const data = d.data();
+                return d.id === fbUser.uid || (data.email && data.email.toLowerCase() === email);
+              });
+              if (foundDoc) {
+                existingCustomer = { id: foundDoc.id, ...foundDoc.data() } as CustomerUser;
+              }
+            } catch {
+              // cache fallback
+            }
           }
         }
       } catch (err) {
@@ -1363,26 +1376,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
 
       if (mode === 'signin') {
-        // Authenticated customer: whether previously existing or newly created via Google Auth
-        const updated: CustomerUser = existingCustomer
-          ? {
-              ...existingCustomer,
-              id: existingCustomer.id || fbUser.uid,
-              name: existingCustomer.name || name,
-              email: existingCustomer.email || email,
-              avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
-              authMethod: 'google',
-            }
-          : {
-              id: fbUser.uid,
-              name: name || fbUser.displayName || (email ? email.split('@')[0] : 'Valued Patron'),
-              email,
-              phone: phoneInput || (fbUser.phoneNumber ? fbUser.phoneNumber.replace(/\D/g, '').slice(-10) : ''),
-              avatarUrl: fbUser.photoURL || undefined,
-              savedAddresses: [],
-              createdAt: new Date().toISOString(),
-              authMethod: 'google',
-            };
+        if (!existingCustomer) {
+          // Unregistered Google user: do NOT sign in automatically.
+          // Sign out immediately so session is cleanly cleared.
+          await googleSignOut().catch(() => {});
+          return {
+            success: false,
+            isNotRegistered: true,
+            email,
+            displayName: fbUser.displayName || '',
+            error: `No patron account registered for ${email || 'this Google account'}. Please register your profile below before signing in.`,
+          };
+        }
+
+        // Authenticated customer who has already registered
+        const updated: CustomerUser = {
+          ...existingCustomer,
+          id: existingCustomer.id || fbUser.uid,
+          name: existingCustomer.name || name,
+          email: existingCustomer.email || email,
+          avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
+          authMethod: 'google',
+        };
 
         setCurrentCustomer(updated);
         saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, updated);

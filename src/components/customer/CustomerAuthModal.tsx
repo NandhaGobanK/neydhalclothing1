@@ -56,8 +56,11 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         if (res.isNotRegistered) {
           setUnregisteredNotice({ email: res.email || '', displayName: res.displayName });
           if (res.displayName) setName(res.displayName);
+          // Redirect immediately to registration view
+          setMode('register');
+        } else {
+          setError(res.error || 'Google sign-in could not be completed.');
         }
-        setError(res.error || 'Google sign-in could not be completed.');
       }
     } catch (err: any) {
       setError(err?.message || 'Google sign-in error occurred.');
@@ -182,27 +185,32 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         {/* Content Body */}
         <div className="p-6">
           {unregisteredNotice && (
-            <div className="mb-4 p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs space-y-2 animate-in fade-in">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-bold">Registration Required</p>
-                  <p className="text-[11px] text-amber-800 mt-0.5">
-                    No patron profile found for <strong>{unregisteredNotice.email}</strong>. Please register with Google first.
+            <div className="mb-4 p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs space-y-2 animate-in fade-in shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold text-sm text-amber-950">Patron Registration Required</p>
+                  <p className="text-xs text-amber-900 leading-relaxed">
+                    No patron profile found for <strong className="text-neutral-900 underline">{unregisteredNotice.email}</strong>.
+                  </p>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Please enter your 10-digit mobile number below and click <strong>Register with Google</strong>. Once registered, you will be able to sign in directly.
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('register');
-                  setError('');
-                }}
-                className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98"
-              >
-                <span>Register with this Google Account</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              {mode === 'signin' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('register');
+                    setError('');
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98"
+                >
+                  <span>Go to Registration</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           )}
 

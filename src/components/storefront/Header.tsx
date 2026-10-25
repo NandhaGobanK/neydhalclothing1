@@ -125,23 +125,8 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="truncate max-w-[180px] sm:max-w-none">{settings.boutiqueName}</span>
         </a>
 
-        {/* Zone 2: Actions & Utilities (Track Order, Instructions, Customer Account, Wishlist, Cart) */}
+        {/* Zone 2: Actions & Utilities (Instructions, Customer Account, Wishlist, Cart) */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          {showTrackOrder && (
-            <button
-              onClick={() => setIsTrackOrderOpen(true)}
-              className="relative px-2.5 py-1.5 rounded-xl bg-neutral-800/80 hover:bg-neutral-700 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-              title="Track Order Status"
-            >
-              <Truck className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Track Order</span>
-              {customerUnreadChatCount > 0 && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] bg-rose-600 text-white font-bold animate-pulse shadow-xs">
-                  <span>{customerUnreadChatCount}</span>
-                </span>
-              )}
-            </button>
-          )}
 
           <button
             onClick={onOpenInstructions}
