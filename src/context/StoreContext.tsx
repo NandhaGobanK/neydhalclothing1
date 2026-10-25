@@ -345,7 +345,8 @@ interface StoreContextType {
   approveResellerRequest: (requestId: string, options?: { wholesaleDiscountPercent?: number }) => Promise<{ success: boolean; error?: string }>;
   declineResellerRequest: (requestId: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
   createResellerManual: (data: Omit<ResellerUser, 'id' | 'createdAt' | 'totalSales' | 'totalOrdersCount'>) => Promise<{ success: boolean; error?: string }>;
-  updateResellerStatus: (resellerId: string, status: 'active' | 'suspended') => Promise<{ success: boolean; error?: string }>;
+  updateResellerStatus: (resellerId: string, status: 'active' | 'suspended' | 'locked') => Promise<{ success: boolean; error?: string }>;
+  toggleResellerLock: (resellerId: string, forceLocked?: boolean) => Promise<{ success: boolean; isLocked?: boolean; error?: string }>;
   deleteReseller: (resellerId: string) => Promise<{ success: boolean; error?: string }>;
   resellerLogout: () => void;
   resellerOrders: Order[];
@@ -573,6 +574,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         allowPublicRefunds: loaded.storefrontDisplay?.allowPublicRefunds ?? true,
         allowCustomerDeliveryDisputes: loaded.storefrontDisplay?.allowCustomerDeliveryDisputes ?? true,
         allowCustomerRefundDisputes: loaded.storefrontDisplay?.allowCustomerRefundDisputes ?? true,
+      },
+      customerLoginDisplay: {
+        ...INITIAL_SETTINGS.customerLoginDisplay,
+        ...(loaded.customerLoginDisplay || {}),
+      },
+      resellerLoginDisplay: {
+        ...INITIAL_SETTINGS.resellerLoginDisplay,
+        ...(loaded.resellerLoginDisplay || {}),
       },
       enableOrderDeletion: loaded.enableOrderDeletion ?? false,
     };
@@ -1133,8 +1142,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
 
     if (found) {
-      if (found.status === 'suspended') {
-        return { success: false, error: 'Your reseller account has been suspended by boutique administration.' };
+      if (found.isLocked || found.status === 'suspended' || found.status === 'locked') {
+        return { success: false, error: 'Account Locked: Your reseller portal access has been locked by administration. You cannot log into the reseller portal.' };
       }
       if (found.status !== 'active') {
         return { success: false, error: 'Your reseller account is awaiting admin approval. You will be able to sign in once approved by Neydhal administration.' };
@@ -1213,6 +1222,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const pendingReq = resellerRequests.find(
         (req) => req.email.toLowerCase() === email && req.status === 'pending'
       );
+
+      // Check if reseller is locked
+      if (existingReseller && (existingReseller.isLocked || existingReseller.status === 'suspended' || existingReseller.status === 'locked')) {
+        await googleSignOut().catch(() => {});
+        return {
+          success: false,
+          isNotRegistered: false,
+          email,
+          error: `Account Locked: Reseller portal access for "${email}" has been locked by administration. You cannot log into the reseller portal. Please contact the boutique to unlock your account.`,
+        };
+      }
 
       // Reseller MUST be approved by admin to log in!
       if (!existingReseller || existingReseller.status !== 'active') {
@@ -1424,24 +1444,104 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return { success: true };
   };
 
-  const updateResellerStatus = async (resellerId: string, status: 'active' | 'suspended') => {
-    const updated = resellers.map((r) => (r.id === resellerId ? { ...r, status } : r));
+  const updateResellerStatus = async (resellerId: string, status: 'active' | 'suspended' | 'locked') => {
+    const isLocked = status !== 'active';
+    const updated = resellers.map((r) =>
+      r.id === resellerId
+        ? {
+            ...r,
+            status,
+            isLocked,
+            lockedAt: isLocked ? new Date().toISOString() : undefined,
+            lockedBy: isLocked ? (currentUser?.name || 'Store Admin') : undefined,
+          }
+        : r
+    );
     setResellers(updated);
     saveToStorage('aara_boutique_resellers_v3', updated);
+
+    if (isLocked && currentReseller?.id === resellerId) {
+      setCurrentReseller(null);
+      saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, null);
+    }
+
     try {
-      await updateDoc(doc(db, 'reseller', resellerId), { status });
+      await updateDoc(doc(db, 'reseller', resellerId), {
+        status,
+        isLocked,
+        lockedAt: isLocked ? new Date().toISOString() : null,
+        lockedBy: isLocked ? (currentUser?.name || 'Store Admin') : null,
+      });
     } catch (err: any) {
       console.warn('Error updating reseller status in Firestore:', err);
     }
     return { success: true };
   };
 
+  const toggleResellerLock = async (resellerId: string, forceLocked?: boolean) => {
+    const target = resellers.find((r) => r.id === resellerId);
+    if (!target) return { success: false, error: 'Reseller not found.' };
+
+    const shouldLock = forceLocked !== undefined ? forceLocked : !(target.isLocked || target.status === 'suspended' || target.status === 'locked');
+    const newStatus: 'active' | 'suspended' = shouldLock ? 'suspended' : 'active';
+
+    const updated = resellers.map((r) =>
+      r.id === resellerId
+        ? {
+            ...r,
+            isLocked: shouldLock,
+            status: newStatus,
+            lockedAt: shouldLock ? new Date().toISOString() : undefined,
+            lockedBy: shouldLock ? (currentUser?.name || 'Store Admin') : undefined,
+          }
+        : r
+    );
+    setResellers(updated);
+    saveToStorage('aara_boutique_resellers_v3', updated);
+
+    if (shouldLock && (currentReseller?.id === resellerId || (target.email && currentReseller?.email?.toLowerCase() === target.email.toLowerCase()))) {
+      setCurrentReseller(null);
+      saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, null);
+    }
+
+    try {
+      await setDoc(
+        doc(db, 'reseller', resellerId),
+        {
+          isLocked: shouldLock,
+          status: newStatus,
+          lockedAt: shouldLock ? new Date().toISOString() : null,
+          lockedBy: shouldLock ? (currentUser?.name || 'Store Admin') : null,
+        },
+        { merge: true }
+      );
+    } catch (err: any) {
+      console.warn('Error toggling reseller lock in Firestore:', err);
+    }
+
+    return { success: true, isLocked: shouldLock };
+  };
+
   const deleteReseller = async (resellerId: string) => {
+    const target = resellers.find((r) => r.id === resellerId);
     const updated = resellers.filter((r) => r.id !== resellerId);
     setResellers(updated);
     saveToStorage('aara_boutique_resellers_v3', updated);
+
+    if (currentReseller?.id === resellerId || (target?.email && currentReseller?.email?.toLowerCase() === target.email.toLowerCase())) {
+      setCurrentReseller(null);
+      saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, null);
+    }
+
     try {
-      await deleteDoc(doc(db, 'reseller', resellerId));
+      await deleteDoc(doc(db, 'reseller', resellerId)).catch(() => {});
+      await deleteDoc(doc(db, 'resellers', resellerId)).catch(() => {});
+      if (target?.email) {
+        const matches = resellerRequests.filter((req) => req.email.toLowerCase() === target.email.toLowerCase());
+        for (const req of matches) {
+          await deleteDoc(doc(db, 'reseller_requests', req.id)).catch(() => {});
+        }
+      }
     } catch (err: any) {
       console.warn('Error deleting reseller in Firestore:', err);
     }
@@ -1841,6 +1941,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             storefrontDisplay: {
               ...prev.storefrontDisplay,
               ...(data.storefrontDisplay || {}),
+            },
+            customerLoginDisplay: {
+              ...prev.customerLoginDisplay,
+              ...(data.customerLoginDisplay || {}),
+            },
+            resellerLoginDisplay: {
+              ...prev.resellerLoginDisplay,
+              ...(data.resellerLoginDisplay || {}),
             },
             chatTemplates: {
               ...prev.chatTemplates,
@@ -3616,7 +3724,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const targetOrder = orders.find(
       (o) =>
         o.orderNumber.toUpperCase() === cleanOrderNum &&
-        o.customer.phone.replace(/[^0-9]/g, '').includes(cleanPhoneDigits.slice(-10))
+        (o.customer.phone.replace(/[^0-9]/g, '').includes(cleanPhoneDigits.slice(-10)) ||
+          (o.dropshipRecipient?.phone && o.dropshipRecipient.phone.replace(/[^0-9]/g, '').includes(cleanPhoneDigits.slice(-10))))
     );
 
     if (!targetOrder) {
@@ -3908,7 +4017,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const targetOrder = orders.find(
       (o) =>
         o.orderNumber.toUpperCase() === cleanOrderNum &&
-        o.customer.phone.replace(/[^0-9]/g, '').includes(cleanPhoneDigits.slice(-10))
+        (o.customer.phone.replace(/[^0-9]/g, '').includes(cleanPhoneDigits.slice(-10)) ||
+          (o.dropshipRecipient?.phone && o.dropshipRecipient.phone.replace(/[^0-9]/g, '').includes(cleanPhoneDigits.slice(-10))))
     );
 
     if (!targetOrder) {
@@ -4421,6 +4531,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         storefrontDisplay: {
           ...prev.storefrontDisplay,
           ...(safeUpdates.storefrontDisplay || {}),
+        },
+        customerLoginDisplay: {
+          ...prev.customerLoginDisplay,
+          ...(safeUpdates.customerLoginDisplay || {}),
+        },
+        resellerLoginDisplay: {
+          ...prev.resellerLoginDisplay,
+          ...(safeUpdates.resellerLoginDisplay || {}),
         },
       };
       return updated;
@@ -5275,6 +5393,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         declineResellerRequest,
         createResellerManual,
         updateResellerStatus,
+        toggleResellerLock,
         deleteReseller,
         resellerLogout,
         resellerOrders,

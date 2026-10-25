@@ -136,7 +136,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
         style={{
           backgroundImage: `
             radial-gradient(circle at 50% 18%, rgba(110, 20, 148, 0.72) 0%, rgba(74, 14, 104, 0.92) 55%, rgba(42, 6, 61, 0.98) 100%),
-            url('/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg')
+            url('${settings.logoUrl || '/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg'}')
           `,
           backgroundSize: 'cover, 480px',
           backgroundPosition: 'center, center',
@@ -156,11 +156,11 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
           className="flex items-center gap-3 cursor-pointer select-none active:opacity-90"
           title={`${settings.boutiqueName} Boutique (Triple-click for Staff / Admin Login)`}
         >
-          {settings.logoUrl && settings.logoUrl !== '/logo.png' ? (
+          {settings.logoUrl ? (
             <img
               src={settings.logoUrl}
               alt={settings.boutiqueName}
-              className="h-10 w-auto object-contain rounded-md"
+              className="h-11 w-11 object-contain rounded-2xl shadow-lg border border-amber-300/40 bg-white/10 p-0.5"
             />
           ) : (
             <img
@@ -174,7 +174,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
               {settings.boutiqueName}
             </h1>
             <p className="text-[10px] text-amber-300 font-medium tracking-wider uppercase">
-              Handcrafted Silk Atelier
+              {settings.customerLoginDisplay?.headerSubtitle || 'Handcrafted Silk Atelier'}
             </p>
           </div>
         </div>
@@ -185,7 +185,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
           title="Protected Member Portal (Triple-click for Staff / Admin Login)"
         >
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Protected Member Portal</span>
+          <span>{settings.customerLoginDisplay?.headerBadgeText || 'Protected Member Portal'}</span>
         </div>
       </header>
 
@@ -195,69 +195,96 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
         <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-semibold">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Patron Verification Required</span>
+            <span>{settings.customerLoginDisplay?.badgeText || 'Patron Verification Required'}</span>
           </div>
 
           <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight">
-            Exclusive Handloom <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-amber-400">
-              Catalog Access
-            </span>
+            {settings.customerLoginDisplay?.headline || 'Exclusive Handloom Catalog Access'}
           </h2>
 
           <p className="text-purple-100/90 text-xs sm:text-sm leading-relaxed max-w-lg mx-auto lg:mx-0">
-            To preserve the authenticity and privacy of our artisan handloom heirlooms, our masterweave catalog, limited weaves, and bespoke reservations are reserved exclusively for verified patrons registered with Google.
+            {settings.customerLoginDisplay?.description ||
+              'To preserve the authenticity and privacy of our artisan handloom heirlooms, our masterweave catalog, limited weaves, and bespoke reservations are reserved exclusively for verified patrons registered with Google.'}
           </p>
 
           {/* Privacy & Member Privileges List */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left pt-2">
-            <div className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm">
-              <span className="p-2 rounded-xl bg-amber-500/20 text-amber-300 shrink-0 mt-0.5">
-                <Lock className="w-4 h-4" />
-              </span>
-              <div>
-                <h4 className="font-semibold text-xs text-white">Strict Data Isolation</h4>
-                <p className="text-[11px] text-purple-200/80 mt-0.5">
-                  Your orders, delivery addresses, and purchases are completely private and isolated in dedicated patron storage.
-                </p>
-              </div>
-            </div>
+            {(settings.customerLoginDisplay?.benefitCards && settings.customerLoginDisplay.benefitCards.length > 0
+              ? settings.customerLoginDisplay.benefitCards
+              : [
+                  {
+                    id: 'benefit-data',
+                    title: 'Strict Data Isolation',
+                    description:
+                      'Your orders, delivery addresses, and purchases are completely private and isolated in dedicated patron storage.',
+                    iconName: 'lock',
+                  },
+                  {
+                    id: 'benefit-wishlist',
+                    title: 'Private Wishlist',
+                    description:
+                      'Bookmark favorite Kanjivaram and Banarasi weaves across your personal devices.',
+                    iconName: 'heart',
+                  },
+                  {
+                    id: 'benefit-tracking',
+                    title: 'Order Tracking & Photos',
+                    description:
+                      'Track dispatch milestones and view high-resolution packaging photos of your sarees.',
+                    iconName: 'package',
+                  },
+                  {
+                    id: 'benefit-chat',
+                    title: 'Direct Concierge Chat',
+                    description:
+                      'Instant live chat directly with our Salem handloom workshop masters.',
+                    iconName: 'message',
+                  },
+                ]
+            ).map((card, idx) => {
+              const renderCardIcon = (iconName?: string) => {
+                switch (iconName) {
+                  case 'heart':
+                    return (
+                      <span className="p-2 rounded-xl bg-rose-500/20 text-rose-300 shrink-0 mt-0.5">
+                        <Heart className="w-4 h-4" />
+                      </span>
+                    );
+                  case 'package':
+                    return (
+                      <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 shrink-0 mt-0.5">
+                        <Package className="w-4 h-4" />
+                      </span>
+                    );
+                  case 'message':
+                    return (
+                      <span className="p-2 rounded-xl bg-sky-500/20 text-sky-300 shrink-0 mt-0.5">
+                        <MessageSquare className="w-4 h-4" />
+                      </span>
+                    );
+                  case 'lock':
+                  default:
+                    return (
+                      <span className="p-2 rounded-xl bg-amber-500/20 text-amber-300 shrink-0 mt-0.5">
+                        <Lock className="w-4 h-4" />
+                      </span>
+                    );
+                }
+              };
 
-            <div className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm">
-              <span className="p-2 rounded-xl bg-rose-500/20 text-rose-300 shrink-0 mt-0.5">
-                <Heart className="w-4 h-4" />
-              </span>
-              <div>
-                <h4 className="font-semibold text-xs text-white">Private Wishlist</h4>
-                <p className="text-[11px] text-purple-200/80 mt-0.5">
-                  Bookmark favorite Kanjivaram and Banarasi weaves across your personal devices.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm">
-              <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 shrink-0 mt-0.5">
-                <Package className="w-4 h-4" />
-              </span>
-              <div>
-                <h4 className="font-semibold text-xs text-white">Order Tracking & Photos</h4>
-                <p className="text-[11px] text-purple-200/80 mt-0.5">
-                  Track dispatch milestones and view high-resolution packaging photos of your sarees.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm">
-              <span className="p-2 rounded-xl bg-sky-500/20 text-sky-300 shrink-0 mt-0.5">
-                <MessageSquare className="w-4 h-4" />
-              </span>
-              <div>
-                <h4 className="font-semibold text-xs text-white">Direct Concierge Chat</h4>
-                <p className="text-[11px] text-purple-200/80 mt-0.5">
-                  Instant live chat directly with our Salem handloom workshop masters.
-                </p>
-              </div>
-            </div>
+              return (
+                <div
+                  key={card.id || idx}
+                  className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm"
+                >
+                  {renderCardIcon(card.iconName)}
+                  <div>
+                    <h4 className="font-semibold text-xs text-white">{card.title}</h4>
+                    <p className="text-[11px] text-purple-200/80 mt-0.5">{card.description}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

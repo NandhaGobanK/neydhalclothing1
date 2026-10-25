@@ -6,6 +6,8 @@ import {
   StaffSectionPermissions,
   SareeCategory,
   ProductAttributeDefinition,
+  CustomerLoginDisplaySettings,
+  ResellerLoginDisplaySettings,
 } from '../types/store';
 
 export const DEFAULT_CHAT_TEMPLATES: OrderStatusChatTemplates = {
@@ -201,6 +203,87 @@ export const DEFAULT_PRODUCT_ATTRIBUTES: ProductAttributeDefinition[] = [
   },
 ];
 
+export const DEFAULT_CUSTOMER_LOGIN_DISPLAY: CustomerLoginDisplaySettings = {
+  headerSubtitle: 'Handcrafted Silk Atelier',
+  headerBadgeText: 'Protected Member Portal',
+  badgeText: 'Patron Verification Required',
+  headline: 'Exclusive Handloom Catalog Access',
+  description:
+    'To preserve the authenticity and privacy of our artisan handloom heirlooms, our masterweave catalog, limited weaves, and bespoke reservations are reserved exclusively for verified patrons registered with Google.',
+  benefitCards: [
+    {
+      id: 'benefit-data',
+      title: 'Strict Data Isolation',
+      description:
+        'Your orders, delivery addresses, and purchases are completely private and isolated in dedicated patron storage.',
+      iconName: 'lock',
+    },
+    {
+      id: 'benefit-wishlist',
+      title: 'Private Wishlist',
+      description:
+        'Bookmark favorite Kanjivaram and Banarasi weaves across your personal devices.',
+      iconName: 'heart',
+    },
+    {
+      id: 'benefit-tracking',
+      title: 'Order Tracking & Photos',
+      description:
+        'Track dispatch milestones and view high-resolution packaging photos of your sarees.',
+      iconName: 'package',
+    },
+    {
+      id: 'benefit-chat',
+      title: 'Direct Concierge Chat',
+      description:
+        'Instant live chat directly with our Salem handloom workshop masters.',
+      iconName: 'message',
+    },
+  ],
+};
+
+export const DEFAULT_RESELLER_LOGIN_DISPLAY: ResellerLoginDisplaySettings = {
+  headerBadgeText: 'B2B Wholesale Portal',
+  headerSubtitle:
+    'Exclusive partner channel for boutiques, WhatsApp resellers & catalog dropshippers',
+  programBadge: 'Wholesale Partner Program',
+  headline: 'Empowering Resellers & Boutiques',
+  description:
+    'Join our enterprise network to source pure handcrafted silk sarees at direct weaver wholesale prices with guaranteed high margins and zero dead-stock risk.',
+  perks: [
+    {
+      id: 'perk-margin',
+      title: '20% Flat Wholesale Margin',
+      description:
+        'Instant discount applied to all Kanjivaram, Banarasi, and Chanderi sarees.',
+      iconName: 'dollar',
+    },
+    {
+      id: 'perk-dropship',
+      title: 'White-Label Blind Dropshipping',
+      description:
+        'We dispatch directly to your end buyers with unbranded packaging and no invoices.',
+      iconName: 'truck',
+    },
+    {
+      id: 'perk-media',
+      title: '1-Click High-Res Media Packs',
+      description:
+        'Download unwatermarked ZIP packs and single photos for WhatsApp & Instagram.',
+      iconName: 'download',
+    },
+    {
+      id: 'perk-support',
+      title: 'Dedicated Dispatch & Support',
+      description:
+        'Express DTDC & Blue Dart courier with real-time tracking links for your customers.',
+      iconName: 'shield',
+    },
+  ],
+  adminNote:
+    'Resellers cannot log in without administrator authorization. Once your access request is approved on the admin Reseller Ledger, your account is saved in the database for instant authentication.',
+};
+
 export const INITIAL_SETTINGS: StoreSettings = {
   boutiqueName: 'Neydhal',
   logoUrl: '/logo.png',
@@ -257,6 +340,8 @@ export const INITIAL_SETTINGS: StoreSettings = {
     allowLiveChat: true,
     freeShippingText: 'Complimentary Insured Delivery on orders above ₹20,000',
   },
+  customerLoginDisplay: DEFAULT_CUSTOMER_LOGIN_DISPLAY,
+  resellerLoginDisplay: DEFAULT_RESELLER_LOGIN_DISPLAY,
   adminPin: '889988', // 6-digit access PIN
   adminGoogleEmail: 'nandhagoban21@gmail.com',
   customStoreDomain: '', // Custom domain or Vercel URL

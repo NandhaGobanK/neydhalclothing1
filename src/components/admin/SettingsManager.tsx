@@ -1,8 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { StoreTheme, ThemeMode, OrderStatusChatTemplates, StaffSectionPermissions, Order, CourierService } from '../../types/store';
+import {
+  StoreTheme,
+  ThemeMode,
+  OrderStatusChatTemplates,
+  StaffSectionPermissions,
+  Order,
+  CourierService,
+  CustomerLoginBenefitCard,
+  ResellerLoginPerk,
+} from '../../types/store';
 import { ACTIVE_THEME_KEYS, THEME_TEMPLATES } from '../../utils/theme';
-import { DEFAULT_CHAT_TEMPLATES, DEFAULT_STAFF_PERMISSIONS } from '../../data/initialData';
+import {
+  DEFAULT_CHAT_TEMPLATES,
+  DEFAULT_STAFF_PERMISSIONS,
+  DEFAULT_CUSTOMER_LOGIN_DISPLAY,
+  DEFAULT_RESELLER_LOGIN_DISPLAY,
+} from '../../data/initialData';
 import { applyTemplateTokens } from '../../utils/upi';
 import { compressImageFile } from '../../utils/imageCompression';
 import {
@@ -39,6 +53,14 @@ import {
   Edit,
   Clock,
   AlertCircle,
+  Store,
+  DollarSign,
+  Heart,
+  Package,
+  Download,
+  ShieldCheck,
+  UserCheck,
+  Layers,
 } from 'lucide-react';
 
 export const SettingsManager: React.FC = () => {
@@ -200,6 +222,56 @@ export const SettingsManager: React.FC = () => {
   const [isCompressingBanner, setIsCompressingBanner] = useState(false);
   const [brandingSaveSuccess, setBrandingSaveSuccess] = useState(false);
 
+  // Customer Login Page Display Customization
+  const [custLoginSubtitle, setCustLoginSubtitle] = useState<string>(
+    settings.customerLoginDisplay?.headerSubtitle ?? (DEFAULT_CUSTOMER_LOGIN_DISPLAY.headerSubtitle || '')
+  );
+  const [custLoginHeaderBadge, setCustLoginHeaderBadge] = useState<string>(
+    settings.customerLoginDisplay?.headerBadgeText ?? (DEFAULT_CUSTOMER_LOGIN_DISPLAY.headerBadgeText || '')
+  );
+  const [custLoginBadge, setCustLoginBadge] = useState<string>(
+    settings.customerLoginDisplay?.badgeText ?? (DEFAULT_CUSTOMER_LOGIN_DISPLAY.badgeText || '')
+  );
+  const [custLoginHeadline, setCustLoginHeadline] = useState<string>(
+    settings.customerLoginDisplay?.headline ?? (DEFAULT_CUSTOMER_LOGIN_DISPLAY.headline || '')
+  );
+  const [custLoginDescription, setCustLoginDescription] = useState<string>(
+    settings.customerLoginDisplay?.description ?? (DEFAULT_CUSTOMER_LOGIN_DISPLAY.description || '')
+  );
+  const [custBenefitCards, setCustBenefitCards] = useState<CustomerLoginBenefitCard[]>(
+    settings.customerLoginDisplay?.benefitCards ?? (DEFAULT_CUSTOMER_LOGIN_DISPLAY.benefitCards || [])
+  );
+  const [custLoginSaveSuccess, setCustLoginSaveSuccess] = useState(false);
+
+  // Reseller Login Page Display Customization
+  const [resellerHeaderBadge, setResellerHeaderBadge] = useState<string>(
+    settings.resellerLoginDisplay?.headerBadgeText ?? (DEFAULT_RESELLER_LOGIN_DISPLAY.headerBadgeText || '')
+  );
+  const [resellerHeaderSubtitle, setResellerHeaderSubtitle] = useState<string>(
+    settings.resellerLoginDisplay?.headerSubtitle ?? (DEFAULT_RESELLER_LOGIN_DISPLAY.headerSubtitle || '')
+  );
+  const [resellerProgramBadge, setResellerProgramBadge] = useState<string>(
+    settings.resellerLoginDisplay?.programBadge ?? (DEFAULT_RESELLER_LOGIN_DISPLAY.programBadge || '')
+  );
+  const [resellerHeadline, setResellerHeadline] = useState<string>(
+    settings.resellerLoginDisplay?.headline ?? (DEFAULT_RESELLER_LOGIN_DISPLAY.headline || '')
+  );
+  const [resellerDescription, setResellerDescription] = useState<string>(
+    settings.resellerLoginDisplay?.description ?? (DEFAULT_RESELLER_LOGIN_DISPLAY.description || '')
+  );
+  const [resellerPerks, setResellerPerks] = useState<ResellerLoginPerk[]>(
+    settings.resellerLoginDisplay?.perks ?? (DEFAULT_RESELLER_LOGIN_DISPLAY.perks || [])
+  );
+  const [resellerAdminNote, setResellerAdminNote] = useState<string>(
+    settings.resellerLoginDisplay?.adminNote ?? (DEFAULT_RESELLER_LOGIN_DISPLAY.adminNote || '')
+  );
+  const [resellerLoginSaveSuccess, setResellerLoginSaveSuccess] = useState(false);
+
+  // Quick section navigation filter tab
+  const [activeSettingsSection, setActiveSettingsSection] = useState<
+    'all' | 'branding' | 'login_pages' | 'storefront' | 'chat' | 'payment_delivery' | 'profile'
+  >('all');
+
   // Synchronize local form state when settings update from Firestore
   useEffect(() => {
     if (settings) {
@@ -268,6 +340,36 @@ export const SettingsManager: React.FC = () => {
       }
       if (settings.enableOrderDeletion !== undefined) {
         setEnableOrderDeletion(settings.enableOrderDeletion);
+      }
+      if (settings.customerLoginDisplay) {
+        if (settings.customerLoginDisplay.headerSubtitle !== undefined)
+          setCustLoginSubtitle(settings.customerLoginDisplay.headerSubtitle);
+        if (settings.customerLoginDisplay.headerBadgeText !== undefined)
+          setCustLoginHeaderBadge(settings.customerLoginDisplay.headerBadgeText);
+        if (settings.customerLoginDisplay.badgeText !== undefined)
+          setCustLoginBadge(settings.customerLoginDisplay.badgeText);
+        if (settings.customerLoginDisplay.headline !== undefined)
+          setCustLoginHeadline(settings.customerLoginDisplay.headline);
+        if (settings.customerLoginDisplay.description !== undefined)
+          setCustLoginDescription(settings.customerLoginDisplay.description);
+        if (settings.customerLoginDisplay.benefitCards)
+          setCustBenefitCards(settings.customerLoginDisplay.benefitCards);
+      }
+      if (settings.resellerLoginDisplay) {
+        if (settings.resellerLoginDisplay.headerBadgeText !== undefined)
+          setResellerHeaderBadge(settings.resellerLoginDisplay.headerBadgeText);
+        if (settings.resellerLoginDisplay.headerSubtitle !== undefined)
+          setResellerHeaderSubtitle(settings.resellerLoginDisplay.headerSubtitle);
+        if (settings.resellerLoginDisplay.programBadge !== undefined)
+          setResellerProgramBadge(settings.resellerLoginDisplay.programBadge);
+        if (settings.resellerLoginDisplay.headline !== undefined)
+          setResellerHeadline(settings.resellerLoginDisplay.headline);
+        if (settings.resellerLoginDisplay.description !== undefined)
+          setResellerDescription(settings.resellerLoginDisplay.description);
+        if (settings.resellerLoginDisplay.perks)
+          setResellerPerks(settings.resellerLoginDisplay.perks);
+        if (settings.resellerLoginDisplay.adminNote !== undefined)
+          setResellerAdminNote(settings.resellerLoginDisplay.adminNote);
       }
     }
   }, [settings]);
@@ -529,11 +631,78 @@ export const SettingsManager: React.FC = () => {
       },
       autoConfirmationMode,
       enableOrderDeletion,
+      customerLoginDisplay: {
+        headerSubtitle: custLoginSubtitle.trim(),
+        headerBadgeText: custLoginHeaderBadge.trim(),
+        badgeText: custLoginBadge.trim(),
+        headline: custLoginHeadline.trim(),
+        description: custLoginDescription.trim(),
+        benefitCards: custBenefitCards,
+      },
+      resellerLoginDisplay: {
+        headerBadgeText: resellerHeaderBadge.trim(),
+        headerSubtitle: resellerHeaderSubtitle.trim(),
+        programBadge: resellerProgramBadge.trim(),
+        headline: resellerHeadline.trim(),
+        description: resellerDescription.trim(),
+        perks: resellerPerks,
+        adminNote: resellerAdminNote.trim(),
+      },
       ...(isAdmin ? { adminPin: adminPin.trim() || '889988' } : {}),
     });
 
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
+  };
+
+  const handleQuickSaveCustomerLogin = async () => {
+    await updateSettings({
+      customerLoginDisplay: {
+        headerSubtitle: custLoginSubtitle.trim(),
+        headerBadgeText: custLoginHeaderBadge.trim(),
+        badgeText: custLoginBadge.trim(),
+        headline: custLoginHeadline.trim(),
+        description: custLoginDescription.trim(),
+        benefitCards: custBenefitCards,
+      },
+    });
+    setCustLoginSaveSuccess(true);
+    setTimeout(() => setCustLoginSaveSuccess(false), 2500);
+  };
+
+  const handleResetCustomerLoginDefaults = () => {
+    setCustLoginSubtitle(DEFAULT_CUSTOMER_LOGIN_DISPLAY.headerSubtitle || '');
+    setCustLoginHeaderBadge(DEFAULT_CUSTOMER_LOGIN_DISPLAY.headerBadgeText || '');
+    setCustLoginBadge(DEFAULT_CUSTOMER_LOGIN_DISPLAY.badgeText || '');
+    setCustLoginHeadline(DEFAULT_CUSTOMER_LOGIN_DISPLAY.headline || '');
+    setCustLoginDescription(DEFAULT_CUSTOMER_LOGIN_DISPLAY.description || '');
+    setCustBenefitCards(DEFAULT_CUSTOMER_LOGIN_DISPLAY.benefitCards || []);
+  };
+
+  const handleQuickSaveResellerLogin = async () => {
+    await updateSettings({
+      resellerLoginDisplay: {
+        headerBadgeText: resellerHeaderBadge.trim(),
+        headerSubtitle: resellerHeaderSubtitle.trim(),
+        programBadge: resellerProgramBadge.trim(),
+        headline: resellerHeadline.trim(),
+        description: resellerDescription.trim(),
+        perks: resellerPerks,
+        adminNote: resellerAdminNote.trim(),
+      },
+    });
+    setResellerLoginSaveSuccess(true);
+    setTimeout(() => setResellerLoginSaveSuccess(false), 2500);
+  };
+
+  const handleResetResellerLoginDefaults = () => {
+    setResellerHeaderBadge(DEFAULT_RESELLER_LOGIN_DISPLAY.headerBadgeText || '');
+    setResellerHeaderSubtitle(DEFAULT_RESELLER_LOGIN_DISPLAY.headerSubtitle || '');
+    setResellerProgramBadge(DEFAULT_RESELLER_LOGIN_DISPLAY.programBadge || '');
+    setResellerHeadline(DEFAULT_RESELLER_LOGIN_DISPLAY.headline || '');
+    setResellerDescription(DEFAULT_RESELLER_LOGIN_DISPLAY.description || '');
+    setResellerPerks(DEFAULT_RESELLER_LOGIN_DISPLAY.perks || []);
+    setResellerAdminNote(DEFAULT_RESELLER_LOGIN_DISPLAY.adminNote || '');
   };
 
   // Courier Partner Management Handlers (User Request 6 & Courier Tracking URL Integration)
@@ -659,9 +828,45 @@ export const SettingsManager: React.FC = () => {
         )}
       </div>
 
+      {/* Category / Section Quick Jump Filter Navigation */}
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+        {[
+          { id: 'all', label: 'All Settings', icon: LayoutTemplate },
+          { id: 'branding', label: 'Store Logo & Banner', icon: ImageIcon },
+          { id: 'login_pages', label: 'Login Pages (Customer & Reseller)', icon: UserCheck, badge: 'New' },
+          { id: 'storefront', label: 'Storefront Display', icon: Eye },
+          { id: 'chat', label: 'Chat & WhatsApp', icon: MessageSquare },
+          { id: 'payment_delivery', label: 'Payment & Delivery', icon: CreditCard },
+          { id: 'profile', label: 'Boutique Profile', icon: Building },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeSettingsSection === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveSettingsSection(tab.id as any)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
+                isActive
+                  ? 'bg-neutral-900 text-white shadow-xs'
+                  : 'bg-white text-neutral-600 hover:text-neutral-900 border border-neutral-200 hover:border-neutral-300'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+              {tab.badge && (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-400 text-amber-950">
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       <form onSubmit={handleSaveAll} className="space-y-6">
         {/* Section 1: Store Logo & Brand Branding Uploads (User Request) */}
-        {canViewStorefront && (
+        {canViewStorefront && (activeSettingsSection === 'all' || activeSettingsSection === 'branding') && (
           <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-5">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
               <div className="flex items-center gap-2 text-rose-950 font-serif font-bold text-base sm:text-lg">
@@ -694,6 +899,16 @@ export const SettingsManager: React.FC = () => {
                 <p className="text-[11px] text-neutral-500">
                   Upload your boutique brand mark (PNG, SVG, JPG). It will appear in the main header and customer receipts.
                 </p>
+
+                <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 text-[11px] flex items-start gap-2">
+                  <Store className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Reseller & Customer Gate Synced:</span>
+                    <span className="ml-1 text-purple-800">
+                      The logo you upload here is automatically displayed on the <strong>Reseller Login Page</strong> top banner and the <strong>Customer Member Gate</strong>.
+                    </span>
+                  </div>
+                </div>
 
                 {/* Logo Live Preview */}
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-neutral-900 text-white border border-neutral-800">
@@ -820,7 +1035,7 @@ export const SettingsManager: React.FC = () => {
         )}
 
         {/* Section 2: Public Storefront Display & Content Controls */}
-        {canViewStorefront && (
+        {canViewStorefront && (activeSettingsSection === 'all' || activeSettingsSection === 'storefront') && (
           <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-rose-950 font-serif font-bold text-base sm:text-lg">
@@ -1209,8 +1424,570 @@ export const SettingsManager: React.FC = () => {
           </div>
         )}
 
+        {/* Customer Login Page & Member Gate Customization (User Request) */}
+        {canViewStorefront && (activeSettingsSection === 'all' || activeSettingsSection === 'login_pages') && (
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2 text-rose-950 font-serif font-bold text-base sm:text-lg">
+                  <UserCheck className="w-5 h-5 text-amber-600" />
+                  <h3>Customer Login Page & Patron Gate Customization</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    Member Gate
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 mt-1">
+                  Control all text headlines, privacy statements, and benefit guarantee cards displayed to patrons on the Customer Login and Registration screen.
+                </p>
+              </div>
+
+              {canEditStorefront && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {custLoginSaveSuccess && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full animate-in fade-in">
+                      <Check className="w-3 h-3" />
+                      <span>Saved!</span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleResetCustomerLoginDefaults}
+                    className="px-3 py-1.5 rounded-xl border border-neutral-300 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                    title="Reset Customer Login text to defaults"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleQuickSaveCustomerLogin}
+                    className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Customer Login</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-xs">
+              {/* Form Inputs (Left 7 Cols) */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-neutral-800 mb-1">
+                      Header Subtitle
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditStorefront}
+                      value={custLoginSubtitle}
+                      onChange={(e) => setCustLoginSubtitle(e.target.value)}
+                      placeholder="e.g. Handcrafted Silk Atelier"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                    />
+                    <p className="text-[10px] text-neutral-400 mt-1">Appears directly beneath the boutique name in the top bar.</p>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-neutral-800 mb-1">
+                      Header Security Badge
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditStorefront}
+                      value={custLoginHeaderBadge}
+                      onChange={(e) => setCustLoginHeaderBadge(e.target.value)}
+                      placeholder="e.g. Protected Member Portal"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                    />
+                    <p className="text-[10px] text-neutral-400 mt-1">Right-side badge with shield icon in top header.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Patron Verification Badge
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!canEditStorefront}
+                    value={custLoginBadge}
+                    onChange={(e) => setCustLoginBadge(e.target.value)}
+                    placeholder="e.g. Patron Verification Required"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">Pill badge shown with sparkle icon above the main headline.</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Main Hero Headline *
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!canEditStorefront}
+                    value={custLoginHeadline}
+                    onChange={(e) => setCustLoginHeadline(e.target.value)}
+                    placeholder="e.g. Exclusive Handloom Catalog Access"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-serif text-sm font-bold"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">Prominent title greeting customers before signing in.</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Privacy Statement & Explanation Narrative *
+                  </label>
+                  <textarea
+                    rows={3}
+                    disabled={!canEditStorefront}
+                    value={custLoginDescription}
+                    onChange={(e) => setCustLoginDescription(e.target.value)}
+                    placeholder="e.g. To preserve the authenticity and privacy of our artisan handloom heirlooms..."
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 leading-relaxed"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">Narrative explaining why patrons should register with Google.</p>
+                </div>
+
+                {/* 4 Patron Benefit Cards */}
+                <div className="pt-3 border-t border-neutral-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-neutral-900 text-xs flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Member Privileges & Trust Cards (4 Benefit Cards)</span>
+                    </span>
+                    <span className="text-[11px] text-neutral-400">Shown in 2x2 grid</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {custBenefitCards.map((card, idx) => (
+                      <div
+                        key={card.id || idx}
+                        className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/70 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700 text-[11px] uppercase tracking-wider">
+                            Benefit Card {idx + 1}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="sm:col-span-1">
+                            <label className="block text-[10px] font-bold text-neutral-500 mb-0.5">Card Title</label>
+                            <input
+                              type="text"
+                              disabled={!canEditStorefront}
+                              value={card.title}
+                              onChange={(e) => {
+                                const updated = [...custBenefitCards];
+                                updated[idx] = { ...updated[idx], title: e.target.value };
+                                setCustBenefitCards(updated);
+                              }}
+                              className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-neutral-900 font-semibold text-xs"
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-bold text-neutral-500 mb-0.5">Description Text</label>
+                            <input
+                              type="text"
+                              disabled={!canEditStorefront}
+                              value={card.description}
+                              onChange={(e) => {
+                                const updated = [...custBenefitCards];
+                                updated[idx] = { ...updated[idx], description: e.target.value };
+                                setCustBenefitCards(updated);
+                              }}
+                              className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-neutral-900 text-xs"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Preview Box (Right 5 Cols) */}
+              <div className="lg:col-span-5">
+                <div className="sticky top-4 rounded-2xl bg-[#4a0e68] text-white p-4 sm:p-5 shadow-xl border border-purple-400/20 overflow-hidden relative">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-amber-300 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-amber-300" />
+                      <span>Live Customer Gate Preview</span>
+                    </span>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300">
+                      Mobile & Desktop
+                    </span>
+                  </div>
+
+                  {/* Header Preview */}
+                  <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      {logoUrl ? (
+                        <img
+                          src={logoUrl}
+                          alt="Logo Preview"
+                          className="w-7 h-7 rounded-lg object-contain bg-white/10 p-0.5 border border-amber-300/40"
+                        />
+                      ) : (
+                        <img
+                          src="/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg"
+                          alt="Logo Preview"
+                          className="w-7 h-7 rounded-lg object-cover border border-amber-300/40"
+                        />
+                      )}
+                      <div>
+                        <p className="font-serif font-bold text-xs text-white leading-none">{boutiqueName}</p>
+                        <p className="text-[9px] text-amber-300 uppercase tracking-wider">{custLoginSubtitle}</p>
+                      </div>
+                    </div>
+                    <span className="text-[9px] text-neutral-200 bg-black/30 px-2 py-0.5 rounded-full border border-white/10 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      <span className="truncate max-w-[120px]">{custLoginHeaderBadge}</span>
+                    </span>
+                  </div>
+
+                  {/* Hero Copy Preview */}
+                  <div className="space-y-2 mb-4">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-semibold">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      <span>{custLoginBadge}</span>
+                    </span>
+                    <h4 className="font-serif text-lg font-bold text-white leading-snug">
+                      {custLoginHeadline}
+                    </h4>
+                    <p className="text-[11px] text-purple-200/90 leading-relaxed line-clamp-3">
+                      {custLoginDescription}
+                    </p>
+                  </div>
+
+                  {/* Benefit Cards Mini Grid */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/10">
+                    {custBenefitCards.slice(0, 4).map((c, i) => (
+                      <div key={i} className="p-2 rounded-xl bg-black/25 border border-white/10 space-y-1">
+                        <p className="font-bold text-[10px] text-white truncate">{c.title}</p>
+                        <p className="text-[9px] text-purple-200/70 line-clamp-2 leading-tight">{c.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reseller Login Page & B2B Wholesale Portal Customization (User Request) */}
+        {canViewStorefront && (activeSettingsSection === 'all' || activeSettingsSection === 'login_pages') && (
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2 text-purple-950 font-serif font-bold text-base sm:text-lg">
+                  <Store className="w-5 h-5 text-purple-700" />
+                  <h3>Reseller Login Page & B2B Wholesale Portal Customization</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-300">
+                    B2B Wholesale Channel
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 mt-1">
+                  Configure the logo, header branding, wholesale program copy, partner perks, and admin approval guidance for the B2B Reseller Portal.
+                </p>
+              </div>
+
+              {canEditStorefront && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {resellerLoginSaveSuccess && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full animate-in fade-in">
+                      <Check className="w-3 h-3" />
+                      <span>Saved!</span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleResetResellerLoginDefaults}
+                    className="px-3 py-1.5 rounded-xl border border-neutral-300 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                    title="Reset Reseller Login text to defaults"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleQuickSaveResellerLogin}
+                    className="px-4 py-1.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Reseller Login</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Note & Store Logo Indicator Box */}
+            <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-white border border-purple-200 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Store Logo" className="w-full h-full object-contain p-1" />
+                  ) : (
+                    <img src="/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg" alt="Default Logo" className="w-full h-full object-cover" />
+                  )}
+                </div>
+                <div>
+                  <h4 className="font-bold text-purple-950 flex items-center gap-1.5">
+                    <span>Active Reseller Portal Brand Mark</span>
+                    <span className="text-[10px] font-normal text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                      Automatically Synced
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-purple-800 mt-0.5">
+                    The Reseller Login Page header and texture background automatically display the Store Logo configured in the <strong>Store Logo & Hero Banner</strong> section above.
+                  </p>
+                </div>
+              </div>
+
+              {canEditStorefront && (
+                <button
+                  type="button"
+                  onClick={() => setActiveSettingsSection('branding')}
+                  className="px-3 py-1.5 rounded-lg bg-purple-900 hover:bg-purple-800 text-white font-semibold text-xs shrink-0 transition"
+                >
+                  Change Store Logo &rarr;
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-xs">
+              {/* Form Inputs (Left 7 Cols) */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-neutral-800 mb-1">
+                      Header Portal Badge Text
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditStorefront}
+                      value={resellerHeaderBadge}
+                      onChange={(e) => setResellerHeaderBadge(e.target.value)}
+                      placeholder="e.g. B2B Wholesale Portal"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                    />
+                    <p className="text-[10px] text-neutral-400 mt-1">Amber badge in top navigation bar next to boutique name.</p>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-neutral-800 mb-1">
+                      Program Kicker Badge
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditStorefront}
+                      value={resellerProgramBadge}
+                      onChange={(e) => setResellerProgramBadge(e.target.value)}
+                      placeholder="e.g. Wholesale Partner Program"
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                    />
+                    <p className="text-[10px] text-neutral-400 mt-1">Pill badge shown with sparkle icon above the left headline.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Header Subtitle / Channel Pitch
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!canEditStorefront}
+                    value={resellerHeaderSubtitle}
+                    onChange={(e) => setResellerHeaderSubtitle(e.target.value)}
+                    placeholder="e.g. Exclusive partner channel for boutiques, WhatsApp resellers & catalog dropshippers"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">Tagline displayed under boutique name in the reseller portal header.</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Left Column Main Headline *
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!canEditStorefront}
+                    value={resellerHeadline}
+                    onChange={(e) => setResellerHeadline(e.target.value)}
+                    placeholder="e.g. Empowering Resellers & Boutiques"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 font-serif text-sm font-bold"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">Large headline on the left side of the reseller login screen.</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-neutral-800 mb-1">
+                    Wholesale Program Description *
+                  </label>
+                  <textarea
+                    rows={3}
+                    disabled={!canEditStorefront}
+                    value={resellerDescription}
+                    onChange={(e) => setResellerDescription(e.target.value)}
+                    placeholder="e.g. Join our enterprise network to source pure handcrafted silk sarees..."
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 leading-relaxed"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">Detailed value proposition for prospective wholesale partners.</p>
+                </div>
+
+                {/* 4 Wholesale Partner Perks */}
+                <div className="pt-3 border-t border-neutral-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-neutral-900 text-xs flex items-center gap-1.5">
+                      <DollarSign className="w-4 h-4 text-purple-700" />
+                      <span>Wholesale Partner Perks (4 Benefit Rows)</span>
+                    </span>
+                    <span className="text-[11px] text-neutral-400">Displayed in left column list</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {resellerPerks.map((perk, idx) => (
+                      <div
+                        key={perk.id || idx}
+                        className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/70 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-700 text-[11px] uppercase tracking-wider">
+                            Perk {idx + 1}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="sm:col-span-1">
+                            <label className="block text-[10px] font-bold text-neutral-500 mb-0.5">Perk Title</label>
+                            <input
+                              type="text"
+                              disabled={!canEditStorefront}
+                              value={perk.title}
+                              onChange={(e) => {
+                                const updated = [...resellerPerks];
+                                updated[idx] = { ...updated[idx], title: e.target.value };
+                                setResellerPerks(updated);
+                              }}
+                              className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-neutral-900 font-semibold text-xs"
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-bold text-neutral-500 mb-0.5">Description Text</label>
+                            <input
+                              type="text"
+                              disabled={!canEditStorefront}
+                              value={perk.description}
+                              onChange={(e) => {
+                                const updated = [...resellerPerks];
+                                updated[idx] = { ...updated[idx], description: e.target.value };
+                                setResellerPerks(updated);
+                              }}
+                              className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-neutral-900 text-xs"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Admin Approval Guidance Note */}
+                <div className="pt-2">
+                  <label className="block font-bold text-neutral-800 mb-1 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
+                    <span>Admin Authentication Required Notice (Right Auth Form Card)</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    disabled={!canEditStorefront}
+                    value={resellerAdminNote}
+                    onChange={(e) => setResellerAdminNote(e.target.value)}
+                    placeholder="e.g. Resellers cannot log in without administrator authorization..."
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 leading-relaxed"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">Explains why new resellers must wait for approval on the Reseller Ledger.</p>
+                </div>
+              </div>
+
+              {/* Live Preview Box (Right 5 Cols) */}
+              <div className="lg:col-span-5">
+                <div className="sticky top-4 rounded-2xl bg-[#4a0e68] text-white p-4 sm:p-5 shadow-xl border border-purple-400/20 overflow-hidden relative">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-amber-300 flex items-center gap-1">
+                      <Store className="w-3 h-3 text-amber-300" />
+                      <span>Live Reseller Gate Preview</span>
+                    </span>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300">
+                      B2B View
+                    </span>
+                  </div>
+
+                  {/* Header Preview */}
+                  <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={logoUrl || '/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg'}
+                        alt="Logo Preview"
+                        className="w-7 h-7 rounded-lg object-contain bg-white/10 p-0.5 border border-amber-300/40"
+                      />
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-serif font-bold text-xs text-white leading-none">{boutiqueName}</p>
+                          <span className="text-[8px] font-bold px-1.5 py-0.2 rounded-full bg-amber-400/20 text-amber-200 border border-amber-400/30">
+                            {resellerHeaderBadge}
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-purple-200/80 truncate max-w-[200px] mt-0.5">{resellerHeaderSubtitle}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hero Copy Preview */}
+                  <div className="space-y-2 mb-4">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 text-[10px] font-semibold">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      <span>{resellerProgramBadge}</span>
+                    </span>
+                    <h4 className="font-serif text-lg font-bold text-white leading-snug">
+                      {resellerHeadline}
+                    </h4>
+                    <p className="text-[11px] text-neutral-300 leading-relaxed line-clamp-3">
+                      {resellerDescription}
+                    </p>
+                  </div>
+
+                  {/* Perks Mini List */}
+                  <div className="space-y-1.5 pt-2 border-t border-white/10">
+                    {resellerPerks.slice(0, 4).map((p, i) => (
+                      <div key={i} className="p-2 rounded-xl bg-white/5 border border-white/10 flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 mt-0.5 text-[10px]">
+                          ✓
+                        </span>
+                        <div>
+                          <p className="font-bold text-[10px] text-white truncate">{p.title}</p>
+                          <p className="text-[9px] text-neutral-400 line-clamp-1">{p.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Admin Note Preview */}
+                  <div className="mt-3 p-2.5 rounded-xl bg-white/10 border border-white/10">
+                    <p className="text-[9px] font-bold text-amber-200 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-amber-300" />
+                      <span>Admin Approval Required</span>
+                    </p>
+                    <p className="text-[8.5px] text-neutral-300 mt-0.5 line-clamp-2">{resellerAdminNote}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Section 3: Automated Customer Chat & WhatsApp Notification Templates (User Request) */}
-        {canViewChatTemplates && (
+        {canViewChatTemplates && (activeSettingsSection === 'all' || activeSettingsSection === 'chat') && (
           <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
               <div className="flex items-center gap-2 text-rose-950 font-serif font-bold text-base sm:text-lg">

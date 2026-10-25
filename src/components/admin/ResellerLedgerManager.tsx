@@ -27,6 +27,9 @@ import {
   ShoppingBag,
   Trash2,
   Calendar,
+  Lock,
+  Unlock,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const ResellerLedgerManager: React.FC = () => {
@@ -37,15 +40,21 @@ export const ResellerLedgerManager: React.FC = () => {
     declineResellerRequest,
     createResellerManual,
     updateResellerStatus,
+    toggleResellerLock,
     deleteReseller,
     resellerOrders,
     settings,
   } = useStore();
 
   const [activeLedgerTab, setActiveLedgerTab] = useState<'requests' | 'active_resellers' | 'history'>('requests');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'approved' | 'declined'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+
+  // Lock & Remove Reseller States
+  const [resellerToRemove, setResellerToRemove] = useState<ResellerUser | null>(null);
+  const [lockingResellerId, setLockingResellerId] = useState<string | null>(null);
 
   // Manual Add Reseller Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -106,15 +115,77 @@ export const ResellerLedgerManager: React.FC = () => {
     });
   }, [resellers, searchQuery]);
 
+  // Filtered Request History
+  const filteredHistoryRequests = useMemo(() => {
+    return historyRequests.filter((req) => {
+      if (historyFilter !== 'all' && req.status !== historyFilter) return false;
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return true;
+      return (
+        req.email?.toLowerCase().includes(q) ||
+        req.contactName?.toLowerCase().includes(q) ||
+        req.businessName?.toLowerCase().includes(q) ||
+        req.whatsappNumber?.includes(q) ||
+        req.city?.toLowerCase().includes(q) ||
+        req.rejectionReason?.toLowerCase().includes(q) ||
+        req.declineReason?.toLowerCase().includes(q) ||
+        req.reviewedBy?.toLowerCase().includes(q)
+      );
+    });
+  }, [historyRequests, searchQuery, historyFilter]);
+
   // Aggregate stats
   const totalApprovedPartners = (resellers || []).length;
-  const activePartnersCount = (resellers || []).filter((r) => r.status === 'active').length;
+  const activePartnersCount = (resellers || []).filter((r) => r.status === 'active' && !r.isLocked).length;
+  const lockedPartnersCount = (resellers || []).filter((r) => r.isLocked || r.status === 'suspended' || r.status === 'locked').length;
   const totalOrdersCount = (resellerOrders || []).length;
   const totalVolumeAmount = (resellerOrders || []).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
   const showFeedback = (msg: string) => {
     setActionSuccessMsg(msg);
     setTimeout(() => setActionSuccessMsg(null), 4000);
+  };
+
+  const handleToggleResellerLock = async (reseller: ResellerUser) => {
+    setLockingResellerId(reseller.id);
+    try {
+      const isCurrentlyLocked = reseller.isLocked || reseller.status === 'suspended' || reseller.status === 'locked';
+      const targetState = !isCurrentlyLocked;
+      const res = await toggleResellerLock(reseller.id, targetState);
+      if (res.success) {
+        showFeedback(
+          targetState
+            ? `🔒 Account Locked: ${reseller.businessName || reseller.name} (${reseller.email}) is now locked and blocked from logging into the Reseller Portal.`
+            : `🔓 Account Unlocked: ${reseller.businessName || reseller.name} (${reseller.email}) has been unlocked. Reseller portal access restored.`
+        );
+      } else {
+        alert(res.error || 'Failed to update reseller lock status.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error toggling reseller lock.');
+    } finally {
+      setLockingResellerId(null);
+    }
+  };
+
+  const handleConfirmRemoveReseller = async () => {
+    if (!resellerToRemove) return;
+    setProcessingId(resellerToRemove.id);
+    try {
+      const res = await deleteReseller(resellerToRemove.id);
+      if (res.success) {
+        showFeedback(
+          `🗑️ Reseller ${resellerToRemove.businessName || resellerToRemove.name} (${resellerToRemove.email}) has been permanently removed and blocked from logging in.`
+        );
+        setResellerToRemove(null);
+      } else {
+        alert(res.error || 'Failed to remove reseller.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error removing reseller.');
+    } finally {
+      setProcessingId(null);
+    }
   };
 
   const handleConfirmApproval = async () => {
@@ -309,7 +380,11 @@ export const ResellerLedgerManager: React.FC = () => {
           <p className="text-2xl sm:text-3xl font-serif font-bold text-purple-900">
             {totalApprovedPartners}
           </p>
-          <p className="text-[11px] text-neutral-500">{activePartnersCount} active in 'reseller' collection</p>
+          <p className="text-[11px] text-neutral-500">
+            {lockedPartnersCount > 0
+              ? `${activePartnersCount} active • ${lockedPartnersCount} locked`
+              : `${activePartnersCount} active in 'reseller' collection`}
+          </p>
         </div>
 
         <div className="p-4 sm:p-5 rounded-2xl bg-white border border-neutral-200 shadow-xs space-y-1">
@@ -335,23 +410,23 @@ export const ResellerLedgerManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs and Search Controls */}
-      <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-        {/* Tab switchers */}
-        <div className="flex items-center bg-neutral-100 p-1 rounded-xl w-full sm:w-auto">
+      {/* Tabs and Search Controls (Fixed layout so Request History never truncates) */}
+      <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs p-3 sm:p-4 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+        {/* Tab switchers with horizontal scroll resilience */}
+        <div className="flex items-center gap-1.5 bg-neutral-100 p-1.5 rounded-xl overflow-x-auto scrollbar-none max-w-full shrink-0">
           <button
             type="button"
             onClick={() => setActiveLedgerTab('requests')}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            className={`whitespace-nowrap px-3.5 sm:px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 shrink-0 cursor-pointer ${
               activeLedgerTab === 'requests'
                 ? 'bg-purple-900 text-white shadow-xs'
                 : 'text-neutral-600 hover:text-neutral-900'
             }`}
           >
-            <Clock className="w-3.5 h-3.5" />
+            <Clock className="w-3.5 h-3.5 shrink-0" />
             <span>Pending Requests</span>
             {pendingRequests.length > 0 && (
-              <span className="w-5 h-5 rounded-full bg-amber-500 text-neutral-950 text-[10px] flex items-center justify-center font-bold">
+              <span className="w-5 h-5 rounded-full bg-amber-500 text-neutral-950 text-[10px] flex items-center justify-center font-bold shrink-0">
                 {pendingRequests.length}
               </span>
             )}
@@ -360,44 +435,52 @@ export const ResellerLedgerManager: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveLedgerTab('active_resellers')}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            className={`whitespace-nowrap px-3.5 sm:px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 shrink-0 cursor-pointer ${
               activeLedgerTab === 'active_resellers'
                 ? 'bg-purple-900 text-white shadow-xs'
                 : 'text-neutral-600 hover:text-neutral-900'
             }`}
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
             <span>Approved Resellers ({totalApprovedPartners})</span>
+            {lockedPartnersCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[9px] font-bold">
+                {lockedPartnersCount} locked
+              </span>
+            )}
           </button>
 
           <button
             type="button"
             onClick={() => setActiveLedgerTab('history')}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            className={`whitespace-nowrap px-3.5 sm:px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 shrink-0 cursor-pointer ${
               activeLedgerTab === 'history'
                 ? 'bg-purple-900 text-white shadow-xs'
                 : 'text-neutral-600 hover:text-neutral-900'
             }`}
           >
-            <Calendar className="w-3.5 h-3.5" />
+            <Calendar className="w-3.5 h-3.5 shrink-0" />
             <span>Request History</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-neutral-200 text-neutral-700 text-[10px] font-bold shrink-0">
+              {historyRequests.length}
+            </span>
           </button>
         </div>
 
         {/* Search Bar */}
-        <div className="relative w-full sm:w-72">
+        <div className="relative w-full xl:w-80 shrink-0">
           <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search email, business, phone..."
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-neutral-200 bg-neutral-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-900/20 focus:border-purple-900"
+            className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-neutral-200 bg-neutral-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-900/20 focus:border-purple-900 transition"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 p-0.5 rounded cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -546,16 +629,27 @@ export const ResellerLedgerManager: React.FC = () => {
                 <Users className="w-6 h-6 text-purple-900" />
               </span>
               <h3 className="font-serif text-lg font-bold text-neutral-900">
-                No Approved Resellers Found
+                {searchQuery ? 'No Matching Resellers Found' : 'No Approved Resellers Found'}
               </h3>
               <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-                When you approve access requests or manually add partners, they are saved in the separate 'reseller' database collection and listed here.
+                {searchQuery
+                  ? `No approved reseller records match "${searchQuery}". Try searching by another name, email, or phone number.`
+                  : "When you approve access requests or manually add partners, they are saved in the separate 'reseller' database collection and listed here."}
               </p>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold"
+                >
+                  Clear Search
+                </button>
+              )}
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-xs min-w-[980px]">
                   <thead className="bg-neutral-50 text-neutral-500 font-semibold uppercase tracking-wider border-b border-neutral-200">
                     <tr>
                       <th className="py-3 px-4">Partner & Business</th>
@@ -563,88 +657,161 @@ export const ResellerLedgerManager: React.FC = () => {
                       <th className="py-3 px-4">WhatsApp / Contact</th>
                       <th className="py-3 px-4">Wholesale Margin</th>
                       <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Login Access (Lock / Unlock)</th>
                       <th className="py-3 px-4">Approved At</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
+                      <th className="py-3 px-4 text-right">Remove Reseller</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100">
-                    {filteredResellers.map((r) => (
-                      <tr key={r.id} className="hover:bg-neutral-50/80 transition">
-                        <td className="py-3.5 px-4">
-                          <p className="font-bold text-neutral-900">{r.businessName || 'B2B Enterprise'}</p>
-                          <p className="text-[11px] text-neutral-500">{r.name}</p>
-                        </td>
-                        <td className="py-3.5 px-4 font-mono font-medium text-neutral-800">
-                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-900 border border-purple-100 font-bold">
-                            {r.email}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <a
-                            href={`https://wa.me/91${r.whatsappNumber.replace(/\D/g, '').slice(-10)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-mono text-purple-900 hover:underline flex items-center gap-1 font-bold"
-                          >
-                            <span>{r.whatsappNumber}</span>
-                            <ExternalLink className="w-3 h-3 text-neutral-400" />
-                          </a>
-                          {r.city && <p className="text-[10px] text-neutral-500">{r.city}</p>}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-bold text-neutral-900">
-                            {r.wholesaleDiscountPercent || 20}%
-                          </span>
-                          <span className="text-[10px] text-neutral-400 block">flat discount</span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              r.status === 'active'
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                : 'bg-rose-100 text-rose-800 border border-rose-200'
-                            }`}
-                          >
-                            {r.status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-neutral-500 text-[11px]">
-                          {r.approvedAt
-                            ? new Date(r.approvedAt).toLocaleDateString('en-IN', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                              })
-                            : 'Direct'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newStatus = r.status === 'active' ? 'suspended' : 'active';
-                              updateResellerStatus(r.id, newStatus);
-                              showFeedback(`Partner ${r.email} marked as ${newStatus}.`);
-                            }}
-                            className="px-2.5 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-100 text-neutral-700 text-[11px] font-semibold transition cursor-pointer"
-                          >
-                            {r.status === 'active' ? 'Suspend' : 'Activate'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`Remove partner ${r.email} from reseller database? They will no longer be able to log in.`)) {
-                                deleteReseller(r.id);
-                                showFeedback(`Partner ${r.email} removed from reseller collection.`);
-                              }
-                            }}
-                            className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition cursor-pointer"
-                            title="Delete Partner"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredResellers.map((r) => {
+                      const isLocked = r.isLocked || r.status === 'suspended' || r.status === 'locked';
+                      return (
+                        <tr
+                          key={r.id}
+                          className={`transition ${
+                            isLocked ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-neutral-50/80'
+                          }`}
+                        >
+                          {/* Partner & Business */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <span
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                  isLocked
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-purple-100 text-purple-900 font-bold'
+                                }`}
+                              >
+                                {isLocked ? (
+                                  <Lock className="w-4 h-4 text-amber-800" />
+                                ) : (
+                                  <Building className="w-4 h-4 text-purple-900" />
+                                )}
+                              </span>
+                              <div>
+                                <p className="font-bold text-neutral-900 flex items-center gap-1.5">
+                                  <span>{r.businessName || 'B2B Enterprise'}</span>
+                                  {isLocked && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 uppercase tracking-wider">
+                                      Locked
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-[11px] text-neutral-500">{r.name}</p>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Email ID (Auth ID) */}
+                          <td className="py-3.5 px-4 font-mono font-medium text-neutral-800">
+                            <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-900 border border-purple-100 font-bold inline-block">
+                              {r.email}
+                            </span>
+                          </td>
+
+                          {/* WhatsApp / Contact */}
+                          <td className="py-3.5 px-4">
+                            <a
+                              href={`https://wa.me/91${r.whatsappNumber.replace(/\D/g, '').slice(-10)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-purple-900 hover:underline flex items-center gap-1 font-bold"
+                            >
+                              <span>{r.whatsappNumber}</span>
+                              <ExternalLink className="w-3 h-3 text-neutral-400" />
+                            </a>
+                            {r.city && <p className="text-[10px] text-neutral-500">{r.city}</p>}
+                          </td>
+
+                          {/* Wholesale Margin */}
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-neutral-900">
+                              {r.wholesaleDiscountPercent || 20}%
+                            </span>
+                            <span className="text-[10px] text-neutral-400 block">flat discount</span>
+                          </td>
+
+                          {/* Status Badge */}
+                          <td className="py-3.5 px-4">
+                            {isLocked ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
+                                <Lock className="w-3 h-3 text-rose-700" />
+                                <span>Locked</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span>Active</span>
+                              </span>
+                            )}
+                          </td>
+
+                          {/* DEDICATED COLUMN: LOGIN ACCESS (LOCK / UNLOCK) */}
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {isLocked ? (
+                              <div>
+                                <button
+                                  type="button"
+                                  disabled={lockingResellerId === r.id}
+                                  onClick={() => handleToggleResellerLock(r)}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                                  title="Restore login access for this reseller partner"
+                                >
+                                  <Unlock className="w-3.5 h-3.5" />
+                                  <span>{lockingResellerId === r.id ? 'Unlocking...' : 'Unlock Account'}</span>
+                                </button>
+                                <p className="text-[10px] text-rose-600 font-medium mt-0.5">
+                                  Login blocked by admin
+                                </p>
+                              </div>
+                            ) : (
+                              <div>
+                                <button
+                                  type="button"
+                                  disabled={lockingResellerId === r.id}
+                                  onClick={() => handleToggleResellerLock(r)}
+                                  className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 border border-amber-300 text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                                  title="Prevent this reseller partner from logging into the Reseller Portal"
+                                >
+                                  <Lock className="w-3.5 h-3.5 text-amber-700" />
+                                  <span>{lockingResellerId === r.id ? 'Locking...' : 'Lock Account'}</span>
+                                </button>
+                                <p className="text-[10px] text-neutral-400 mt-0.5">
+                                  Can log in & order
+                                </p>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Approved At */}
+                          <td className="py-3.5 px-4 text-neutral-500 text-[11px] whitespace-nowrap">
+                            {r.approvedAt
+                              ? new Date(r.approvedAt).toLocaleDateString('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })
+                              : 'Direct'}
+                          </td>
+
+                          {/* DEDICATED COLUMN: REMOVE RESELLER */}
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => setResellerToRemove(r)}
+                              className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 text-xs font-bold transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                              title={`Remove ${r.businessName || r.name} from reseller database`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Remove</span>
+                            </button>
+                            <p className="text-[10px] text-neutral-400 mt-0.5">
+                              Revoke & delete
+                            </p>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -655,70 +822,180 @@ export const ResellerLedgerManager: React.FC = () => {
 
       {/* Request History Tab */}
       {activeLedgerTab === 'history' && (
-        <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-neutral-50 text-neutral-500 font-semibold uppercase tracking-wider border-b border-neutral-200">
-                <tr>
-                  <th className="py-3 px-4">Applicant Email</th>
-                  <th className="py-3 px-4">Business / Contact</th>
-                  <th className="py-3 px-4">WhatsApp</th>
-                  <th className="py-3 px-4">Decision</th>
-                  <th className="py-3 px-4">Decision Date</th>
-                  <th className="py-3 px-4">Notes / Margin</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {historyRequests.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-neutral-400">
-                      No decision logs yet.
-                    </td>
-                  </tr>
-                ) : (
-                  historyRequests.map((req) => (
-                    <tr key={req.id} className="hover:bg-neutral-50/80 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-neutral-800">
-                        {req.email}
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="font-bold text-neutral-900">{req.businessName || 'Independent'}</p>
-                        <p className="text-[11px] text-neutral-500">{req.contactName}</p>
-                      </td>
-                      <td className="py-3 px-4 font-mono text-neutral-600">
-                        {req.whatsappNumber}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            req.status === 'approved'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : 'bg-rose-100 text-rose-800 border border-rose-200'
-                          }`}
-                        >
-                          {req.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-neutral-500 text-[11px]">
-                        {req.reviewedAt
-                          ? new Date(req.reviewedAt).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                            })
-                          : '-'}
-                      </td>
-                      <td className="py-3 px-4 text-[11px] text-neutral-600">
-                        {req.status === 'approved'
-                          ? `Added to 'reseller' collection`
-                          : req.declineReason || 'Declined by admin'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        <div className="space-y-4">
+          {/* Sub-filter bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-2xl border border-neutral-200 p-3 sm:p-4 shadow-xs">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+              <button
+                type="button"
+                onClick={() => setHistoryFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  historyFilter === 'all'
+                    ? 'bg-purple-900 text-white'
+                    : 'bg-neutral-100 text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                All History ({historyRequests.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryFilter('approved')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  historyFilter === 'approved'
+                    ? 'bg-emerald-700 text-white'
+                    : 'bg-neutral-100 text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                Approved ({historyRequests.filter((r) => r.status === 'approved').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryFilter('declined')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  historyFilter === 'declined'
+                    ? 'bg-rose-700 text-white'
+                    : 'bg-neutral-100 text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                Declined ({historyRequests.filter((r) => r.status === 'declined').length})
+              </button>
+            </div>
+
+            <p className="text-xs text-neutral-500">
+              Showing <span className="font-bold text-neutral-900">{filteredHistoryRequests.length}</span> recorded decisions
+            </p>
           </div>
+
+          {filteredHistoryRequests.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center space-y-3">
+              <span className="w-12 h-12 rounded-2xl bg-neutral-100 text-neutral-400 flex items-center justify-center mx-auto">
+                <Calendar className="w-6 h-6 text-neutral-400" />
+              </span>
+              <h3 className="font-serif text-lg font-bold text-neutral-900">
+                {searchQuery ? 'No Matching Decision Logs' : 'No Request History Yet'}
+              </h3>
+              <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                {searchQuery
+                  ? `No historical requests match "${searchQuery}". Clear your search query to view all decisions.`
+                  : 'Whenever you accept or decline an applicant from the Pending Requests queue, their record and admin audit note will appear here.'}
+              </p>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold"
+                >
+                  Clear Search
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs min-w-[850px]">
+                  <thead className="bg-neutral-50 text-neutral-500 font-semibold uppercase tracking-wider border-b border-neutral-200">
+                    <tr>
+                      <th className="py-3 px-4">Applicant & Business</th>
+                      <th className="py-3 px-4">Applicant Email</th>
+                      <th className="py-3 px-4">WhatsApp Contact</th>
+                      <th className="py-3 px-4">Decision Status</th>
+                      <th className="py-3 px-4">Decision Date</th>
+                      <th className="py-3 px-4">Notes / Margin</th>
+                      <th className="py-3 px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {filteredHistoryRequests.map((req) => (
+                      <tr key={req.id} className="hover:bg-neutral-50/80 transition">
+                        <td className="py-3.5 px-4">
+                          <p className="font-bold text-neutral-900">{req.businessName || 'Independent Reseller'}</p>
+                          <p className="text-[11px] text-neutral-500">{req.contactName}</p>
+                          {req.city && <p className="text-[10px] text-neutral-400">{req.city}</p>}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono font-bold text-neutral-800">
+                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-900 border border-purple-100 font-bold inline-block">
+                            {req.email}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <a
+                            href={`https://wa.me/91${req.whatsappNumber.replace(/\D/g, '').slice(-10)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-mono text-neutral-700 hover:text-purple-900 hover:underline flex items-center gap-1 font-semibold"
+                          >
+                            <span>{req.whatsappNumber}</span>
+                            <ExternalLink className="w-3 h-3 text-neutral-400" />
+                          </a>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              req.status === 'approved'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : 'bg-rose-100 text-rose-800 border border-rose-200'
+                            }`}
+                          >
+                            {req.status === 'approved' ? (
+                              <CheckCircle className="w-3 h-3 text-emerald-700" />
+                            ) : (
+                              <XCircle className="w-3 h-3 text-rose-700" />
+                            )}
+                            <span>{req.status}</span>
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-neutral-500 text-[11px] whitespace-nowrap">
+                          {req.reviewedAt
+                            ? new Date(req.reviewedAt).toLocaleDateString('en-IN', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              })
+                            : '-'}
+                        </td>
+                        <td className="py-3.5 px-4 text-[11px]">
+                          {req.status === 'approved' ? (
+                            <span className="text-emerald-700 font-medium">
+                              Added with {req.wholesaleDiscountPercent || 20}% margin
+                            </span>
+                          ) : (
+                            <span className="text-neutral-600">
+                              {req.declineReason || req.rejectionReason || 'Declined by boutique admin'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          {req.status === 'declined' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setApprovingRequest(req);
+                                setApprovalMargin(20);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-[11px] font-bold transition cursor-pointer"
+                            >
+                              Grant Access Now
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveLedgerTab('active_resellers');
+                                setSearchQuery(req.email);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[11px] font-medium transition cursor-pointer"
+                            >
+                              View in Ledger
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1001,6 +1278,72 @@ export const ResellerLedgerManager: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirm Remove Reseller & Block Login */}
+      {resellerToRemove && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <span className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5" />
+                </span>
+                <h3 className="font-serif text-lg font-bold text-neutral-900 mt-2">
+                  Remove Reseller Partner
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResellerToRemove(null)}
+                className="text-neutral-400 hover:text-neutral-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-1.5">
+              <p className="text-xs font-bold text-neutral-900">
+                {resellerToRemove.businessName || resellerToRemove.name}
+              </p>
+              <p className="text-xs text-neutral-600">
+                Contact: <span className="font-medium text-neutral-900">{resellerToRemove.name}</span> •{' '}
+                <span className="font-mono text-purple-900 font-bold">{resellerToRemove.email}</span>
+              </p>
+              <p className="text-[11px] text-neutral-500 font-mono">
+                WhatsApp: {resellerToRemove.whatsappNumber}
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
+              <p className="font-bold flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>Portal Access Will Be Permanently Revoked</span>
+              </p>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                This partner will be permanently deleted from the database <code className="bg-rose-100 px-1 py-0.5 rounded font-mono">reseller</code> collection. Any active login session will be immediately terminated, and this Google account will no longer be authorized to sign in.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setResellerToRemove(null)}
+                className="flex-1 py-2.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={processingId === resellerToRemove.id}
+                onClick={handleConfirmRemoveReseller}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {processingId === resellerToRemove.id ? 'Removing...' : 'Confirm Remove & Block'}
+              </button>
+            </div>
           </div>
         </div>
       )}

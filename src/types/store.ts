@@ -418,7 +418,10 @@ export interface ResellerUser {
   city?: string;
   state?: string;
   wholesaleDiscountPercent: number; // e.g. 20% discount on boutique retail prices
-  status: 'active' | 'pending' | 'suspended';
+  status: 'active' | 'pending' | 'suspended' | 'locked';
+  isLocked?: boolean;
+  lockedAt?: string;
+  lockedBy?: string;
   authMethod?: 'google' | 'password';
   createdAt: string;
   totalSales?: number;
@@ -509,6 +512,40 @@ export interface StorefrontDisplaySettings {
   categorySectionSubtitle?: string;
 }
 
+export interface CustomerLoginBenefitCard {
+  id: string;
+  title: string;
+  description: string;
+  iconName?: 'lock' | 'heart' | 'package' | 'message';
+}
+
+export interface CustomerLoginDisplaySettings {
+  headerSubtitle?: string; // e.g. "Handcrafted Silk Atelier"
+  headerBadgeText?: string; // e.g. "Protected Member Portal"
+  badgeText?: string; // e.g. "Patron Verification Required"
+  headline?: string; // e.g. "Exclusive Handloom Catalog Access"
+  description?: string; // Narrative notice explaining why registration/login is required
+  benefitCards?: CustomerLoginBenefitCard[];
+}
+
+export interface ResellerLoginPerk {
+  id: string;
+  title: string;
+  description: string;
+  iconName?: 'dollar' | 'truck' | 'download' | 'shield';
+}
+
+export interface ResellerLoginDisplaySettings {
+  headerBadgeText?: string; // e.g. "B2B Wholesale Portal"
+  headerSubtitle?: string; // e.g. "Exclusive partner channel for boutiques, WhatsApp resellers & catalog dropshippers"
+  programBadge?: string; // e.g. "Wholesale Partner Program"
+  headline?: string; // e.g. "Empowering Resellers & Boutiques"
+  description?: string; // Narrative program explanation
+  perks?: ResellerLoginPerk[];
+  adminNote?: string; // Guidance notice explaining admin approval on Reseller Ledger
+}
+
+
 export interface AdminOnlineStatus {
   isLoggedIn: boolean;
   lastLoginAt?: string;
@@ -533,6 +570,8 @@ export interface StoreSettings {
   payment: PaymentSettings;
   delivery: DeliverySettings;
   storefrontDisplay: StorefrontDisplaySettings;
+  customerLoginDisplay?: CustomerLoginDisplaySettings;
+  resellerLoginDisplay?: ResellerLoginDisplaySettings;
   adminPin: string; // 6-digit access PIN
   adminGoogleEmail?: string; // Designated Google Account email for Owner/Admin
   adminOnlineStatus?: AdminOnlineStatus; // Live status of store admin / owner
