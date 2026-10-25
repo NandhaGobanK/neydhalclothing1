@@ -2926,6 +2926,9 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
             {/* MODAL 1: Reseller Order Cancellation Request Modal */}
             {cancellingOrder && (
               <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
