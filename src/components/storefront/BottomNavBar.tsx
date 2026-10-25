@@ -63,7 +63,10 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     }
   };
 
-  const unreadNotifsCount = (customerNotifications || []).filter((n) => !n.isRead).length;
+  const unreadNotifsCount = (customerNotifications || []).filter(
+    (n) => !n.read && (n.isRead === undefined || !n.isRead)
+  ).length;
+  const totalAccountAlerts = (customerUnreadChatCount || 0) + unreadNotifsCount;
 
   const navItems = [
     {
@@ -82,21 +85,14 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
       id: 'wishlist' as const,
       label: 'Wishlist',
       icon: Heart,
-      badge: wishlist.length > 0 ? wishlist.length : undefined,
+      badge: wishlist.length > 0 ? (wishlist.length > 99 ? '99+' : wishlist.length) : undefined,
       action: () => onTabChange('wishlist'),
     },
     {
       id: 'orders' as const,
       label: currentCustomer ? 'My Account' : 'My Orders',
       icon: Package,
-      badge:
-        customerUnreadChatCount > 0
-          ? `${customerUnreadChatCount} 💬`
-          : unreadNotifsCount > 0
-          ? `${unreadNotifsCount} 🔔`
-          : customerOrdersCount > 0
-          ? customerOrdersCount
-          : undefined,
+      badge: totalAccountAlerts > 0 ? (totalAccountAlerts > 9 ? '9+' : totalAccountAlerts) : undefined,
       action: handleOrdersClick,
     },
   ];
@@ -140,11 +136,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
                 />
                 {item.badge !== undefined && (
                   <span
-                    className="absolute -top-1 -right-2 text-white text-[9px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center shadow-xs animate-in zoom-in-75 duration-150"
-                    style={{
-                      backgroundColor: badgeColor,
-                    }}
-                    title={`${item.label}: ${item.badge}`}
+                    className="absolute -top-1.5 -right-2.5 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center shadow-xs bg-rose-600 leading-none pointer-events-none ring-2 ring-white dark:ring-neutral-900 z-10"
+                    title={`${item.label}: ${item.badge} notifications`}
                   >
                     {item.badge}
                   </span>

@@ -97,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className={`sticky top-0 z-40 ${themeColors.headerBg} backdrop-blur-md border-b ${themeColors.headerBorder} ${themeColors.headerText} transition-colors duration-200`}>
+    <header className={`sticky top-0 z-50 ${themeColors.headerBg.replace(/\/95$/, '')} shadow-md border-b ${themeColors.headerBorder} ${themeColors.headerText} transition-colors duration-200`}>
       {/* Main Bar: Brand Logo & Wordmark on Left, Clean Utility Icons on Right */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Zone 1: Brand Logo & Wordmark */}
@@ -208,7 +208,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Row 2: Dedicated Saree Categories Navigation Strip (Separated from utility icons!) */}
-      <nav aria-label="Saree Collections & Categories" className="border-t border-white/10 bg-black/25 backdrop-blur-xs">
+      <nav aria-label="Saree Collections & Categories" className="border-t border-white/10 bg-[#2d053f] sm:bg-[#280437] shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 text-xs">
             {categories.map((cat) => {

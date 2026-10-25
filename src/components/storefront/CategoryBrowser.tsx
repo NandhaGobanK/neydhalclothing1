@@ -238,7 +238,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
     return (
       <div className="min-h-screen pb-24 bg-neutral-50/50">
         {/* Category Header Bar with Back Button */}
-        <div className="sticky top-18 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200 px-4 py-3 sm:py-4 shadow-2xs">
+        <div className="relative z-10 bg-white border-b border-neutral-200 px-4 py-3 sm:py-4 shadow-2xs">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
             <button
               type="button"
@@ -621,7 +621,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
   return (
     <div className="min-h-screen pb-24 bg-neutral-50/50">
       {/* Category Header */}
-      <div className="sticky top-18 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200 px-4 py-4 shadow-2xs">
+      <div className="relative z-10 bg-white border-b border-neutral-200 px-4 py-4 shadow-2xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="w-7 h-7 rounded-lg bg-rose-100 text-rose-900 flex items-center justify-center font-bold">
