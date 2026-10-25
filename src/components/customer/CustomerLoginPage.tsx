@@ -129,10 +129,25 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-950 via-rose-950/60 to-neutral-950 flex flex-col justify-between text-neutral-100 relative overflow-hidden select-none">
-      {/* Decorative Atelier Ambience */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-rose-600/10 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute -bottom-20 -right-20 w-[600px] h-[400px] bg-amber-500/10 rounded-full blur-[120px] pointer-events-none" />
+    <div className="min-h-screen bg-[#4a0e68] flex flex-col justify-between text-neutral-100 relative overflow-hidden select-none">
+      {/* Authentic Neydhal Royal Purple & Texture Background based on attached logo image */}
+      <div
+        className="absolute inset-0 bg-[#4a0e68] bg-cover bg-center bg-no-repeat pointer-events-none transition-all duration-1000"
+        style={{
+          backgroundImage: `
+            radial-gradient(circle at 50% 18%, rgba(110, 20, 148, 0.72) 0%, rgba(74, 14, 104, 0.92) 55%, rgba(42, 6, 61, 0.98) 100%),
+            url('/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg')
+          `,
+          backgroundSize: 'cover, 480px',
+          backgroundPosition: 'center, center',
+          backgroundRepeat: 'no-repeat, repeat',
+          backgroundBlendMode: 'normal, soft-light',
+        }}
+      />
+      {/* Royal Purple & Neydhal Gold Atmosphere Overlays */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[850px] h-[450px] bg-[#891bb8]/25 rounded-full blur-[150px] pointer-events-none" />
+      <div className="absolute -bottom-20 -right-20 w-[600px] h-[400px] bg-[#f6db9e]/15 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute top-1/3 -left-20 w-[500px] h-[400px] bg-[#610d85]/35 rounded-full blur-[130px] pointer-events-none" />
 
       {/* Top Boutique Navigation Header */}
       <header className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 flex items-center justify-between">
@@ -141,16 +156,18 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
           className="flex items-center gap-3 cursor-pointer select-none active:opacity-90"
           title={`${settings.boutiqueName} Boutique (Triple-click for Staff / Admin Login)`}
         >
-          {settings.logoUrl ? (
+          {settings.logoUrl && settings.logoUrl !== '/logo.png' ? (
             <img
               src={settings.logoUrl}
               alt={settings.boutiqueName}
               className="h-10 w-auto object-contain rounded-md"
             />
           ) : (
-            <span className="w-10 h-10 rounded-2xl bg-gradient-to-br from-rose-900 via-rose-800 to-amber-600 text-amber-200 flex items-center justify-center font-serif font-bold text-base shadow-lg border border-amber-400/40">
-              {settings.boutiqueName.charAt(0) || 'A'}
-            </span>
+            <img
+              src="/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg"
+              alt={settings.boutiqueName || 'Neydhal'}
+              className="h-11 w-11 object-cover rounded-2xl shadow-lg border border-amber-300/40"
+            />
           )}
           <div>
             <h1 className="font-serif text-lg sm:text-xl font-bold text-white tracking-wide">
@@ -164,7 +181,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
 
         <div
           onClick={triggerSecretAdminLogin}
-          className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer select-none active:opacity-80"
+          className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer select-none active:opacity-80 bg-black/20 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-xs"
           title="Protected Member Portal (Triple-click for Staff / Admin Login)"
         >
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -183,60 +200,60 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
 
           <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight">
             Exclusive Handloom <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-rose-300">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-amber-400">
               Catalog Access
             </span>
           </h2>
 
-          <p className="text-neutral-300 text-xs sm:text-sm leading-relaxed max-w-lg mx-auto lg:mx-0">
+          <p className="text-purple-100/90 text-xs sm:text-sm leading-relaxed max-w-lg mx-auto lg:mx-0">
             To preserve the authenticity and privacy of our artisan handloom heirlooms, our masterweave catalog, limited weaves, and bespoke reservations are reserved exclusively for verified patrons registered with Google.
           </p>
 
           {/* Privacy & Member Privileges List */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left pt-2">
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs flex items-start gap-3">
+            <div className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm">
               <span className="p-2 rounded-xl bg-amber-500/20 text-amber-300 shrink-0 mt-0.5">
                 <Lock className="w-4 h-4" />
               </span>
               <div>
                 <h4 className="font-semibold text-xs text-white">Strict Data Isolation</h4>
-                <p className="text-[11px] text-neutral-400 mt-0.5">
+                <p className="text-[11px] text-purple-200/80 mt-0.5">
                   Your orders, delivery addresses, and purchases are completely private and isolated in dedicated patron storage.
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs flex items-start gap-3">
+            <div className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm">
               <span className="p-2 rounded-xl bg-rose-500/20 text-rose-300 shrink-0 mt-0.5">
                 <Heart className="w-4 h-4" />
               </span>
               <div>
                 <h4 className="font-semibold text-xs text-white">Private Wishlist</h4>
-                <p className="text-[11px] text-neutral-400 mt-0.5">
+                <p className="text-[11px] text-purple-200/80 mt-0.5">
                   Bookmark favorite Kanjivaram and Banarasi weaves across your personal devices.
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs flex items-start gap-3">
+            <div className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm">
               <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 shrink-0 mt-0.5">
                 <Package className="w-4 h-4" />
               </span>
               <div>
                 <h4 className="font-semibold text-xs text-white">Order Tracking & Photos</h4>
-                <p className="text-[11px] text-neutral-400 mt-0.5">
+                <p className="text-[11px] text-purple-200/80 mt-0.5">
                   Track dispatch milestones and view high-resolution packaging photos of your sarees.
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs flex items-start gap-3">
+            <div className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm">
               <span className="p-2 rounded-xl bg-sky-500/20 text-sky-300 shrink-0 mt-0.5">
                 <MessageSquare className="w-4 h-4" />
               </span>
               <div>
                 <h4 className="font-semibold text-xs text-white">Direct Concierge Chat</h4>
-                <p className="text-[11px] text-neutral-400 mt-0.5">
+                <p className="text-[11px] text-purple-200/80 mt-0.5">
                   Instant live chat directly with our Salem handloom workshop masters.
                 </p>
               </div>
@@ -246,9 +263,9 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
 
         {/* Right Column: Customer Google Sign-In & Register Gate */}
         <div className="lg:col-span-6 max-w-md w-full mx-auto">
-          <div className="bg-neutral-900/95 rounded-3xl p-6 sm:p-8 border border-neutral-800 shadow-2xl backdrop-blur-md space-y-6">
+          <div className="bg-[#20042d]/92 rounded-3xl p-6 sm:p-8 border border-purple-400/25 shadow-2xl backdrop-blur-xl space-y-6">
             {/* Mode Switcher Tabs: Sign In vs Register */}
-            <div className="flex items-center bg-neutral-950/80 p-1.5 rounded-2xl border border-neutral-800">
+            <div className="flex items-center bg-[#15021f]/90 p-1.5 rounded-2xl border border-purple-500/20">
               <button
                 type="button"
                 onClick={() => {
@@ -390,17 +407,17 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                       value={regName}
                       onChange={(e) => setRegName(e.target.value)}
                       placeholder="Will use Google profile name if blank"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-700 text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-purple-200/90 mb-1.5">
                     Mobile Phone Number (Optional)
                   </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-purple-400">
                       <Phone className="w-4 h-4" />
                     </span>
                     <input
@@ -409,10 +426,10 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                       value={regPhone}
                       onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                       placeholder="10-digit number for order SMS/WhatsApp"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-700 text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
                     />
                   </div>
-                  <p className="text-[10px] text-neutral-400 mt-1">
+                  <p className="text-[10px] text-purple-300/70 mt-1">
                     Used to automatically associate your dispatch and courier updates.
                   </p>
                 </div>

@@ -249,7 +249,7 @@ function MainAppContent() {
             />
           )}
         </>
-      ) : !currentCustomer ? (
+      ) : (!currentCustomer && !isAdminLoggedIn) ? (
         <>
           <CustomerLoginPage onSuccess={() => {}} onOpenAdmin={handleOpenAdmin} />
           {/* Admin Auth Modal if triggered via secret shortcut (Ctrl+Shift+A) or #admin */}

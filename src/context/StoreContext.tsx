@@ -24,6 +24,7 @@ import {
   CustomerUser,
   CustomerAddress,
   ResellerUser,
+  ResellerAccessRequest,
 } from '../types/store';
 import {
   INITIAL_PRODUCTS,
@@ -309,6 +310,7 @@ interface StoreContextType {
   // Dedicated Reseller Portal & B2B Wholesale Management
   currentReseller: ResellerUser | null;
   resellers: ResellerUser[];
+  resellerRequests: ResellerAccessRequest[];
   resellerLogin: (emailOrPhone: string, password?: string) => Promise<{ success: boolean; reseller?: ResellerUser; error?: string }>;
   resellerLoginWithGoogle: (
     optionsOrBusinessName?:
@@ -328,9 +330,23 @@ interface StoreContextType {
     reseller?: ResellerUser;
     error?: string;
     isNotRegistered?: boolean;
+    isPending?: boolean;
     email?: string;
   }>;
   resellerRegister: (data: Omit<ResellerUser, 'id' | 'createdAt' | 'wholesaleDiscountPercent' | 'status'>) => Promise<{ success: boolean; reseller?: ResellerUser; error?: string }>;
+  requestResellerAccess: (data: {
+    businessName?: string;
+    contactName: string;
+    email: string;
+    whatsappNumber: string;
+    city?: string;
+    gstOrPan?: string;
+  }) => Promise<{ success: boolean; error?: string; alreadyApproved?: boolean; alreadyPending?: boolean }>;
+  approveResellerRequest: (requestId: string, options?: { wholesaleDiscountPercent?: number }) => Promise<{ success: boolean; error?: string }>;
+  declineResellerRequest: (requestId: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
+  createResellerManual: (data: Omit<ResellerUser, 'id' | 'createdAt' | 'totalSales' | 'totalOrdersCount'>) => Promise<{ success: boolean; error?: string }>;
+  updateResellerStatus: (resellerId: string, status: 'active' | 'suspended') => Promise<{ success: boolean; error?: string }>;
+  deleteReseller: (resellerId: string) => Promise<{ success: boolean; error?: string }>;
   resellerLogout: () => void;
   resellerOrders: Order[];
   placeResellerOrder: (input: {
@@ -614,6 +630,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const stored = loadFromStorage<ResellerUser[]>('aara_boutique_resellers_v3', []);
     return stored.filter((r) => r.id !== 'res_demo_meenakshi');
   });
+  const [resellerRequests, setResellerRequests] = useState<ResellerAccessRequest[]>(() =>
+    loadFromStorage<ResellerAccessRequest[]>('neydhal_reseller_requests_v1', [])
+  );
   const [isResellerPortalOpen, setIsResellerPortalOpen] = useState(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
@@ -1100,7 +1119,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     await updateCustomerProfile({ savedAddresses: updatedAddrs });
   };
 
-  // Dedicated Reseller Portal Methods
+  // Dedicated Reseller Portal & B2B Wholesale Methods
   const resellerLogin = async (emailOrPhone: string, password?: string) => {
     const cleanInput = emailOrPhone.trim().toLowerCase();
     const cleanPhone = emailOrPhone.replace(/\D/g, '').slice(-10);
@@ -1114,6 +1133,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
 
     if (found) {
+      if (found.status === 'suspended') {
+        return { success: false, error: 'Your reseller account has been suspended by boutique administration.' };
+      }
+      if (found.status !== 'active') {
+        return { success: false, error: 'Your reseller account is awaiting admin approval. You will be able to sign in once approved by Neydhal administration.' };
+      }
       if (found.password && password && found.password !== password) {
         return { success: false, error: 'Incorrect reseller password.' };
       }
@@ -1122,7 +1147,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return { success: true, reseller: found };
     }
 
-    return { success: false, error: 'No registered reseller account found with this mobile or email. Please register.' };
+    // Check if there is a pending access request
+    const pendingReq = resellerRequests.find(
+      (req) => (cleanInput && req.email.toLowerCase() === cleanInput) || (cleanPhone && req.whatsappNumber.slice(-10) === cleanPhone)
+    );
+    if (pendingReq && pendingReq.status === 'pending') {
+      return {
+        success: false,
+        error: `Your reseller access request for "${pendingReq.email}" is pending approval by Neydhal administration.`,
+      };
+    }
+
+    return {
+      success: false,
+      error: 'Access Denied: No approved reseller account found. Reseller access requires admin authentication. Please click "Register as Reseller" and submit an access request.',
+    };
   };
 
   const resellerLoginWithGoogle = async (
@@ -1139,17 +1178,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         },
     legacyWhatsapp?: string
   ) => {
-    const options =
-      typeof optionsOrBusinessName === 'object' && optionsOrBusinessName !== null
-        ? optionsOrBusinessName
-        : {
-            mode: 'signin' as const,
-            businessName: optionsOrBusinessName as string | undefined,
-            whatsappNumber: legacyWhatsapp,
-          };
-
-    const mode = options.mode || 'signin';
-
     try {
       const authResult = await googleSignIn();
       if (!authResult?.user) {
@@ -1159,13 +1187,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const email = (fbUser.email || '').toLowerCase().trim();
       const defaultName = fbUser.displayName || 'Reseller Partner';
 
-      // Check if reseller exists in Firestore /resellers collection
+      // Check if reseller exists in Firestore /reseller collection or local state
       let existingReseller: ResellerUser | null = null;
       try {
-        const docSnap = await getDoc(doc(db, 'resellers', fbUser.uid));
+        const docSnap = await getDoc(doc(db, 'reseller', fbUser.uid));
         if (docSnap.exists()) {
           existingReseller = { id: docSnap.id, ...docSnap.data() } as ResellerUser;
         } else {
+          // Check by email in Firestore 'reseller' collection
           const found = resellers.find(
             (r) => r.id === fbUser.uid || (email && r.email && r.email.toLowerCase() === email)
           );
@@ -1180,101 +1209,256 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (found && found.id !== 'res_demo_meenakshi') existingReseller = found;
       }
 
-      if (mode === 'signin') {
-        if (!existingReseller) {
-          // No reseller account found for this Google email
-          await googleSignOut().catch(() => {});
+      // Check if there is a pending request for this email
+      const pendingReq = resellerRequests.find(
+        (req) => req.email.toLowerCase() === email && req.status === 'pending'
+      );
+
+      // Reseller MUST be approved by admin to log in!
+      if (!existingReseller || existingReseller.status !== 'active') {
+        await googleSignOut().catch(() => {});
+        if (pendingReq) {
           return {
             success: false,
-            isNotRegistered: true,
+            isNotRegistered: false,
+            isPending: true,
             email,
-            error: `No registered B2B reseller account found for "${email}". Please complete registration to access wholesale pricing.`,
+            error: `Your reseller access request for "${email}" is currently pending review on the Admin Reseller Ledger. You will receive access once approved by Neydhal administration.`,
           };
         }
-
-        if (existingReseller.status === 'suspended') {
-          await googleSignOut().catch(() => {});
-          return { success: false, error: 'Your reseller account has been suspended by boutique administration.' };
-        }
-
-        const updated: ResellerUser = {
-          ...existingReseller,
-          name: existingReseller.name || defaultName,
-          email: existingReseller.email || email,
-          avatarUrl: fbUser.photoURL || existingReseller.avatarUrl,
-          authMethod: 'google',
+        return {
+          success: false,
+          isNotRegistered: true,
+          email,
+          error: `Access Denied: Google account "${email}" is not authorized as a B2B Reseller. Reseller access requires admin approval. Please submit an access request using the registration form.`,
         };
-        setCurrentReseller(updated);
-        saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, updated);
-        setResellers((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-        setDoc(doc(db, 'resellers', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(() => {});
-        return { success: true, reseller: updated };
       }
 
-      // mode === 'register'
-      if (existingReseller) {
-        // Already registered, authenticate them
-        setCurrentReseller(existingReseller);
-        saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, existingReseller);
-        return { success: true, reseller: existingReseller };
-      }
-
-      // Register new reseller enterprise in Firestore /resellers collection
-      const cleanPhone = (options.whatsappNumber || '').replace(/\D/g, '').slice(-10) || '9840123456';
-      const bName = (options.businessName || `${defaultName}'s Handloom Enterprise`).trim();
-      const cName = (options.contactName || defaultName).trim();
-
-      const newReseller: ResellerUser = {
-        id: fbUser.uid,
-        businessName: bName,
-        name: cName,
-        email,
-        phone: cleanPhone,
-        whatsappNumber: cleanPhone,
-        avatarUrl: fbUser.photoURL || undefined,
-        city: options.city?.trim() || '',
-        state: options.state?.trim() || 'Tamil Nadu',
-        gstOrPan: options.gstOrPan?.trim() || undefined,
-        wholesaleDiscountPercent: 20,
-        status: 'active',
+      const updated: ResellerUser = {
+        ...existingReseller,
+        name: existingReseller.name || defaultName,
+        email: existingReseller.email || email,
+        avatarUrl: fbUser.photoURL || existingReseller.avatarUrl,
         authMethod: 'google',
-        createdAt: new Date().toISOString(),
-        totalSales: 0,
-        totalOrdersCount: 0,
       };
-
-      setResellers((prev) => [newReseller, ...prev.filter((r) => r.id !== newReseller.id)]);
-      setCurrentReseller(newReseller);
-      saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, newReseller);
-      await setDoc(doc(db, 'resellers', newReseller.id), sanitizeForFirestore(newReseller));
-      return { success: true, reseller: newReseller };
+      setCurrentReseller(updated);
+      saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, updated);
+      setResellers((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      setDoc(doc(db, 'reseller', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(() => {});
+      return { success: true, reseller: updated };
     } catch (err: any) {
       const isPopupClosed = err?.code === 'auth/popup-closed-by-user' || err?.message?.includes('popup-closed');
       if (isPopupClosed) {
         return { success: false, error: 'Google sign-in popup was closed before completion. Please try again.' };
       }
-      console.warn('Google Sign-In notice (Reseller):', err?.message || err);
       return { success: false, error: err?.message || 'Google authentication failed. Please try again.' };
     }
+  };
+
+  const requestResellerAccess = async (data: {
+    businessName?: string;
+    contactName: string;
+    email: string;
+    whatsappNumber: string;
+    city?: string;
+    gstOrPan?: string;
+  }) => {
+    const cleanEmail = data.email.trim().toLowerCase();
+    const cleanPhone = data.whatsappNumber.replace(/\D/g, '').slice(-10);
+
+    // Check if already an approved active reseller in reseller collection
+    const alreadyApproved = resellers.some(
+      (r) => r.email?.toLowerCase() === cleanEmail && r.status === 'active'
+    );
+    if (alreadyApproved) {
+      return {
+        success: false,
+        alreadyApproved: true,
+        error: 'User account has been register with Neydhal clothing. proceed to login.',
+      };
+    }
+
+    // Check if already pending
+    const existingPending = resellerRequests.find(
+      (req) => req.email.toLowerCase() === cleanEmail && req.status === 'pending'
+    );
+    if (existingPending) {
+      return {
+        success: false,
+        alreadyPending: true,
+        error: `An access request for "${cleanEmail}" is already pending admin review on the Reseller Ledger. We will notify you once approved.`,
+      };
+    }
+
+    const newRequest: ResellerAccessRequest = {
+      id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      businessName: data.businessName?.trim() || undefined,
+      contactName: data.contactName.trim(),
+      email: cleanEmail,
+      whatsappNumber: cleanPhone,
+      city: data.city?.trim() || '',
+      gstOrPan: data.gstOrPan?.trim() || undefined,
+      status: 'pending',
+      requestedAt: new Date().toISOString(),
+      wholesaleDiscountPercent: 20,
+    };
+
+    const nextRequests = [newRequest, ...resellerRequests.filter((r) => r.id !== newRequest.id)];
+    setResellerRequests(nextRequests);
+    saveToStorage('neydhal_reseller_requests_v1', nextRequests);
+
+    try {
+      await setDoc(doc(db, 'reseller_requests', newRequest.id), sanitizeForFirestore(newRequest));
+    } catch (err: any) {
+      console.warn('Failed to save reseller request to Firestore:', err);
+    }
+
+    return { success: true };
+  };
+
+  const approveResellerRequest = async (requestId: string, options?: { wholesaleDiscountPercent?: number }) => {
+    const target = resellerRequests.find((r) => r.id === requestId);
+    if (!target) return { success: false, error: 'Access request not found.' };
+
+    const discount = options?.wholesaleDiscountPercent ?? target.wholesaleDiscountPercent ?? 20;
+    const cleanEmail = target.email.toLowerCase().trim();
+    const resellerId = `res_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    const newReseller: ResellerUser = {
+      id: resellerId,
+      businessName: target.businessName || `${target.contactName}'s Collections`,
+      name: target.contactName,
+      email: cleanEmail,
+      phone: target.whatsappNumber,
+      whatsappNumber: target.whatsappNumber,
+      city: target.city || '',
+      state: target.state || 'Tamil Nadu',
+      gstOrPan: target.gstOrPan || undefined,
+      wholesaleDiscountPercent: discount,
+      status: 'active',
+      authMethod: 'google',
+      createdAt: new Date().toISOString(),
+      approvedAt: new Date().toISOString(),
+      approvedBy: currentUser?.name || 'Admin Owner',
+      totalSales: 0,
+      totalOrdersCount: 0,
+    };
+
+    const updatedRequest: ResellerAccessRequest = {
+      ...target,
+      status: 'approved',
+      reviewedAt: new Date().toISOString(),
+      reviewedBy: currentUser?.name || 'Admin Owner',
+      wholesaleDiscountPercent: discount,
+    };
+
+    const updatedResellers = [newReseller, ...resellers.filter((r) => r.email?.toLowerCase() !== cleanEmail)];
+    const updatedRequests = resellerRequests.map((r) => (r.id === requestId ? updatedRequest : r));
+
+    setResellers(updatedResellers);
+    setResellerRequests(updatedRequests);
+    saveToStorage('aara_boutique_resellers_v3', updatedResellers);
+    saveToStorage('neydhal_reseller_requests_v1', updatedRequests);
+
+    // Save to separate collection named "reseller" on database and update request in "reseller_requests"
+    try {
+      await setDoc(doc(db, 'reseller', newReseller.id), sanitizeForFirestore(newReseller));
+      await setDoc(doc(db, 'reseller_requests', requestId), sanitizeForFirestore(updatedRequest), { merge: true });
+    } catch (err: any) {
+      console.warn('Error saving approved reseller to Firestore:', err);
+    }
+
+    return { success: true };
+  };
+
+  const declineResellerRequest = async (requestId: string, reason?: string) => {
+    const target = resellerRequests.find((r) => r.id === requestId);
+    if (!target) return { success: false, error: 'Access request not found.' };
+
+    const updatedRequest: ResellerAccessRequest = {
+      ...target,
+      status: 'declined',
+      reviewedAt: new Date().toISOString(),
+      reviewedBy: currentUser?.name || 'Admin Owner',
+      rejectionReason: reason || 'Declined by boutique administration',
+    };
+
+    const updatedRequests = resellerRequests.map((r) => (r.id === requestId ? updatedRequest : r));
+    setResellerRequests(updatedRequests);
+    saveToStorage('neydhal_reseller_requests_v1', updatedRequests);
+
+    try {
+      await setDoc(doc(db, 'reseller_requests', requestId), sanitizeForFirestore(updatedRequest), { merge: true });
+    } catch (err: any) {
+      console.warn('Error declining reseller request in Firestore:', err);
+    }
+    return { success: true };
+  };
+
+  const createResellerManual = async (
+    data: Omit<ResellerUser, 'id' | 'createdAt' | 'totalSales' | 'totalOrdersCount'>
+  ) => {
+    const cleanEmail = data.email.toLowerCase().trim();
+    const resellerId = `res_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newReseller: ResellerUser = {
+      ...data,
+      id: resellerId,
+      email: cleanEmail,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      approvedAt: new Date().toISOString(),
+      approvedBy: currentUser?.name || 'Admin Owner',
+      totalSales: 0,
+      totalOrdersCount: 0,
+    };
+
+    const updatedResellers = [newReseller, ...resellers.filter((r) => r.id !== newReseller.id)];
+    setResellers(updatedResellers);
+    saveToStorage('aara_boutique_resellers_v3', updatedResellers);
+
+    try {
+      await setDoc(doc(db, 'reseller', newReseller.id), sanitizeForFirestore(newReseller));
+    } catch (err: any) {
+      console.warn('Error saving manual reseller to Firestore:', err);
+    }
+    return { success: true };
+  };
+
+  const updateResellerStatus = async (resellerId: string, status: 'active' | 'suspended') => {
+    const updated = resellers.map((r) => (r.id === resellerId ? { ...r, status } : r));
+    setResellers(updated);
+    saveToStorage('aara_boutique_resellers_v3', updated);
+    try {
+      await updateDoc(doc(db, 'reseller', resellerId), { status });
+    } catch (err: any) {
+      console.warn('Error updating reseller status in Firestore:', err);
+    }
+    return { success: true };
+  };
+
+  const deleteReseller = async (resellerId: string) => {
+    const updated = resellers.filter((r) => r.id !== resellerId);
+    setResellers(updated);
+    saveToStorage('aara_boutique_resellers_v3', updated);
+    try {
+      await deleteDoc(doc(db, 'reseller', resellerId));
+    } catch (err: any) {
+      console.warn('Error deleting reseller in Firestore:', err);
+    }
+    return { success: true };
   };
 
   const resellerRegister = async (
     data: Omit<ResellerUser, 'id' | 'createdAt' | 'wholesaleDiscountPercent' | 'status'>
   ) => {
-    const newReseller: ResellerUser = {
-      ...data,
-      id: `res_${Date.now()}`,
-      wholesaleDiscountPercent: 20, // Default 20% wholesale discount tier
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      totalSales: 0,
-      totalOrdersCount: 0,
-    };
-    setResellers((prev) => [newReseller, ...prev]);
-    setCurrentReseller(newReseller);
-    saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, newReseller);
-    setDoc(doc(db, 'resellers', newReseller.id), sanitizeForFirestore(newReseller)).catch(() => {});
-    return { success: true, reseller: newReseller };
+    return requestResellerAccess({
+      businessName: data.businessName,
+      contactName: data.name,
+      email: data.email,
+      whatsappNumber: data.whatsappNumber || data.phone,
+      city: data.city,
+      gstOrPan: data.gstOrPan,
+    });
   };
 
   const resellerLogout = () => {
@@ -1888,10 +2072,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return () => unsub();
   }, []);
 
-  // Real-time Firestore sync for Resellers Collection (/resellers)
+  // Real-time Firestore sync for Reseller Collection (/reseller)
   useEffect(() => {
     const unsub = onSnapshot(
-      collection(db, 'resellers'),
+      collection(db, 'reseller'),
       (snapshot) => {
         if (!snapshot.empty) {
           const list: ResellerUser[] = [];
@@ -1904,12 +2088,48 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           setResellers(list);
           saveToStorage('aara_boutique_resellers_v3', list);
         } else {
-          setResellers([]);
-          saveToStorage('aara_boutique_resellers_v3', []);
+          // Fallback to check legacy 'resellers' collection
+          getDocs(collection(db, 'resellers')).then((legacySnap) => {
+            if (!legacySnap.empty) {
+              const legacyList: ResellerUser[] = [];
+              legacySnap.forEach((d) => {
+                if (d.id !== 'res_demo_meenakshi') {
+                  legacyList.push({ ...(d.data() as ResellerUser), id: d.id });
+                }
+              });
+              if (legacyList.length > 0) {
+                setResellers(legacyList);
+                saveToStorage('aara_boutique_resellers_v3', legacyList);
+              }
+            }
+          }).catch(() => {});
         }
       },
       (error) => {
-        console.warn('Firestore resellers listener warning:', error);
+        console.warn('Firestore reseller listener warning:', error);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync for Reseller Access Requests (/reseller_requests)
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'reseller_requests'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: ResellerAccessRequest[] = [];
+          snapshot.forEach((d) => {
+            const data = d.data() as ResellerAccessRequest;
+            list.push({ ...data, id: d.id });
+          });
+          list.sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
+          setResellerRequests(list);
+          saveToStorage('neydhal_reseller_requests_v1', list);
+        }
+      },
+      (error) => {
+        console.warn('Firestore reseller_requests listener warning:', error);
       }
     );
     return () => unsub();
@@ -5046,9 +5266,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setIsCustomerAccountModalOpen,
         currentReseller,
         resellers,
+        resellerRequests,
         resellerLogin,
         resellerLoginWithGoogle,
         resellerRegister,
+        requestResellerAccess,
+        approveResellerRequest,
+        declineResellerRequest,
+        createResellerManual,
+        updateResellerStatus,
+        deleteReseller,
         resellerLogout,
         resellerOrders,
         placeResellerOrder,

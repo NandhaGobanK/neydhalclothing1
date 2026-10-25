@@ -7,6 +7,7 @@ import { StaffManager } from './StaffManager';
 import { StaffBucketManager } from './StaffBucketManager';
 import { SettingsManager } from './SettingsManager';
 import { CustomerIssuesManager } from './CustomerIssuesManager';
+import { ResellerLedgerManager } from './ResellerLedgerManager';
 import { playOrderNotificationSound, playChatChimeSound } from '../../utils/audio';
 import {
   getNotificationPermission,
@@ -32,6 +33,7 @@ import {
   Clock,
   ArrowRight,
   MessageSquare,
+  Building,
 } from 'lucide-react';
 import { useStaffIdleTracker } from '../../hooks/useStaffIdleTracker';
 import { hasActiveCustomerIssue } from '../../utils/disputeRedressals';
@@ -54,8 +56,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     incomingChatAlert,
     dismissChatAlert,
     setActiveAdminChatOrderId,
+    resellerRequests,
   } = useStore();
   const isAdmin = currentUser?.type === 'admin';
+
+  // Reseller Ledger pending access requests count
+  const pendingResellerRequestsCount = (resellerRequests || []).filter((r) => r.status === 'pending').length;
 
   // 15-Minute Staff Inactivity & Idle Detection Tracker (User Request)
   const {
@@ -109,7 +115,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
     | 'analytics'
     | 'staff'
     | 'settings'
-    | 'customers_issue';
+    | 'customers_issue'
+    | 'reseller_ledger';
 
   const getInitialTab = (): AdminTab => {
     try {
@@ -126,6 +133,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
           'staff',
           'settings',
           'customers_issue',
+          'reseller_ledger',
         ];
         if (queryTab && validTabs.includes(queryTab as AdminTab)) {
           return queryTab as AdminTab;
@@ -505,6 +513,26 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
                 <span>Settings</span>
               </button>
             )}
+
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab('reseller_ledger')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                  activeTab === 'reseller_ledger'
+                    ? 'bg-purple-900 text-white font-bold shadow-xs'
+                    : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
+                }`}
+                title="Reseller Ledger: Partner Authentication & Access Requests"
+              >
+                <Building className="w-3.5 h-3.5 text-purple-400" />
+                <span>Reseller Ledger</span>
+                {pendingResellerRequestsCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-neutral-950 text-[10px] font-bold animate-pulse">
+                    {pendingResellerRequestsCount}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -759,6 +787,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onReturnToStore }) => 
             }}
           />
         )}
+        {activeTab === 'reseller_ledger' && <ResellerLedgerManager />}
       </main>
     </div>
   );

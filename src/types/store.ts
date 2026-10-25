@@ -423,6 +423,27 @@ export interface ResellerUser {
   createdAt: string;
   totalSales?: number;
   totalOrdersCount?: number;
+  approvedAt?: string;
+  approvedBy?: string;
+}
+
+export interface ResellerAccessRequest {
+  id: string;
+  businessName?: string;
+  contactName: string;
+  email: string;
+  whatsappNumber: string;
+  city?: string;
+  state?: string;
+  gstOrPan?: string;
+  status: 'pending' | 'approved' | 'declined';
+  requestedAt: string;
+  createdAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  rejectionReason?: string;
+  declineReason?: string;
+  wholesaleDiscountPercent?: number;
 }
 
 export type ThemeMode = 'light' | 'dark';

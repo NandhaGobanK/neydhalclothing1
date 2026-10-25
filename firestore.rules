@@ -79,6 +79,16 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Dedicated B2B Reseller Collection for approved partners
+    match /reseller/{resellerId} {
+      allow read, write: if true;
+    }
+
+    // Reseller Access Requests for Admin Ledger
+    match /reseller_requests/{requestId} {
+      allow read, write: if true;
+    }
+
     // Boutique Staff Accounts & Permissions
     match /staff/{staffId} {
       // Allow read and write for staff management

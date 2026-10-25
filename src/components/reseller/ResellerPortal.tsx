@@ -47,9 +47,12 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 }) => {
   const {
     currentReseller,
+    resellers,
+    resellerRequests,
     resellerLogin,
     resellerLoginWithGoogle,
     resellerRegister,
+    requestResellerAccess,
     resellerLogout,
     resellerOrders,
     placeResellerOrder,
@@ -68,12 +71,33 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
   // Reseller registration fields
   const [regBusinessName, setRegBusinessName] = useState('');
   const [regContactName, setRegContactName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
   const [regWhatsapp, setRegWhatsapp] = useState('');
   const [regCity, setRegCity] = useState('');
   const [regGst, setRegGst] = useState('');
 
   const [authError, setAuthError] = useState('');
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+  const [requestStatus, setRequestStatus] = useState<{
+    type: 'approved' | 'pending' | 'submitted' | null;
+    message?: string;
+  }>({ type: null });
+
+  // Check if entered email is already approved in the separate reseller collection
+  const existingApprovedReseller = useMemo(() => {
+    if (!regEmail.trim()) return null;
+    return (resellers || []).find(
+      (r) => r.email?.toLowerCase() === regEmail.trim().toLowerCase() && r.status === 'active'
+    );
+  }, [resellers, regEmail]);
+
+  // Check if an existing request is pending
+  const existingPendingRequest = useMemo(() => {
+    if (!regEmail.trim()) return null;
+    return (resellerRequests || []).find(
+      (r) => r.email?.toLowerCase() === regEmail.trim().toLowerCase() && r.status === 'pending'
+    );
+  }, [resellerRequests, regEmail]);
 
   const handleGoogleResellerSignIn = async () => {
     setAuthError('');
@@ -84,6 +108,9 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       if (!res.success) {
         if (res.isNotRegistered) {
           setUnregisteredReseller({ email: res.email || '' });
+          if (res.email) {
+            setRegEmail(res.email);
+          }
         }
         setAuthError(res.error || 'Google Sign-in failed for Reseller Portal.');
       }
@@ -94,12 +121,17 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     }
   };
 
-  const handleGoogleResellerRegister = async (e: React.FormEvent) => {
+  const handleRequestResellerAccessSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
-    setUnregisteredReseller(null);
-    if (!regBusinessName.trim() || !regContactName.trim()) {
-      setAuthError('Business name and contact person name are required.');
+    setRequestStatus({ type: null });
+
+    if (!regContactName.trim()) {
+      setAuthError('Contact name is required.');
+      return;
+    }
+    if (!regEmail.trim() || !regEmail.includes('@')) {
+      setAuthError('Please provide a valid Email ID to register with.');
       return;
     }
     const cleanPhone = regWhatsapp.replace(/\D/g, '').slice(-10);
@@ -107,21 +139,38 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       setAuthError('Please provide a valid 10-digit WhatsApp number.');
       return;
     }
+
     setIsSubmittingAuth(true);
     try {
-      const res = await resellerLoginWithGoogle({
-        mode: 'register',
-        businessName: regBusinessName.trim(),
+      const res = await requestResellerAccess({
+        businessName: regBusinessName.trim() || undefined,
         contactName: regContactName.trim(),
+        email: regEmail.trim().toLowerCase(),
         whatsappNumber: cleanPhone,
-        city: regCity.trim(),
+        city: regCity.trim() || undefined,
         gstOrPan: regGst.trim() || undefined,
       });
-      if (!res.success) {
-        setAuthError(res.error || 'Google registration for reseller enterprise failed.');
+
+      if (res.alreadyApproved) {
+        setRequestStatus({
+          type: 'approved',
+          message: 'User account has been register with Neydhal clothing. proceed to login.',
+        });
+      } else if (res.alreadyPending) {
+        setRequestStatus({
+          type: 'pending',
+          message: 'An access request for this email is already awaiting administrator review in the Reseller Ledger.',
+        });
+      } else if (res.success) {
+        setRequestStatus({
+          type: 'submitted',
+          message: 'Your access request has been sent to the store admin. Once approved, you can proceed to login.',
+        });
+      } else {
+        setAuthError(res.error || 'Failed to submit reseller access request.');
       }
     } catch (err: any) {
-      setAuthError(err?.message || 'Registration error occurred.');
+      setAuthError(err?.message || 'Error occurred while submitting request.');
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -325,16 +374,510 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     return resellerOrders.reduce((sum, o) => sum + (o.resellerMargin || 0), 0);
   }, [resellerOrders]);
 
+  if (!isOpen) return null;
+
+  // Dedicated Full-Page View for Unauthenticated Resellers (Sign In & Register)
+  if (!currentReseller) {
+    return (
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-[#4a0e68] flex flex-col justify-between text-neutral-100 selection:bg-purple-900 selection:text-white animate-in fade-in duration-200">
+        {/* Authentic Neydhal Royal Purple & Texture Background */}
+        <div
+          className="absolute inset-0 bg-[#4a0e68] bg-cover bg-center bg-no-repeat pointer-events-none"
+          style={{
+            backgroundImage: `
+              radial-gradient(circle at 50% 15%, rgba(110, 20, 148, 0.72) 0%, rgba(74, 14, 104, 0.94) 55%, rgba(42, 6, 61, 0.98) 100%),
+              url('/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg')
+            `,
+            backgroundSize: 'cover, 480px',
+            backgroundPosition: 'center, center',
+            backgroundRepeat: 'no-repeat, repeat',
+            backgroundBlendMode: 'normal, soft-light',
+          }}
+        />
+        {/* Ambient atmospheric glows */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[850px] h-[450px] bg-[#891bb8]/25 rounded-full blur-[150px] pointer-events-none" />
+        <div className="absolute -bottom-20 -right-20 w-[600px] h-[400px] bg-[#f6db9e]/15 rounded-full blur-[140px] pointer-events-none" />
+
+        {/* Top Header */}
+        <header className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between border-b border-purple-300/20 shrink-0 bg-black/20 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <img
+              src="/assets/aistudio/Neydhal_logo_a18d5bd8.jpeg"
+              alt={settings.boutiqueName || 'Neydhal'}
+              className="w-11 h-11 rounded-2xl object-cover shadow-lg border border-amber-300/40"
+            />
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-serif font-bold text-white tracking-tight">
+                  {settings.boutiqueName || 'Neydhal'}
+                </h1>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-200 border border-amber-400/30">
+                  B2B Wholesale Portal
+                </span>
+              </div>
+              <p className="text-xs text-purple-200/80 hidden sm:block">
+                Exclusive partner channel for boutiques, WhatsApp resellers & catalog dropshippers
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition cursor-pointer active:scale-95 shadow-sm"
+          >
+            <span>&larr; Return to Patron Store</span>
+          </button>
+        </header>
+
+        {/* Main Content: Full-Page Layout with Left Perks and Right Dual Action Card */}
+        <main className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12 my-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            {/* Left Column: B2B Value Proposition & Wholesale Perks */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="space-y-3">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-400/30">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Wholesale Partner Program
+                </span>
+                <h2 className="text-3xl sm:text-4xl font-serif font-bold text-white leading-tight">
+                  Empowering Resellers & Boutiques
+                </h2>
+                <p className="text-sm text-neutral-300 leading-relaxed">
+                  Join our enterprise network to source pure handcrafted silk sarees at direct weaver wholesale prices with guaranteed high margins and zero dead-stock risk.
+                </p>
+              </div>
+
+              {/* B2B Perks List */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs">
+                  <span className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 mt-0.5">
+                    <DollarSign className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">20% Flat Wholesale Margin</h4>
+                    <p className="text-xs text-neutral-400 mt-0.5">Instant discount applied to all Kanjivaram, Banarasi, and Chanderi sarees.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs">
+                  <span className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 mt-0.5">
+                    <Truck className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">White-Label Blind Dropshipping</h4>
+                    <p className="text-xs text-neutral-400 mt-0.5">We dispatch directly to your end buyers with unbranded packaging and no invoices.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs">
+                  <span className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 mt-0.5">
+                    <Download className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">1-Click High-Res Media Packs</h4>
+                    <p className="text-xs text-neutral-400 mt-0.5">Download unwatermarked ZIP packs and single photos for WhatsApp & Instagram.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs">
+                  <span className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 mt-0.5">
+                    <ShieldCheck className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Dedicated Dispatch & Support</h4>
+                    <p className="text-xs text-neutral-400 mt-0.5">Express DTDC & Blue Dart courier with real-time tracking links for your customers.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: High-Visibility Auth Card */}
+            <div className="lg:col-span-7">
+              <div className="bg-white text-neutral-900 rounded-3xl shadow-2xl p-6 sm:p-8 border border-white/20 relative">
+                {/* Mode Switcher Tabs - Both Reseller Sign In & Register as Reseller are prominent and clearly visible */}
+                <div className="flex items-center bg-neutral-100 p-1.5 rounded-2xl border border-neutral-200 mb-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('login');
+                      setAuthError('');
+                      setUnregisteredReseller(null);
+                    }}
+                    className={`flex-1 py-3 px-3 text-xs sm:text-sm font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 ${
+                      authMode === 'login'
+                        ? 'bg-purple-900 text-white shadow-md'
+                        : 'text-neutral-600 hover:text-neutral-900'
+                    }`}
+                  >
+                    <Store className="w-4 h-4" />
+                    <span>Reseller Sign In</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('register');
+                      setAuthError('');
+                      setUnregisteredReseller(null);
+                    }}
+                    className={`flex-1 py-3 px-3 text-xs sm:text-sm font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 ${
+                      authMode === 'register'
+                        ? 'bg-purple-900 text-white shadow-md'
+                        : 'text-neutral-600 hover:text-neutral-900'
+                    }`}
+                  >
+                    <Building className="w-4 h-4" />
+                    <span>Register as Reseller</span>
+                  </button>
+                </div>
+
+                {/* Approved Account Banner - Exact copy as requested */}
+                {(requestStatus.type === 'approved' || (existingApprovedReseller && !requestStatus.type)) && (
+                  <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-500 text-emerald-950 space-y-3 mb-6 animate-in fade-in">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-sm text-emerald-900">
+                          User account has been register with Neydhal clothing. proceed to login.
+                        </p>
+                        <p className="text-xs text-emerald-800 mt-1">
+                          Your reseller account for <strong>{regEmail || existingApprovedReseller?.email}</strong> has been authenticated by the store administrator.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('login');
+                        setAuthError('');
+                        setRequestStatus({ type: null });
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs active:scale-98"
+                    >
+                      <span>Proceed to Login</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Pending Request Banner */}
+                {(requestStatus.type === 'pending' || (existingPendingRequest && !requestStatus.type && !existingApprovedReseller)) && (
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 space-y-2 mb-6 animate-in fade-in">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-xs sm:text-sm text-amber-900">Access Request Pending Admin Approval</p>
+                        <p className="text-xs text-amber-800 mt-0.5">
+                          Your reseller access request for <strong>{regEmail || existingPendingRequest?.email}</strong> is currently pending review in the administrator's Reseller Ledger. Once approved, you can proceed to login.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Newly Submitted Banner */}
+                {requestStatus.type === 'submitted' && (
+                  <div className="p-4 rounded-2xl bg-purple-50 border border-purple-300 text-purple-950 space-y-2 mb-6 animate-in fade-in">
+                    <div className="flex items-start gap-2.5">
+                      <Sparkles className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-xs sm:text-sm text-purple-900">Access Request Submitted!</p>
+                        <p className="text-xs text-purple-800 mt-0.5">
+                          Your application for <strong>{regEmail}</strong> has been transmitted to our administrator's Reseller Ledger. You will be able to log in once access has been approved.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Unregistered Alert Notification */}
+                {unregisteredReseller && !existingApprovedReseller && (
+                  <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 text-xs space-y-2.5 mb-6 animate-in fade-in">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-purple-950">Reseller Access Required</p>
+                        <p className="text-[11px] text-purple-800 mt-0.5">
+                          No approved B2B reseller account was found for <strong>{unregisteredReseller.email}</strong>. Resellers cannot log in without administrator authorization. Please submit a request for reseller access below.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('register');
+                        setAuthError('');
+                        setRegEmail(unregisteredReseller.email);
+                      }}
+                      className="w-full py-2.5 px-3 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-98"
+                    >
+                      <span>Request Access with This Email</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Error Notification */}
+                {authError && !unregisteredReseller && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 mb-6 animate-in fade-in">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{authError}</span>
+                  </div>
+                )}
+
+                {authMode === 'login' ? (
+                  <div className="space-y-5">
+                    <div className="space-y-1.5">
+                      <h3 className="font-serif text-2xl font-bold text-neutral-900">
+                        B2B Partner Sign In
+                      </h3>
+                      <p className="text-xs text-neutral-500 leading-relaxed">
+                        Sign in with your approved Google email to unlock wholesale margins, blind dropshipping, and high-res media packs.
+                      </p>
+                    </div>
+
+                    {/* Primary Action: Google Authentication for Resellers */}
+                    <button
+                      type="button"
+                      onClick={handleGoogleResellerSignIn}
+                      disabled={isSubmittingAuth}
+                      className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-neutral-50 text-neutral-800 border-2 border-neutral-300 hover:border-neutral-400 font-bold text-sm flex items-center justify-center gap-3 transition shadow-xs hover:shadow-md cursor-pointer disabled:opacity-50 active:scale-98"
+                    >
+                      <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                      </svg>
+                      <span>{isSubmittingAuth ? 'Verifying Reseller Status...' : 'Sign In with Google (Reseller ID)'}</span>
+                    </button>
+
+                    <div className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-1">
+                      <p className="text-xs text-purple-900 font-bold flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-purple-800" />
+                        <span>Admin Authentication Required</span>
+                      </p>
+                      <p className="text-[11px] text-neutral-500 leading-relaxed">
+                        Resellers cannot log in without administrator authorization. Once your access request is approved on the admin Reseller Ledger, your account is saved in the database for instant authentication.
+                      </p>
+                    </div>
+
+                    <div className="text-center pt-2">
+                      <p className="text-xs text-neutral-600">
+                        Need wholesale access?{' '}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAuthMode('register');
+                            setAuthError('');
+                            setUnregisteredReseller(null);
+                          }}
+                          className="text-purple-900 hover:text-purple-700 font-bold underline cursor-pointer"
+                        >
+                          Request reseller access now &rarr;
+                        </button>
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleRequestResellerAccessSubmit} className="space-y-4">
+                    <div className="space-y-1 pb-1">
+                      <h3 className="font-serif text-2xl font-bold text-neutral-900">
+                        Request Reseller Access
+                      </h3>
+                      <p className="text-xs text-neutral-500 leading-relaxed">
+                        Fill in your enterprise details below. Once approved on the Reseller Ledger, your account will be activated with Neydhal clothing.
+                      </p>
+                    </div>
+
+                    {/* Reseller Business Name: optional, no asterisk, no (optional) */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                        Reseller Business Name
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                          <Building className="w-4 h-4" />
+                        </span>
+                        <input
+                          type="text"
+                          value={regBusinessName}
+                          onChange={(e) => setRegBusinessName(e.target.value)}
+                          placeholder="e.g. Sri Meenakshi Saree Collections"
+                          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                          Contact Name *
+                        </label>
+                        <div className="relative">
+                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                            <User className="w-4 h-4" />
+                          </span>
+                          <input
+                            type="text"
+                            required
+                            value={regContactName}
+                            onChange={(e) => setRegContactName(e.target.value)}
+                            placeholder="Proprietor / Partner Name"
+                            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Email ID: Added column as requested */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                          Email ID *
+                        </label>
+                        <div className="relative">
+                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                            <Mail className="w-4 h-4" />
+                          </span>
+                          <input
+                            type="email"
+                            required
+                            value={regEmail}
+                            onChange={(e) => {
+                              setRegEmail(e.target.value);
+                              if (requestStatus.type) setRequestStatus({ type: null });
+                            }}
+                            placeholder="partner@example.com"
+                            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                          WhatsApp Number *
+                        </label>
+                        <div className="relative">
+                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                            <Phone className="w-4 h-4" />
+                          </span>
+                          <input
+                            type="tel"
+                            required
+                            maxLength={10}
+                            value={regWhatsapp}
+                            onChange={(e) => setRegWhatsapp(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            placeholder="10-digit mobile number"
+                            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                          City / Location
+                        </label>
+                        <div className="relative">
+                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                            <MapPin className="w-4 h-4" />
+                          </span>
+                          <input
+                            type="text"
+                            value={regCity}
+                            onChange={(e) => setRegCity(e.target.value)}
+                            placeholder="e.g. Madurai, Salem"
+                            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* GST or PAN: removed (optional) */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                        GST or PAN
+                      </label>
+                      <input
+                        type="text"
+                        value={regGst}
+                        onChange={(e) => setRegGst(e.target.value)}
+                        placeholder="33AAAAA0000A1Z5 / PAN"
+                        className="w-full px-3 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
+                      />
+                    </div>
+
+                    {/* Request Reseller Access Button */}
+                    <button
+                      type="submit"
+                      disabled={isSubmittingAuth}
+                      className="w-full py-3.5 px-4 rounded-2xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-sm flex items-center justify-center gap-2.5 transition shadow-md hover:shadow-lg cursor-pointer disabled:opacity-50 active:scale-98 mt-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>{isSubmittingAuth ? 'Submitting Access Request...' : 'Request Reseller Access'}</span>
+                    </button>
+
+                    <div className="text-center pt-2">
+                      <p className="text-xs text-neutral-600">
+                        Already approved as reseller?{' '}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAuthMode('login');
+                            setAuthError('');
+                            setUnregisteredReseller(null);
+                          }}
+                          className="text-purple-900 hover:text-purple-700 font-bold underline cursor-pointer"
+                        >
+                          Sign In with Google &rarr;
+                        </button>
+                      </p>
+                    </div>
+                  </form>
+                )}
+
+                {/* Return to Customer Login */}
+                <div className="pt-4 mt-4 text-center border-t border-neutral-200">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="text-xs text-neutral-500 hover:text-purple-900 transition font-medium cursor-pointer"
+                  >
+                    Not a reseller? Return to Patron / Retail Storefront &rarr;
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* Full-Page Footer */}
+        <footer className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-purple-300/70 border-t border-white/10">
+          <p>
+            &copy; {new Date().getFullYear()} {settings.boutiqueName || 'Aara Heritage'}. Enterprise B2B Reseller Network. All rights reserved.
+          </p>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="hover:text-white transition cursor-pointer"
+            >
+              Patron Retail Store
+            </button>
+            <span>&bull;</span>
+            <span>Direct Concierge Dispatch</span>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
+  // Authenticated Reseller Portal: Full-Page Layout
   return (
-    <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="relative w-full max-w-6xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-200 my-auto flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
-        {/* Top Reseller Brand Ribbon */}
-        <div className="bg-gradient-to-r from-purple-950 via-neutral-900 to-indigo-950 text-white p-5 sm:p-6 shrink-0 relative border-b border-purple-800/40">
+    <div className="min-h-screen w-full bg-neutral-100 flex flex-col text-neutral-900 animate-in fade-in duration-200">
+      {/* Top Reseller Brand Ribbon */}
+      <div className="bg-gradient-to-r from-purple-950 via-neutral-900 to-indigo-950 text-white p-5 sm:p-6 shrink-0 relative border-b border-purple-800/40">
+        <div className="max-w-7xl mx-auto w-full">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3 pr-2">
               <span className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shadow-md border border-purple-400/30 shrink-0">
@@ -343,33 +886,29 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-lg sm:text-2xl font-serif font-bold text-white tracking-tight">
-                    {currentReseller ? currentReseller.businessName : 'Boutique Reseller Portal'}
+                    {currentReseller.businessName}
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/30 text-purple-200 border border-purple-400/30">
                     B2B Wholesale Hub
                   </span>
                 </div>
                 <p className="text-xs text-neutral-300 mt-0.5">
-                  {currentReseller
-                    ? `Logged in: ${currentReseller.name} · WhatsApp: +91 ${currentReseller.whatsappNumber} · Tier: ${currentReseller.wholesaleDiscountPercent}% Wholesale Margin`
-                    : 'Exclusive B2B access for boutique partners, WhatsApp resellers & catalog dropshippers.'}
+                  Logged in: {currentReseller.name} &middot; WhatsApp: +91 {currentReseller.whatsappNumber} &middot; Tier: {currentReseller.wholesaleDiscountPercent}% Wholesale Margin
                 </p>
               </div>
             </div>
 
             {/* Top Right Action Controls: Logout, Return to Patron Store, Close */}
             <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap justify-end z-10">
-              {currentReseller && (
-                <button
-                  type="button"
-                  onClick={resellerLogout}
-                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs whitespace-nowrap active:scale-95"
-                  title="Sign out of Reseller session"
-                >
-                  <LogOut className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                  <span>Reseller Logout</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={resellerLogout}
+                className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs whitespace-nowrap active:scale-95"
+                title="Sign out of Reseller session"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span>Reseller Logout</span>
+              </button>
 
               <button
                 type="button"
@@ -393,340 +932,64 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
           </div>
 
           {/* Navigation Bar if Authenticated */}
-          {currentReseller && (
-            <div className="flex items-center gap-2 mt-5 overflow-x-auto no-scrollbar border-t border-white/10 pt-3">
-              <button
-                type="button"
-                onClick={() => setActiveTab('catalog')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
-                  activeTab === 'catalog'
-                    ? 'bg-purple-500 text-white shadow-sm'
-                    : 'text-neutral-300 hover:text-white bg-white/5'
-                }`}
-              >
-                <Store className="w-4 h-4" />
-                <span>Wholesale Catalog ({filteredProducts.length})</span>
-              </button>
+          <div className="flex items-center gap-2 mt-5 overflow-x-auto no-scrollbar border-t border-white/10 pt-3">
+            <button
+              type="button"
+              onClick={() => setActiveTab('catalog')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
+                activeTab === 'catalog'
+                  ? 'bg-purple-500 text-white shadow-sm'
+                  : 'text-neutral-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <Store className="w-4 h-4" />
+              <span>Wholesale Catalog ({filteredProducts.length})</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('orders')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
-                  activeTab === 'orders'
-                    ? 'bg-purple-500 text-white shadow-sm'
-                    : 'text-neutral-300 hover:text-white bg-white/5'
-                }`}
-              >
-                <Package className="w-4 h-4" />
-                <span>My Dropships & Orders ({resellerOrders.length})</span>
-              </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('orders')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
+                activeTab === 'orders'
+                  ? 'bg-purple-500 text-white shadow-sm'
+                  : 'text-neutral-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              <span>My Dropships & Orders ({resellerOrders.length})</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('new_order')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
-                  activeTab === 'new_order'
-                    ? 'bg-purple-500 text-white shadow-sm'
-                    : 'text-neutral-300 hover:text-white bg-white/5'
-                }`}
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>Create Dropship Order</span>
-              </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('new_order')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
+                activeTab === 'new_order'
+                  ? 'bg-purple-500 text-white shadow-sm'
+                  : 'text-neutral-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Create Dropship Order</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('earnings')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
-                  activeTab === 'earnings'
-                    ? 'bg-purple-500 text-white shadow-sm'
-                    : 'text-neutral-300 hover:text-white bg-white/5'
-                }`}
-              >
-                <TrendingUp className="w-4 h-4" />
-                <span>Margin Earnings</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Unauthenticated View: Reseller Google Login / Registration */}
-        {!currentReseller ? (
-          <div className="p-6 sm:p-10 max-w-lg mx-auto w-full space-y-6">
-            {/* Mode Switcher Tabs */}
-            <div className="flex items-center bg-neutral-100 p-1.5 rounded-2xl border border-neutral-200">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('login');
-                  setAuthError('');
-                  setUnregisteredReseller(null);
-                }}
-                className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 ${
-                  authMode === 'login'
-                    ? 'bg-purple-900 text-white shadow-md'
-                    : 'text-neutral-600 hover:text-neutral-900'
-                }`}
-              >
-                <Store className="w-3.5 h-3.5" />
-                <span>Reseller Sign In</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('register');
-                  setAuthError('');
-                  setUnregisteredReseller(null);
-                }}
-                className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 ${
-                  authMode === 'register'
-                    ? 'bg-purple-900 text-white shadow-md'
-                    : 'text-neutral-600 hover:text-neutral-900'
-                }`}
-              >
-                <Building className="w-3.5 h-3.5" />
-                <span>Register as Reseller</span>
-              </button>
-            </div>
-
-            {/* Unregistered Alert Notification */}
-            {unregisteredReseller && (
-              <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 text-xs space-y-2.5 animate-in fade-in">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold text-purple-950">Reseller Account Not Found</p>
-                    <p className="text-[11px] text-purple-800 mt-0.5">
-                      No B2B reseller account is registered for <strong>{unregisteredReseller.email}</strong>. Please complete enterprise registration below to access wholesale catalog and discounts.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('register');
-                    setAuthError('');
-                  }}
-                  className="w-full py-2 px-3 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-98"
-                >
-                  <span>Register Enterprise Now</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-
-            {/* Error Notification */}
-            {authError && !unregisteredReseller && (
-              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>{authError}</span>
-              </div>
-            )}
-
-            {authMode === 'login' ? (
-              <div className="space-y-4">
-                <div className="text-center space-y-1">
-                  <h3 className="font-serif text-lg font-bold text-neutral-900">
-                    B2B Partner Sign In
-                  </h3>
-                  <p className="text-xs text-neutral-500 leading-relaxed max-w-xs mx-auto">
-                    Sign in with your verified Google email to unlock 20% flat wholesale margins, neutral dropshipping, and high-res media packs.
-                  </p>
-                </div>
-
-                {/* Primary Action: Google Authentication for Resellers (Firebase Auth) */}
-                <button
-                  type="button"
-                  onClick={handleGoogleResellerSignIn}
-                  disabled={isSubmittingAuth}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-neutral-50 text-neutral-800 border-2 border-neutral-300 hover:border-neutral-400 font-bold text-xs sm:text-sm flex items-center justify-center gap-3 transition shadow-xs hover:shadow-md cursor-pointer disabled:opacity-50 active:scale-98"
-                >
-                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                  </svg>
-                  <span>{isSubmittingAuth ? 'Verifying with Google...' : 'Sign In with Google (Reseller ID)'}</span>
-                </button>
-
-                <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-center space-y-1">
-                  <p className="text-[11px] text-purple-900 font-bold">
-                    Secure B2B Role Authorization
-                  </p>
-                  <p className="text-[10px] text-neutral-500">
-                    Verifies your email against registered B2B reseller accounts in our dedicated database.
-                  </p>
-                </div>
-
-                <div className="text-center pt-2">
-                  <p className="text-xs text-neutral-500">
-                    New reseller partner?{' '}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode('register');
-                        setAuthError('');
-                        setUnregisteredReseller(null);
-                      }}
-                      className="text-purple-800 hover:text-purple-900 font-bold underline cursor-pointer"
-                    >
-                      Register your enterprise
-                    </button>
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleGoogleResellerRegister} className="space-y-3.5">
-                <div className="text-center space-y-1 pb-1">
-                  <h3 className="font-serif text-lg font-bold text-neutral-900">
-                    Register Reseller Enterprise
-                  </h3>
-                  <p className="text-xs text-neutral-500 leading-relaxed max-w-xs mx-auto">
-                    Complete your enterprise details and authenticate with Google to activate your wholesale account.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                    Reseller Business Name *
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                      <Building className="w-4 h-4" />
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      value={regBusinessName}
-                      onChange={(e) => setRegBusinessName(e.target.value)}
-                      placeholder="e.g. Sri Meenakshi Saree Collections"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                      Contact Name *
-                    </label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                        <User className="w-4 h-4" />
-                      </span>
-                      <input
-                        type="text"
-                        required
-                        value={regContactName}
-                        onChange={(e) => setRegContactName(e.target.value)}
-                        placeholder="Proprietor Name"
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                      WhatsApp Number *
-                    </label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                        <Phone className="w-4 h-4" />
-                      </span>
-                      <input
-                        type="tel"
-                        required
-                        maxLength={10}
-                        value={regWhatsapp}
-                        onChange={(e) => setRegWhatsapp(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                        placeholder="10-digit mobile"
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                      City / Location
-                    </label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                        <MapPin className="w-4 h-4" />
-                      </span>
-                      <input
-                        type="text"
-                        value={regCity}
-                        onChange={(e) => setRegCity(e.target.value)}
-                        placeholder="e.g. Madurai, Salem"
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                      GST or PAN (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={regGst}
-                      onChange={(e) => setRegGst(e.target.value)}
-                      placeholder="33AAAAA0000A1Z5"
-                      className="w-full px-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-purple-900/30 focus:border-purple-900"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmittingAuth}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-3 transition shadow-md hover:shadow-lg cursor-pointer disabled:opacity-50 active:scale-98 mt-2"
-                >
-                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                  </svg>
-                  <span>{isSubmittingAuth ? 'Creating Enterprise Account...' : 'Register Enterprise with Google'}</span>
-                </button>
-
-                <div className="text-center pt-2">
-                  <p className="text-xs text-neutral-500">
-                    Already registered as reseller?{' '}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode('login');
-                        setAuthError('');
-                        setUnregisteredReseller(null);
-                      }}
-                      className="text-purple-800 hover:text-purple-900 font-bold underline cursor-pointer"
-                    >
-                      Sign In with Google
-                    </button>
-                  </p>
-                </div>
-              </form>
-            )}
-
-            {/* Return to Customer Login */}
-            <div className="pt-2 text-center border-t border-neutral-200">
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-xs text-neutral-500 hover:text-purple-900 transition font-medium cursor-pointer"
-              >
-                Not a reseller? Return to Patron / Retail Login &rarr;
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('earnings')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
+                activeTab === 'earnings'
+                  ? 'bg-purple-500 text-white shadow-sm'
+                  : 'text-neutral-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <TrendingUp className="w-4 h-4" />
+              <span>Margin Earnings</span>
+            </button>
           </div>
-        ) : (
-          /* Authenticated Reseller Content Body */
-          <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-neutral-50/50">
+        </div>
+      </div>
+
+      {/* Authenticated Reseller Content Body */}
+      <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-neutral-50/50 max-w-7xl mx-auto w-full">
             {/* TAB 1: WHOLESALE CATALOG & MEDIA PACKS */}
             {activeTab === 'catalog' && (
               <div className="space-y-4">
@@ -1456,8 +1719,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
               </div>
             )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
   );
 };
+
