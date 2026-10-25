@@ -31,8 +31,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
   const [mode, setMode] = useState<'signin' | 'register'>(initialMode);
   const [unregisteredNotice, setUnregisteredNotice] = useState<{ email: string; displayName?: string } | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState<{ name: string; phone: string; email: string } | null>(null);
 
-  // Registration fields
+  // Mandatory registration fields
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
 
@@ -44,6 +45,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const handleGoogleSignIn = async () => {
     setError('');
     setUnregisteredNotice(null);
+    setRegistrationSuccess(null);
     setIsSubmitting(true);
     try {
       const res = await customerLoginWithGoogle({ mode: 'signin' });
@@ -68,17 +70,34 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     e.preventDefault();
     setError('');
     setUnregisteredNotice(null);
+
+    // Mandatory field validations
+    if (!name.trim()) {
+      setError('Full Name is required for patron registration.');
+      return;
+    }
+    const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setError('A valid 10-digit mobile number is required.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const cleanPhone = phone.replace(/\D/g, '').slice(-10);
       const res = await customerLoginWithGoogle({
         mode: 'register',
         phone: cleanPhone,
         name: name.trim(),
+        autoSignIn: false, // Per requirements: display confirmation first, user then proceeds to sign in
       });
       if (res.success) {
-        onSuccess?.();
-        onClose();
+        // Confirmation state
+        setRegistrationSuccess({
+          name: res.customer?.name || name.trim(),
+          phone: res.customer?.phone || cleanPhone,
+          email: res.customer?.email || '',
+        });
+        setError('');
       } else {
         setError(res.error || 'Registration failed with Google. Please try again.');
       }
@@ -194,7 +213,50 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             </div>
           )}
 
-          {mode === 'signin' ? (
+          {registrationSuccess ? (
+            <div className="space-y-4 pt-2 animate-in fade-in zoom-in-95 text-center">
+              <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-inner">
+                <ShieldCheck className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="font-serif text-xl sm:text-2xl font-bold text-neutral-900">
+                  Account Created Successfully!
+                </h3>
+                <p className="text-xs text-neutral-600 mt-1 max-w-sm mx-auto">
+                  Your verified patron profile has been created for <strong>{registrationSuccess.name}</strong>. Please proceed to the sign-in page to log in.
+                </p>
+              </div>
+              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 text-left text-xs space-y-1.5 shadow-2xs">
+                <div className="flex justify-between text-neutral-600">
+                  <span>Full Name:</span>
+                  <span className="font-bold text-neutral-900">{registrationSuccess.name}</span>
+                </div>
+                <div className="flex justify-between text-neutral-600">
+                  <span>Mobile Number:</span>
+                  <span className="font-bold font-mono text-neutral-900">+91 {registrationSuccess.phone}</span>
+                </div>
+                {registrationSuccess.email && (
+                  <div className="flex justify-between text-neutral-600">
+                    <span>Google Account:</span>
+                    <span className="font-mono text-neutral-900 text-[11px]">{registrationSuccess.email}</span>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setRegistrationSuccess(null);
+                  setMode('signin');
+                  setError('');
+                }}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition cursor-pointer active:scale-98"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Proceed to Sign In</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          ) : mode === 'signin' ? (
             <div className="space-y-4 pt-2">
               <button
                 type="button"
@@ -240,8 +302,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           ) : (
             <form onSubmit={handleGoogleRegister} className="space-y-4 pt-1">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                  Full Name (Optional)
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center justify-between">
+                  <span>Full Name</span>
+                  <span className="text-[10px] text-rose-600 font-bold tracking-normal uppercase">Required</span>
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
@@ -249,17 +312,19 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   </span>
                   <input
                     type="text"
+                    required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Will use Google profile name if blank"
+                    placeholder="Enter your full name"
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-rose-900/30 focus:border-rose-900 transition"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
-                  Mobile Number (Optional)
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center justify-between">
+                  <span>Mobile Number (10 digits)</span>
+                  <span className="text-[10px] text-rose-600 font-bold tracking-normal uppercase">Required</span>
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
@@ -267,13 +332,17 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   </span>
                   <input
                     type="tel"
+                    required
                     maxLength={10}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     placeholder="10-digit number for order SMS/WhatsApp"
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-rose-900/30 focus:border-rose-900 transition"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 font-mono focus:outline-none focus:ring-2 focus:ring-rose-900/30 focus:border-rose-900 transition"
                   />
                 </div>
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Mandatory field for order notifications, dispatch updates, and private tracking.
+                </p>
               </div>
 
               <button

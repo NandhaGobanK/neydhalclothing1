@@ -85,6 +85,7 @@ export interface Product {
   category?: string; // Category grouping (e.g. Poontamil Sarees, Foil Print Sarees, etc.)
   isRestocked?: boolean; // Set to true when restocked via order cancellation or inventory update
   restockedAt?: string; // Timestamp of latest restock event
+  restockDurationHours?: number; // Configurable duration in hours (e.g. 24, 48, 72, 168)
   crossSellProductIds?: string[]; // Handpicked linked product IDs for cross-selling (e.g. matching blouse, jewelry)
   crossSellCategoryNames?: string[]; // Fallback cross-sell category names (e.g. ['Designer Blouses', 'Temple Jewelry'])
   isWholesaleAvailable?: boolean; // Available for B2B Reseller Portal wholesale
@@ -317,6 +318,7 @@ export interface OrderStatusChatTemplates {
 export interface OrderChatMessage {
   id: string;
   sender: 'customer' | 'staff' | 'admin';
+  senderRole?: string;
   senderName: string;
   senderId?: string;
   message: string;
@@ -424,10 +426,29 @@ export interface ResellerUser {
   lockedBy?: string;
   authMethod?: 'google' | 'password';
   createdAt: string;
+  savedAddresses?: CustomerAddress[]; // Saved dropship recipient addresses
   totalSales?: number;
   totalOrdersCount?: number;
   approvedAt?: string;
   approvedBy?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'restock' | 'order' | 'chat' | 'announcement' | 'system';
+  createdAt: string;
+  timestamp?: string | number;
+  read?: boolean;
+  isRead?: boolean;
+  targetType?: 'product' | 'order' | 'chat' | 'catalog' | 'reseller_orders' | 'store';
+  targetId?: string; // productId or orderId or orderNumber
+  productId?: string;
+  orderId?: string;
+  orderNumber?: string;
+  imageUrl?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface ResellerAccessRequest {
@@ -587,6 +608,7 @@ export interface StoreSettings {
   staffIdleAlert?: StaffIdleAlertSettings;
   sareeCategories?: SareeCategory[]; // Configured saree and apparel categories
   productAttributes?: ProductAttributeDefinition[]; // Flexible custom specifications / attributes
+  restockTagDurationHours?: number; // Boutique default duration in hours for Restocked tag (default 48)
   isFabricOptional?: boolean; // Admin preference: whether Fabric Type is optional
   autoConfirmationMode?: boolean; // When enabled, assigning order automatically transitions Pending -> Confirmed
   enableOrderDeletion?: boolean; // Dedicated Admin toggle: When enabled, authorized staff and admins can delete order records. When disabled, order deletion is completely blocked/hidden.

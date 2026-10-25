@@ -123,3 +123,84 @@ export function getCategoryPluralName(categoryName?: string): string {
   }
   return singular + 's';
 }
+
+/**
+ * Checks whether a product has an active "Restocked" status within the specified duration window.
+ * If the product is out of stock, or if the restock tag duration has expired, it automatically returns false.
+ */
+export function isProductRestocked(
+  product: Product | undefined | null,
+  defaultDurationHours: number = 48
+): boolean {
+  if (!product || !product.isRestocked) return false;
+  // If product is currently out of stock or stock count is 0, do not display Restocked tag
+  if (product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0)) {
+    return false;
+  }
+  // If no restocked timestamp is specified, treat as recently restocked
+  if (!product.restockedAt) return true;
+
+  const restockTime = new Date(product.restockedAt).getTime();
+  if (isNaN(restockTime)) return true;
+
+  const durationHours = product.restockDurationHours ?? defaultDurationHours ?? 48;
+  const durationMs = durationHours * 60 * 60 * 1000;
+  const elapsed = Date.now() - restockTime;
+
+  return elapsed >= 0 && elapsed < durationMs;
+}
+
+/**
+ * Returns human-readable remaining time until the "Restocked" tag automatically expires.
+ * e.g. "2d 5h left", "18h left", "45m left"
+ */
+export function getRestockRemainingTime(
+  product: Product | undefined | null,
+  defaultDurationHours: number = 48
+): string | null {
+  if (!product || !product.isRestocked || !product.restockedAt) return null;
+  if (product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0)) {
+    return null;
+  }
+
+  const restockTime = new Date(product.restockedAt).getTime();
+  if (isNaN(restockTime)) return null;
+
+  const durationHours = product.restockDurationHours ?? defaultDurationHours ?? 48;
+  const durationMs = durationHours * 60 * 60 * 1000;
+  const remainingMs = durationMs - (Date.now() - restockTime);
+
+  if (remainingMs <= 0) return null;
+
+  const hoursLeft = Math.floor(remainingMs / (1000 * 60 * 60));
+  const minutesLeft = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (hoursLeft >= 24) {
+    const daysLeft = Math.floor(hoursLeft / 24);
+    const remHours = hoursLeft % 24;
+    return remHours > 0 ? `${daysLeft}d ${remHours}h left` : `${daysLeft}d left`;
+  }
+  if (hoursLeft > 0) {
+    return `${hoursLeft}h left`;
+  }
+  return `${Math.max(1, minutesLeft)}m left`;
+}
+
+/**
+ * Returns remaining duration in hours for admin calculation
+ */
+export function getRestockRemainingHours(
+  product: Product | undefined | null,
+  defaultDurationHours: number = 48
+): number | null {
+  if (!product || !product.isRestocked || !product.restockedAt) return null;
+  const restockTime = new Date(product.restockedAt).getTime();
+  if (isNaN(restockTime)) return null;
+
+  const durationHours = product.restockDurationHours ?? defaultDurationHours ?? 48;
+  const durationMs = durationHours * 60 * 60 * 1000;
+  const remainingMs = durationMs - (Date.now() - restockTime);
+  if (remainingMs <= 0) return null;
+  return Math.max(0, Math.round(remainingMs / (1000 * 60 * 60)));
+}
+

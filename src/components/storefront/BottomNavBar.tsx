@@ -26,6 +26,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     settings,
     isTrackOrderOpen,
     currentCustomer,
+    customerNotifications,
     setIsCustomerAccountModalOpen,
     setIsCustomerAuthModalOpen,
   } = useStore();
@@ -62,6 +63,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     }
   };
 
+  const unreadNotifsCount = (customerNotifications || []).filter((n) => !n.isRead).length;
+
   const navItems = [
     {
       id: 'categories' as const,
@@ -89,6 +92,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
       badge:
         customerUnreadChatCount > 0
           ? `${customerUnreadChatCount} 💬`
+          : unreadNotifsCount > 0
+          ? `${unreadNotifsCount} 🔔`
           : customerOrdersCount > 0
           ? customerOrdersCount
           : undefined,

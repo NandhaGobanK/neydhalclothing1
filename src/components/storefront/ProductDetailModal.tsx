@@ -3,7 +3,7 @@ import { Product } from '../../types/store';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice, calculateDiscount, getProductShareUrl, getPublicStoreUrl } from '../../utils/upi';
 import { parseVideoUrl } from '../../utils/video';
-import { isProductInActiveCategories, getCategorySingularName, getCategoryPluralName } from '../../utils/productValidation';
+import { isProductInActiveCategories, getCategorySingularName, getCategoryPluralName, isProductRestocked, getRestockRemainingTime } from '../../utils/productValidation';
 import {
   X,
   ShoppingBag,
@@ -690,9 +690,18 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product:
                   </span>
                   <span aria-hidden="true">·</span>
                   {/* Stock Availability Indicator */}
-                  {product.isRestocked && !isOutOfStock && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-600 text-white border border-emerald-400 shadow-xs">
-                      <span>✨ Restocked</span>
+                  {isProductRestocked(product, settings?.restockTagDurationHours) && !isOutOfStock && (
+                    <span 
+                      title={getRestockRemainingTime(product, settings?.restockTagDurationHours) ? `Restocked! Tag expires in ${getRestockRemainingTime(product, settings?.restockTagDurationHours)}` : 'Recently Restocked'}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-600 text-white border border-emerald-400 shadow-xs"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
+                      <span>Restocked</span>
+                      {getRestockRemainingTime(product, settings?.restockTagDurationHours) && (
+                        <span className="text-[9px] bg-emerald-700/80 px-1.5 py-0.2 rounded-full font-mono text-emerald-100 ml-0.5">
+                          {getRestockRemainingTime(product, settings?.restockTagDurationHours)}
+                        </span>
+                      )}
                     </span>
                   )}
                   {isOutOfStock ? (

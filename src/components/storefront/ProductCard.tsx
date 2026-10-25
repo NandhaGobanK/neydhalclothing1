@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Product } from '../../types/store';
 import { formatPrice, calculateDiscount } from '../../utils/upi';
-import { Play, ShoppingBag, Eye, Star, Plus, Minus, Check, Heart, Sparkles, Download } from 'lucide-react';
+import { Play, ShoppingBag, Eye, Star, Plus, Minus, Check, Heart, Sparkles, Download, Clock } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { downloadSingleImage } from '../../utils/imageDownload';
+import { isProductRestocked, getRestockRemainingTime } from '../../utils/productValidation';
 
 interface ProductCardProps {
   product: Product;
@@ -19,6 +20,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
 
   const isOutOfStock = product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0);
   const maxStock = isOutOfStock ? 0 : (product.stockCount !== undefined && product.stockCount > 0 ? product.stockCount : 99);
+  const hasRestockTag = isProductRestocked(product, settings?.restockTagDurationHours);
+  const restockTimeLeft = hasRestockTag ? getRestockRemainingTime(product, settings?.restockTagDurationHours) : null;
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -52,8 +55,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
 
         {/* Top Badges (Discount Offer % Tag, Restocked Badge & Video Reel) */}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start z-10">
-          {product.isRestocked && !isOutOfStock && (
-            <div className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-bold shadow-md tracking-wider flex items-center gap-1 border border-emerald-400 animate-in zoom-in-75">
+          {hasRestockTag && !isOutOfStock && (
+            <div 
+              title={restockTimeLeft ? `Restocked! Tag expires in ${restockTimeLeft}` : 'Recently Restocked'}
+              className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-bold shadow-md tracking-wider flex items-center gap-1 border border-emerald-400 animate-in zoom-in-75"
+            >
               <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
               <span>Restocked</span>
             </div>

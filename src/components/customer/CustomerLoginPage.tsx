@@ -31,9 +31,10 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
   const [errorMsg, setErrorMsg] = useState('');
   const [unregisteredNotice, setUnregisteredNotice] = useState<{ email: string; displayName?: string } | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState<{ name: string; phone: string; email?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Optional registration inputs
+  // Mandatory registration inputs
   const [regName, setRegName] = useState('');
   const [regPhone, setRegPhone] = useState('');
 
@@ -81,6 +82,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
   const handleGoogleSignIn = async () => {
     setErrorMsg('');
     setUnregisteredNotice(null);
+    setRegistrationSuccess(null);
     setIsLoading(true);
     try {
       const res = await customerLoginWithGoogle({ mode: 'signin' });
@@ -108,18 +110,35 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
     if (e) e.preventDefault();
     setErrorMsg('');
     setUnregisteredNotice(null);
+
+    // Mandatory fields validation
+    if (!regName.trim()) {
+      setErrorMsg('Full Name is required for patron registration.');
+      return;
+    }
+    const cleanPhone = regPhone.replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setErrorMsg('A valid 10-digit mobile number is required.');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const cleanPhone = regPhone.replace(/\D/g, '').slice(-10);
       const res = await customerLoginWithGoogle({
         mode: 'register',
         phone: cleanPhone,
         name: regName.trim(),
+        autoSignIn: false, // Per requirements: display confirmation first, user then proceeds to sign in
       });
       if (!res.success) {
         setErrorMsg(res.error || 'Registration could not be completed with Google. Please try again.');
       } else {
-        onSuccess?.();
+        setRegistrationSuccess({
+          name: res.customer?.name || regName.trim(),
+          phone: res.customer?.phone || cleanPhone,
+          email: res.customer?.email,
+        });
+        setErrorMsg('');
       }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Google registration error occurred.');
@@ -374,7 +393,52 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
             )}
 
             {/* Mode 1: Patron Sign In */}
-            {authMode === 'signin' ? (
+            {registrationSuccess ? (
+              <div className="space-y-4 pt-1 animate-in fade-in zoom-in-95 text-center">
+                <div className="w-14 h-14 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-400/40 flex items-center justify-center shadow-lg">
+                  <ShieldCheck className="w-8 h-8" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-serif text-2xl font-bold text-white">
+                    Account Created Successfully!
+                  </h4>
+                  <p className="text-xs text-purple-200/90 leading-relaxed max-w-xs mx-auto">
+                    Your verified patron account has been created for <strong>{registrationSuccess.name}</strong>. Please proceed to the sign-in page to log in.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-[#14021d]/90 border border-purple-400/30 text-left text-xs space-y-1.5">
+                  <div className="flex justify-between text-purple-300">
+                    <span>Full Name:</span>
+                    <span className="font-bold text-white">{registrationSuccess.name}</span>
+                  </div>
+                  <div className="flex justify-between text-purple-300">
+                    <span>Mobile Number:</span>
+                    <span className="font-bold font-mono text-white">+91 {registrationSuccess.phone}</span>
+                  </div>
+                  {registrationSuccess.email && (
+                    <div className="flex justify-between text-purple-300">
+                      <span>Google Account:</span>
+                      <span className="font-mono text-white text-[11px]">{registrationSuccess.email}</span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegistrationSuccess(null);
+                    setAuthMode('signin');
+                    setErrorMsg('');
+                  }}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition cursor-pointer active:scale-98"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Proceed to Sign In</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            ) : authMode === 'signin' ? (
               <div className="space-y-4 pt-1">
                 <button
                   type="button"
@@ -422,8 +486,9 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
               /* Mode 2: Patron Register with Google */
               <form onSubmit={handleGoogleRegister} className="space-y-4 pt-1">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1.5">
-                    Your Name (Optional)
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1.5 flex items-center justify-between">
+                    <span>Full Name</span>
+                    <span className="text-[10px] text-rose-400 font-bold tracking-normal uppercase">Required</span>
                   </label>
                   <div className="relative">
                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
@@ -431,17 +496,19 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                     </span>
                     <input
                       type="text"
+                      required
                       value={regName}
                       onChange={(e) => setRegName(e.target.value)}
-                      placeholder="Will use Google profile name if blank"
+                      placeholder="Enter your full name"
                       className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-purple-200/90 mb-1.5">
-                    Mobile Phone Number (Optional)
+                  <label className="block text-xs font-bold uppercase tracking-wider text-purple-200/90 mb-1.5 flex items-center justify-between">
+                    <span>Mobile Phone Number (10 digits)</span>
+                    <span className="text-[10px] text-rose-400 font-bold tracking-normal uppercase">Required</span>
                   </label>
                   <div className="relative">
                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-purple-400">
@@ -449,15 +516,16 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                     </span>
                     <input
                       type="tel"
+                      required
                       maxLength={10}
                       value={regPhone}
                       onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                       placeholder="10-digit number for order SMS/WhatsApp"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 font-mono"
                     />
                   </div>
                   <p className="text-[10px] text-purple-300/70 mt-1">
-                    Used to automatically associate your dispatch and courier updates.
+                    Mandatory field for order notifications, dispatch updates, and private tracking.
                   </p>
                 </div>
 

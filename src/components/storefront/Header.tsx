@@ -1,7 +1,8 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen, Heart, Sparkles, User, Store } from 'lucide-react';
+import { ShoppingBag, Lock, ShieldCheck, Truck, BookOpen, Heart, Sparkles, User, Store, Bell } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
+import { isProductRestocked } from '../../utils/productValidation';
 
 interface HeaderProps {
   onOpenAdmin: () => void;
@@ -29,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
     categories: boutiqueCategories,
     customerUnreadChatCount,
     currentCustomer,
+    customerNotifications,
     setIsCustomerAuthModalOpen,
     setIsCustomerAccountModalOpen,
     currentReseller,
@@ -41,24 +43,24 @@ export const Header: React.FC<HeaderProps> = ({
     setLogoError(false);
   }, [settings.logoUrl]);
 
-  // Check if any product in a category has been restocked
+  // Check if any product in a category has been restocked (with duration check)
   const isCatRestocked = React.useCallback(
     (catId: string) => {
       if (catId === 'all') {
         return publicProducts.some(
-          (p) => p.isRestocked && p.stockStatus !== 'out_of_stock' && (p.stockCount ?? 1) > 0
+          (p) => isProductRestocked(p, settings?.restockTagDurationHours) && p.stockStatus !== 'out_of_stock' && (p.stockCount ?? 1) > 0
         );
       }
       return publicProducts.some(
         (p) =>
           ((p.category && p.category.toLowerCase() === catId.toLowerCase()) ||
             (p.fabric && p.fabric.toLowerCase() === catId.toLowerCase())) &&
-          p.isRestocked &&
+          isProductRestocked(p, settings?.restockTagDurationHours) &&
           p.stockStatus !== 'out_of_stock' &&
           (p.stockCount ?? 1) > 0
       );
     },
-    [publicProducts]
+    [publicProducts, settings?.restockTagDurationHours]
   );
 
   // Only display fabric keywords that are published from the admin page
@@ -154,11 +156,14 @@ export const Header: React.FC<HeaderProps> = ({
           {currentCustomer ? (
             <button
               onClick={() => setIsCustomerAccountModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+              className="relative px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
               title={`My Account (${currentCustomer.name})`}
             >
               <User className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline max-w-[90px] truncate">{currentCustomer.name.split(' ')[0]}</span>
+              {customerNotifications.filter((n) => !n.isRead).length > 0 && (
+                <span className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-neutral-900 animate-pulse" />
+              )}
             </button>
           ) : (
             <button

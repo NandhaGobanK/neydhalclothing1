@@ -25,7 +25,9 @@ import {
   CustomerAddress,
   ResellerUser,
   ResellerAccessRequest,
+  AppNotification,
 } from '../types/store';
+import { isProductRestocked } from '../utils/productValidation';
 import {
   INITIAL_PRODUCTS,
   INITIAL_ORDERS,
@@ -288,11 +290,14 @@ interface StoreContextType {
     mode?: 'signin' | 'register';
     phone?: string;
     name?: string;
+    autoSignIn?: boolean;
   }) => Promise<{
     success: boolean;
     customer?: CustomerUser;
     error?: string;
     isNotRegistered?: boolean;
+    isAlreadyRegistered?: boolean;
+    registered?: boolean;
     email?: string;
     displayName?: string;
   }>;
@@ -360,6 +365,22 @@ interface StoreContextType {
   }) => Promise<Order>;
   isResellerPortalOpen: boolean;
   setIsResellerPortalOpen: (open: boolean) => void;
+
+  // Reseller Address Management
+  addResellerAddress: (address: Omit<CustomerAddress, 'id'>) => Promise<void>;
+  updateResellerAddress: (id: string, updates: Partial<CustomerAddress>) => Promise<void>;
+  deleteResellerAddress: (id: string) => Promise<void>;
+  setDefaultResellerAddress: (id: string) => Promise<void>;
+
+  // Customer & Reseller Notifications
+  customerNotifications: AppNotification[];
+  resellerNotifications: AppNotification[];
+  markCustomerNotificationRead: (id: string) => void;
+  markAllCustomerNotificationsRead: () => void;
+  markResellerNotificationRead: (id: string) => void;
+  markAllResellerNotificationsRead: () => void;
+  clearCustomerNotifications: () => void;
+  clearResellerNotifications: () => void;
 
   // Dynamic Product Specifications / Custom Attributes
   productAttributes: ProductAttributeDefinition[];
@@ -947,6 +968,294 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   }, [orders, currentReseller]);
 
+  // Customer & Reseller Notification System
+  const [readCustomerNotifIds, setReadCustomerNotifIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('neydhal_read_customer_notifs');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const [readResellerNotifIds, setReadResellerNotifIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('neydhal_read_reseller_notifs');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const [dismissedCustomerNotifIds, setDismissedCustomerNotifIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('neydhal_dismissed_customer_notifs');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const [dismissedResellerNotifIds, setDismissedResellerNotifIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('neydhal_dismissed_reseller_notifs');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Calculate customer notifications (Restocks, Order dispatches, Concierge chat)
+  const customerNotifications = useMemo<AppNotification[]>(() => {
+    const list: AppNotification[] = [];
+
+    // 1. Restocked products within active duration
+    const restockedProducts = products.filter((p) =>
+      isProductRestocked(p, settings.restockTagDurationHours)
+    );
+    for (const p of restockedProducts) {
+      const notifId = `notif_restock_${p.id}_${p.restockedAt || 'recent'}`;
+      if (dismissedCustomerNotifIds.has(notifId)) continue;
+      const isRead = readCustomerNotifIds.has(notifId);
+      list.push({
+        id: notifId,
+        title: `Restocked: ${p.title}`,
+        message: `Handcrafted ${p.fabric || 'Heritage Saree'} in ${p.color} is back in stock (${p.stockCount || 1} available). Tap to view and reserve.`,
+        type: 'restock',
+        createdAt: p.restockedAt || p.createdAt || new Date().toISOString(),
+        timestamp: p.restockedAt || p.createdAt || new Date().toISOString(),
+        read: isRead,
+        isRead: isRead,
+        targetType: 'product',
+        targetId: p.id,
+        productId: p.id,
+        imageUrl: p.images && p.images.length > 0 ? p.images[0] : undefined,
+      });
+    }
+
+    // 2. Customer orders status & courier dispatches
+    if (customerOrders && customerOrders.length > 0) {
+      for (const order of customerOrders) {
+        const notifId = `notif_order_${order.id}_${order.status}`;
+        if (!dismissedCustomerNotifIds.has(notifId)) {
+          let msg = `Order #${order.orderNumber} status is ${order.status}.`;
+          if (order.status === 'Shipped') {
+            msg = `Dispatched via ${order.shippingDetails?.courierName || 'Partner Courier'}${order.shippingDetails?.trackingNumber ? ` (Tracking: ${order.shippingDetails.trackingNumber})` : ''}. Click to track your parcel.`;
+          } else if (order.status === 'Delivered') {
+            msg = `Delivered! We hope you cherish your authentic weave. Click to view order certificate.`;
+          } else if (order.status === 'Confirmed') {
+            msg = `Order confirmed by our master weavers. It is now queued for packaging.`;
+          }
+          const isRead = readCustomerNotifIds.has(notifId);
+          list.push({
+            id: notifId,
+            title: `Order #${order.orderNumber}: ${order.status}`,
+            message: msg,
+            type: 'order',
+            createdAt: order.createdAt,
+            timestamp: order.createdAt,
+            read: isRead,
+            isRead: isRead,
+            targetType: 'order',
+            targetId: order.id,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            metadata: { orderNumber: order.orderNumber },
+          });
+        }
+
+        // 3. Concierge chat updates
+        if (order.chatMessages && order.chatMessages.length > 0) {
+          const staffMsgs = order.chatMessages.filter(
+            (m) => m.sender === 'staff' || m.sender === 'admin' || (m as any).senderRole === 'staff'
+          );
+          if (staffMsgs.length > 0) {
+            const latestMsg = staffMsgs[staffMsgs.length - 1];
+            const chatNotifId = `notif_chat_${order.id}_${latestMsg.id || latestMsg.timestamp}`;
+            if (!dismissedCustomerNotifIds.has(chatNotifId)) {
+              const isRead = readCustomerNotifIds.has(chatNotifId);
+              list.push({
+                id: chatNotifId,
+                title: `Concierge Chat: Order #${order.orderNumber}`,
+                message: `${latestMsg.senderName || 'Atelier Master'}: "${latestMsg.message.slice(0, 90)}"`,
+                type: 'chat',
+                createdAt: latestMsg.timestamp || order.createdAt,
+                timestamp: latestMsg.timestamp || order.createdAt,
+                read: isRead,
+                isRead: isRead,
+                targetType: 'chat',
+                targetId: order.id,
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                metadata: { orderNumber: order.orderNumber },
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [products, customerOrders, settings.restockTagDurationHours, readCustomerNotifIds, dismissedCustomerNotifIds]);
+
+  // Calculate reseller notifications (Wholesale Restocks, Dropship order dispatches, Chats)
+  const resellerNotifications = useMemo<AppNotification[]>(() => {
+    const list: AppNotification[] = [];
+
+    // 1. Wholesale restocked items
+    const wholesaleRestocked = products.filter(
+      (p) => isProductRestocked(p, settings.restockTagDurationHours) && p.isWholesaleAvailable !== false
+    );
+    for (const p of wholesaleRestocked) {
+      const notifId = `notif_res_restock_${p.id}_${p.restockedAt || 'recent'}`;
+      if (dismissedResellerNotifIds.has(notifId)) continue;
+      const wholesaleRate = p.wholesalePrice ? `₹${p.wholesalePrice}` : `Wholesale`;
+      const isRead = readResellerNotifIds.has(notifId);
+      list.push({
+        id: notifId,
+        title: `Wholesale Restock: ${p.title}`,
+        message: `${wholesaleRate} — Handloom replenished (${p.stockCount || 1} units). Ready for dropshipping.`,
+        type: 'restock',
+        createdAt: p.restockedAt || p.createdAt || new Date().toISOString(),
+        timestamp: p.restockedAt || p.createdAt || new Date().toISOString(),
+        read: isRead,
+        isRead: isRead,
+        targetType: 'product',
+        targetId: p.id,
+        productId: p.id,
+        imageUrl: p.images && p.images.length > 0 ? p.images[0] : undefined,
+      });
+    }
+
+    // 2. Dropship Orders updates
+    if (resellerOrders && resellerOrders.length > 0) {
+      for (const order of resellerOrders) {
+        const notifId = `notif_res_order_${order.id}_${order.status}`;
+        if (!dismissedResellerNotifIds.has(notifId)) {
+          const recipientName = order.customer?.name || 'Customer';
+          const recipientCity = order.customer?.city || '';
+          let msg = `Order #${order.orderNumber} for ${recipientName} is now ${order.status}.`;
+          if (order.status === 'Shipped') {
+            msg = `Discreet parcel dispatched via ${order.shippingDetails?.courierName || 'Courier'}${order.shippingDetails?.trackingNumber ? ` (AWB: ${order.shippingDetails.trackingNumber})` : ''} to ${recipientName}, ${recipientCity}.`;
+          } else if (order.status === 'Delivered') {
+            msg = `Delivered to ${recipientName}, ${recipientCity}. Dropship completed!`;
+          }
+          const isRead = readResellerNotifIds.has(notifId);
+          list.push({
+            id: notifId,
+            title: `Dropship #${order.orderNumber}: ${order.status}`,
+            message: msg,
+            type: 'order',
+            createdAt: order.createdAt,
+            timestamp: order.createdAt,
+            read: isRead,
+            isRead: isRead,
+            targetType: 'reseller_orders',
+            targetId: order.id,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            metadata: { orderNumber: order.orderNumber },
+          });
+        }
+
+        // 3. Chat updates
+        if (order.chatMessages && order.chatMessages.length > 0) {
+          const staffMsgs = order.chatMessages.filter(
+            (m) => m.sender === 'staff' || m.sender === 'admin' || (m as any).senderRole === 'staff'
+          );
+          if (staffMsgs.length > 0) {
+            const latestMsg = staffMsgs[staffMsgs.length - 1];
+            const chatNotifId = `notif_res_chat_${order.id}_${latestMsg.id || latestMsg.timestamp}`;
+            if (!dismissedResellerNotifIds.has(chatNotifId)) {
+              const isRead = readResellerNotifIds.has(chatNotifId);
+              list.push({
+                id: chatNotifId,
+                title: `Dispatch Desk: Order #${order.orderNumber}`,
+                message: `${latestMsg.senderName || 'Dispatch Desk'}: "${latestMsg.message.slice(0, 90)}"`,
+                type: 'chat',
+                createdAt: latestMsg.timestamp || order.createdAt,
+                timestamp: latestMsg.timestamp || order.createdAt,
+                read: isRead,
+                isRead: isRead,
+                targetType: 'chat',
+                targetId: order.id,
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                metadata: { orderNumber: order.orderNumber },
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [products, resellerOrders, settings.restockTagDurationHours, readResellerNotifIds, dismissedResellerNotifIds]);
+
+  const markCustomerNotificationRead = (id: string) => {
+    setReadCustomerNotifIds((prev) => {
+      const next = new Set(prev).add(id);
+      try {
+        localStorage.setItem('neydhal_read_customer_notifs', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  const markAllCustomerNotificationsRead = () => {
+    const allIds = customerNotifications.map((n) => n.id);
+    setReadCustomerNotifIds((prev) => {
+      const next = new Set([...prev, ...allIds]);
+      try {
+        localStorage.setItem('neydhal_read_customer_notifs', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  const markResellerNotificationRead = (id: string) => {
+    setReadResellerNotifIds((prev) => {
+      const next = new Set(prev).add(id);
+      try {
+        localStorage.setItem('neydhal_read_reseller_notifs', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  const markAllResellerNotificationsRead = () => {
+    const allIds = resellerNotifications.map((n) => n.id);
+    setReadResellerNotifIds((prev) => {
+      const next = new Set([...prev, ...allIds]);
+      try {
+        localStorage.setItem('neydhal_read_reseller_notifs', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  const clearCustomerNotifications = () => {
+    const allIds = customerNotifications.map((n) => n.id);
+    setDismissedCustomerNotifIds((prev) => {
+      const next = new Set([...prev, ...allIds]);
+      try {
+        localStorage.setItem('neydhal_dismissed_customer_notifs', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  const clearResellerNotifications = () => {
+    const allIds = resellerNotifications.map((n) => n.id);
+    setDismissedResellerNotifIds((prev) => {
+      const next = new Set([...prev, ...allIds]);
+      try {
+        localStorage.setItem('neydhal_dismissed_reseller_notifs', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
   // Customer Authentication & Management Methods
   const customerLogin = async (emailOrPhone: string, password?: string) => {
     const cleanInput = emailOrPhone.trim().toLowerCase();
@@ -990,6 +1299,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     mode?: 'signin' | 'register';
     phone?: string;
     name?: string;
+    autoSignIn?: boolean;
   }) => {
     const mode = options?.mode || 'signin';
     try {
@@ -1054,20 +1364,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       // mode === 'register'
       if (existingCustomer) {
-        // Already registered, proceed to log in
-        const updated: CustomerUser = {
-          ...existingCustomer,
-          name: existingCustomer.name || name,
-          email: existingCustomer.email || email,
-          phone: phoneInput || existingCustomer.phone || '',
-          avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
-          authMethod: 'google',
+        // Already registered, sign out of Google auth and instruct user to sign in
+        await googleSignOut().catch(() => {});
+        return {
+          success: false,
+          isAlreadyRegistered: true,
+          email,
+          error: `An account for "${email}" is already registered. Please proceed to Sign In.`,
         };
-        setCurrentCustomer(updated);
-        saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, updated);
-        setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-        setDoc(doc(db, 'customers', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(() => {});
-        return { success: true, customer: updated };
       }
 
       // Create new verified customer in Firestore /customers collection
@@ -1083,10 +1387,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
 
       setCustomers((prev) => [newCust, ...prev.filter((c) => c.id !== newCust.id)]);
-      setCurrentCustomer(newCust);
-      saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, newCust);
       await setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust));
-      return { success: true, customer: newCust };
+
+      const shouldAutoSignIn = options?.autoSignIn ?? false;
+      if (shouldAutoSignIn) {
+        setCurrentCustomer(newCust);
+        saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, newCust);
+      } else {
+        // Sign out so that user is presented with confirmation message and can click Proceed to Sign In
+        await googleSignOut().catch(() => {});
+      }
+
+      return { success: true, registered: true, customer: newCust };
     } catch (err: any) {
       const isPopupClosed = err?.code === 'auth/popup-closed-by-user' || err?.message?.includes('popup-closed');
       if (isPopupClosed) {
@@ -1153,6 +1465,78 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       isDefault: a.id === id,
     }));
     await updateCustomerProfile({ savedAddresses: updatedAddrs });
+  };
+
+  // Dedicated Reseller Address Management Methods
+  const addResellerAddress = async (address: Omit<CustomerAddress, 'id'>) => {
+    if (!currentReseller) return;
+    const newAddr: CustomerAddress = {
+      ...address,
+      id: `res_addr_${Date.now()}`,
+    };
+    let currentAddrs = currentReseller.savedAddresses ? [...currentReseller.savedAddresses] : [];
+    if (newAddr.isDefault || currentAddrs.length === 0) {
+      newAddr.isDefault = true;
+      currentAddrs = currentAddrs.map((a) => ({ ...a, isDefault: false }));
+    }
+    const updatedAddrs = [newAddr, ...currentAddrs];
+    const updatedReseller: ResellerUser = {
+      ...currentReseller,
+      savedAddresses: updatedAddrs,
+    };
+    setCurrentReseller(updatedReseller);
+    saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, updatedReseller);
+    setResellers((prev) => prev.map((r) => (r.id === updatedReseller.id ? updatedReseller : r)));
+    await setDoc(doc(db, 'resellers', updatedReseller.id), sanitizeForFirestore(updatedReseller), { merge: true }).catch(() => {});
+  };
+
+  const updateResellerAddress = async (id: string, updates: Partial<CustomerAddress>) => {
+    if (!currentReseller) return;
+    let currentAddrs = currentReseller.savedAddresses ? [...currentReseller.savedAddresses] : [];
+    if (updates.isDefault) {
+      currentAddrs = currentAddrs.map((a) => ({ ...a, isDefault: a.id === id }));
+    }
+    const updatedAddrs = currentAddrs.map((a) => (a.id === id ? { ...a, ...updates } : a));
+    const updatedReseller: ResellerUser = {
+      ...currentReseller,
+      savedAddresses: updatedAddrs,
+    };
+    setCurrentReseller(updatedReseller);
+    saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, updatedReseller);
+    setResellers((prev) => prev.map((r) => (r.id === updatedReseller.id ? updatedReseller : r)));
+    await setDoc(doc(db, 'resellers', updatedReseller.id), sanitizeForFirestore(updatedReseller), { merge: true }).catch(() => {});
+  };
+
+  const deleteResellerAddress = async (id: string) => {
+    if (!currentReseller) return;
+    const remaining = (currentReseller.savedAddresses || []).filter((a) => a.id !== id);
+    if (remaining.length > 0 && !remaining.some((a) => a.isDefault)) {
+      remaining[0].isDefault = true;
+    }
+    const updatedReseller: ResellerUser = {
+      ...currentReseller,
+      savedAddresses: remaining,
+    };
+    setCurrentReseller(updatedReseller);
+    saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, updatedReseller);
+    setResellers((prev) => prev.map((r) => (r.id === updatedReseller.id ? updatedReseller : r)));
+    await setDoc(doc(db, 'resellers', updatedReseller.id), sanitizeForFirestore(updatedReseller), { merge: true }).catch(() => {});
+  };
+
+  const setDefaultResellerAddress = async (id: string) => {
+    if (!currentReseller) return;
+    const updatedAddrs = (currentReseller.savedAddresses || []).map((a) => ({
+      ...a,
+      isDefault: a.id === id,
+    }));
+    const updatedReseller: ResellerUser = {
+      ...currentReseller,
+      savedAddresses: updatedAddrs,
+    };
+    setCurrentReseller(updatedReseller);
+    saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, updatedReseller);
+    setResellers((prev) => prev.map((r) => (r.id === updatedReseller.id ? updatedReseller : r)));
+    await setDoc(doc(db, 'resellers', updatedReseller.id), sanitizeForFirestore(updatedReseller), { merge: true }).catch(() => {});
   };
 
   // Dedicated Reseller Portal & B2B Wholesale Methods
@@ -5471,6 +5855,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         placeResellerOrder,
         isResellerPortalOpen,
         setIsResellerPortalOpen,
+        addResellerAddress,
+        updateResellerAddress,
+        deleteResellerAddress,
+        setDefaultResellerAddress,
+        customerNotifications,
+        resellerNotifications,
+        markCustomerNotificationRead,
+        markAllCustomerNotificationsRead,
+        markResellerNotificationRead,
+        markAllResellerNotificationsRead,
+        clearCustomerNotifications,
+        clearResellerNotifications,
         productAttributes,
         addProductAttribute,
         updateProductAttribute,

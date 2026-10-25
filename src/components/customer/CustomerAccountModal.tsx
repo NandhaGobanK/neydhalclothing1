@@ -22,8 +22,13 @@ import {
   Download,
   Clock,
   Sparkles,
+  Bell,
+  CheckCheck,
+  ArrowRight,
 } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
+import { AppNotification } from '../../types/store';
+import { formatDeviceDateTime } from '../../utils/deviceTime';
 
 interface CustomerAccountModalProps {
   isOpen: boolean;
@@ -49,10 +54,45 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     deleteCustomerAddress,
     setDefaultAddress,
     setIsTrackOrderOpen,
+    customerNotifications,
+    markCustomerNotificationRead,
+    markAllCustomerNotificationsRead,
+    clearCustomerNotifications,
+    setActiveProductModal,
   } = useStore();
 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
-  const [activeTab, setActiveTab] = useState<'orders' | 'addresses' | 'wishlist' | 'profile'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'notifications' | 'addresses' | 'wishlist' | 'profile'>('orders');
+  const [notifFilter, setNotifFilter] = useState<'all' | 'restock' | 'order' | 'chat'>('all');
+
+  const unreadNotifCount = customerNotifications.filter((n) => !n.read).length;
+
+  const handleNotificationClick = (notif: AppNotification) => {
+    markCustomerNotificationRead(notif.id);
+
+    if (notif.targetType === 'product' && notif.targetId) {
+      const prod = products.find((p) => p.id === notif.targetId);
+      if (prod) {
+        setActiveProductModal(prod);
+        onClose();
+      } else if (onOpenProductDetails) {
+        onOpenProductDetails(notif.targetId);
+        onClose();
+      }
+    } else if (notif.targetType === 'order') {
+      onClose();
+      setIsTrackOrderOpen(true);
+    } else if (notif.targetType === 'chat' && notif.targetId) {
+      if (onOpenOrderChat) {
+        onOpenOrderChat(notif.targetId);
+      } else {
+        onClose();
+        setIsTrackOrderOpen(true);
+      }
+    } else {
+      onClose();
+    }
+  };
 
   // Address form modal state
   const [showAddressForm, setShowAddressForm] = useState(false);
@@ -162,6 +202,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             >
               <Package className="w-4 h-4" />
               <span>My Orders ({customerOrders.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('notifications')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
+                activeTab === 'notifications'
+                  ? 'bg-amber-500 text-neutral-950 shadow-sm'
+                  : 'text-neutral-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <Bell className="w-4 h-4" />
+              <span>Notifications</span>
+              {unreadNotifCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-600 text-white font-mono font-bold">
+                  {unreadNotifCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -386,6 +444,217 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB: NOTIFICATIONS & RESTOCK ALERTS */}
+          {activeTab === 'notifications' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold text-neutral-900 font-serif flex items-center gap-2">
+                    <span>Notifications & Updates</span>
+                    {unreadNotifCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-600 text-white">
+                        {unreadNotifCount} New
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-neutral-500">
+                    Click any notification to navigate directly to the relevant product, tracker, or chat.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {customerNotifications.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={markAllCustomerNotificationsRead}
+                        className="text-xs font-semibold text-neutral-700 hover:text-neutral-900 bg-white border border-neutral-200 px-3 py-1.5 rounded-xl shadow-2xs hover:bg-neutral-50 transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Mark all read</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearCustomerNotifications}
+                        className="text-xs font-semibold text-rose-700 hover:text-rose-900 bg-white border border-rose-200 px-3 py-1.5 rounded-xl shadow-2xs hover:bg-rose-50 transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Clear</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Filter Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => setNotifFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    notifFilter === 'all'
+                      ? 'bg-neutral-900 text-white shadow-xs'
+                      : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-50'
+                  }`}
+                >
+                  All ({customerNotifications.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotifFilter('restock')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                    notifFilter === 'restock'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-50'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
+                  <span>Restocks ({customerNotifications.filter((n) => n.type === 'restock').length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotifFilter('order')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                    notifFilter === 'order'
+                      ? 'bg-sky-700 text-white shadow-xs'
+                      : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-50'
+                  }`}
+                >
+                  <Package className="w-3 h-3 text-sky-500" />
+                  <span>Orders ({customerNotifications.filter((n) => n.type === 'order').length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotifFilter('chat')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                    notifFilter === 'chat'
+                      ? 'bg-purple-700 text-white shadow-xs'
+                      : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-50'
+                  }`}
+                >
+                  <MessageSquare className="w-3 h-3 text-purple-500" />
+                  <span>Chat ({customerNotifications.filter((n) => n.type === 'chat').length})</span>
+                </button>
+              </div>
+
+              {/* Notifications List */}
+              {(() => {
+                const filtered = customerNotifications.filter((n) =>
+                  notifFilter === 'all' ? true : n.type === notifFilter
+                );
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-neutral-200/80 p-8 space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mx-auto text-neutral-400">
+                        <Bell className="w-6 h-6" />
+                      </div>
+                      <h4 className="font-serif font-bold text-neutral-800 text-base">No notifications found</h4>
+                      <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                        {notifFilter === 'all'
+                          ? 'You are all caught up! Updates regarding restocked handloom sarees and parcel tracking will appear here.'
+                          : `No ${notifFilter} updates at this moment.`}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2.5">
+                    {filtered.map((notif) => {
+                      const isUnread = !notif.read;
+                      return (
+                        <div
+                          key={notif.id}
+                          onClick={() => handleNotificationClick(notif)}
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 group ${
+                            isUnread
+                              ? 'bg-amber-50/40 border-amber-300 shadow-sm hover:border-amber-400 hover:shadow-md'
+                              : 'bg-white border-neutral-200 hover:bg-neutral-50 hover:border-neutral-300'
+                          }`}
+                        >
+                          {/* Thumbnail / Icon */}
+                          {notif.imageUrl ? (
+                            <img
+                              src={notif.imageUrl}
+                              alt={notif.title}
+                              referrerPolicy="no-referrer"
+                              className="w-12 h-15 rounded-xl object-cover shrink-0 border border-neutral-200 shadow-2xs group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div
+                              className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${
+                                notif.type === 'restock'
+                                  ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                  : notif.type === 'order'
+                                  ? 'bg-sky-100 text-sky-700 border border-sky-200'
+                                  : notif.type === 'chat'
+                                  ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                  : 'bg-amber-100 text-amber-700 border border-amber-200'
+                              }`}
+                            >
+                              {notif.type === 'restock' && <Sparkles className="w-5 h-5 text-amber-600 fill-amber-500" />}
+                              {notif.type === 'order' && <Truck className="w-5 h-5" />}
+                              {notif.type === 'chat' && <MessageSquare className="w-5 h-5" />}
+                              {notif.type === 'announcement' && <Bell className="w-5 h-5" />}
+                            </div>
+                          )}
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wider uppercase ${
+                                  notif.type === 'restock'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : notif.type === 'order'
+                                    ? 'bg-sky-100 text-sky-800 border border-sky-200'
+                                    : notif.type === 'chat'
+                                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                {notif.type}
+                              </span>
+                              <span className="text-[10px] text-neutral-400">
+                                {formatDeviceDateTime(notif.createdAt)}
+                              </span>
+                              {isUnread && (
+                                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" title="Unread" />
+                              )}
+                            </div>
+
+                            <h4 className="text-xs sm:text-sm font-bold text-neutral-900 group-hover:text-rose-950 transition">
+                              {notif.title}
+                            </h4>
+                            <p className="text-xs text-neutral-600 mt-0.5 leading-relaxed">
+                              {notif.message}
+                            </p>
+
+                            <div className="mt-2 flex items-center gap-1 text-[11px] font-bold text-rose-900 group-hover:underline">
+                              <span>
+                                {notif.targetType === 'product'
+                                  ? 'View Restocked Saree'
+                                  : notif.targetType === 'order'
+                                  ? 'Track Order & Courier'
+                                  : notif.targetType === 'chat'
+                                  ? 'Open Concierge Chat'
+                                  : 'View Details'}
+                              </span>
+                              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                            </div>
+                          </div>
+
+                          <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-neutral-700 shrink-0 self-center" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 

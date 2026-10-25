@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Product, Order, OrderStatus, ResellerUser, CartItem } from '../../types/store';
+import { Product, Order, OrderStatus, ResellerUser, CartItem, CustomerAddress, AppNotification } from '../../types/store';
 import { formatPrice, getUpiQrCodeImageUrl } from '../../utils/upi';
 import { downloadSingleImage, downloadAllProductImagesZip } from '../../utils/imageDownload';
 import { buildCourierTrackingUrl, resolveCourierDetails } from '../../utils/courier';
+import { isProductRestocked, getRestockRemainingTime } from '../../utils/productValidation';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../utils/firebase';
 import {
@@ -107,6 +108,14 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     reportCustomerDeliveryIssue,
     updateOrderStatus,
     replenishOrderInventory,
+    addResellerAddress,
+    updateResellerAddress,
+    deleteResellerAddress,
+    setDefaultResellerAddress,
+    resellerNotifications,
+    markResellerNotificationRead,
+    markAllResellerNotificationsRead,
+    clearResellerNotifications,
   } = useStore();
 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
@@ -240,7 +249,9 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
   };
 
   // Portal view state
-  const [activeTab, setActiveTab] = useState<'catalog' | 'orders' | 'cart' | 'earnings' | 'new_order'>('catalog');
+  const [activeTab, setActiveTab] = useState<
+    'catalog' | 'orders' | 'cart' | 'earnings' | 'new_order' | 'addresses' | 'notifications'
+  >('catalog');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
 
@@ -276,20 +287,57 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     }
   }, [resellerCart]);
 
-  const [deliveryType, setDeliveryType] = useState<'dropship' | 'self'>('dropship');
+  const [deliveryType, setDeliveryType] = useState<'dropship'>('dropship');
 
   // End-customer dropship recipient fields
+  const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string>('new');
   const [recipientName, setRecipientName] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
   const [recipientAddress, setRecipientAddress] = useState('');
   const [recipientCity, setRecipientCity] = useState('');
   const [recipientState, setRecipientState] = useState('Tamil Nadu');
   const [recipientPincode, setRecipientPincode] = useState('');
+  const [saveAddressForFuture, setSaveAddressForFuture] = useState(true);
+  const [isNewAddressDefault, setIsNewAddressDefault] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
   const [orderUtr, setOrderUtr] = useState('');
   const [orderError, setOrderError] = useState('');
   const [orderSuccess, setOrderSuccess] = useState<Order | null>(null);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+
+  // Saved Addresses tab management states
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [addressModalMode, setAddressModalMode] = useState<'add' | 'edit'>('add');
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [addrFormName, setAddrFormName] = useState('');
+  const [addrFormPhone, setAddrFormPhone] = useState('');
+  const [addrFormStreet, setAddrFormStreet] = useState('');
+  const [addrFormCity, setAddrFormCity] = useState('');
+  const [addrFormState, setAddrFormState] = useState('Tamil Nadu');
+  const [addrFormPincode, setAddrFormPincode] = useState('');
+  const [addrFormIsDefault, setAddrFormIsDefault] = useState(false);
+  const [addrFormError, setAddrFormError] = useState('');
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
+  const [addressSuccessNotice, setAddressSuccessNotice] = useState<string | null>(null);
+
+  // Reseller notifications states
+  const [resellerNotifFilter, setResellerNotifFilter] = useState<'all' | 'restock' | 'order' | 'chat'>('all');
+
+  // Auto-populate default saved address if available on initial load
+  useEffect(() => {
+    if (currentReseller?.savedAddresses && currentReseller.savedAddresses.length > 0) {
+      const defaultAddr = currentReseller.savedAddresses.find((a) => a.isDefault) || currentReseller.savedAddresses[0];
+      if (defaultAddr && (!recipientName && !recipientPhone && !recipientAddress)) {
+        setSelectedSavedAddressId(defaultAddr.id);
+        setRecipientName(defaultAddr.name);
+        setRecipientPhone(defaultAddr.phone);
+        setRecipientAddress(defaultAddr.address);
+        setRecipientCity(defaultAddr.city);
+        setRecipientState(defaultAddr.state || 'Tamil Nadu');
+        setRecipientPincode(defaultAddr.pincode);
+      }
+    }
+  }, [currentReseller?.savedAddresses]);
 
   // Order Tracking, Filtering & Management States
   const [selectedResellerOrderId, setSelectedResellerOrderId] = useState<string | null>(null);
@@ -939,24 +987,45 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
         quantity: item.quantity,
       }));
 
-      const recipient =
-        deliveryType === 'dropship'
-          ? {
+      const recipient = {
+        name: recipientName.trim(),
+        phone: recipientPhone.replace(/\D/g, '').slice(-10),
+        address: recipientAddress.trim(),
+        city: recipientCity.trim(),
+        state: recipientState.trim(),
+        pincode: recipientPincode.trim(),
+      };
+
+      // Auto-save new address if entered or saveAddressForFuture is true
+      if (currentReseller && recipientName.trim() && recipientAddress.trim()) {
+        const cleanPhone = recipientPhone.replace(/\D/g, '').slice(-10);
+        const existingMatch = (currentReseller.savedAddresses || []).find(
+          (a) =>
+            a.name.toLowerCase().trim() === recipientName.toLowerCase().trim() &&
+            a.address.toLowerCase().trim() === recipientAddress.toLowerCase().trim()
+        );
+        if (!existingMatch && saveAddressForFuture) {
+          try {
+            await addResellerAddress({
               name: recipientName.trim(),
-              phone: recipientPhone.replace(/\D/g, '').slice(-10),
+              phone: cleanPhone,
               address: recipientAddress.trim(),
               city: recipientCity.trim(),
               state: recipientState.trim(),
               pincode: recipientPincode.trim(),
-            }
-          : {
-              name: currentReseller.name,
-              phone: currentReseller.whatsappNumber,
-              address: currentReseller.businessName,
-              city: currentReseller.city || 'Salem',
-              state: currentReseller.state || 'Tamil Nadu',
-              pincode: '636001',
-            };
+              isDefault: isNewAddressDefault || (currentReseller.savedAddresses || []).length === 0,
+            });
+          } catch (e) {
+            console.warn('Could not auto-save address to reseller:', e);
+          }
+        } else if (existingMatch && isNewAddressDefault && !existingMatch.isDefault) {
+          try {
+            await setDefaultResellerAddress(existingMatch.id);
+          } catch (e) {
+            console.warn('Could not set default address:', e);
+          }
+        }
+      }
 
       const newOrder = await placeResellerOrder({
         items: cartItems,
@@ -975,6 +1044,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       setRecipientCity('');
       setRecipientPincode('');
       setOrderNotes('');
+      setIsNewAddressDefault(false);
     } catch (err: any) {
       setOrderError(err?.message || 'Failed to place reseller order.');
     } finally {
@@ -990,6 +1060,137 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
   const totalResellerMarginEarned = useMemo(() => {
     return resellerOrders.reduce((sum, o) => sum + (o.resellerMargin || 0), 0);
   }, [resellerOrders]);
+
+  // Address Management Handlers for Saved Addresses Tab
+  const handleOpenAddAddressModal = () => {
+    setAddressModalMode('add');
+    setEditingAddressId(null);
+    setAddrFormName('');
+    setAddrFormPhone('');
+    setAddrFormStreet('');
+    setAddrFormCity('');
+    setAddrFormState('Tamil Nadu');
+    setAddrFormPincode('');
+    setAddrFormIsDefault((currentReseller?.savedAddresses || []).length === 0);
+    setAddrFormError('');
+    setIsAddressModalOpen(true);
+  };
+
+  const handleOpenEditAddressModal = (addr: CustomerAddress) => {
+    setAddressModalMode('edit');
+    setEditingAddressId(addr.id);
+    setAddrFormName(addr.name);
+    setAddrFormPhone(addr.phone);
+    setAddrFormStreet(addr.address);
+    setAddrFormCity(addr.city);
+    setAddrFormState(addr.state || 'Tamil Nadu');
+    setAddrFormPincode(addr.pincode);
+    setAddrFormIsDefault(!!addr.isDefault);
+    setAddrFormError('');
+    setIsAddressModalOpen(true);
+  };
+
+  const handleSaveAddressFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddrFormError('');
+    if (!addrFormName.trim()) {
+      setAddrFormError('Please enter full contact name.');
+      return;
+    }
+    const cleanPhone = addrFormPhone.replace(/\D/g, '').slice(-10);
+    if (cleanPhone.length < 10) {
+      setAddrFormError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!addrFormStreet.trim() || !addrFormCity.trim()) {
+      setAddrFormError('Street address and city are required.');
+      return;
+    }
+    const cleanPin = addrFormPincode.replace(/\D/g, '').slice(0, 6);
+    if (cleanPin.length !== 6) {
+      setAddrFormError('Please enter a valid 6-digit postal pincode.');
+      return;
+    }
+    setIsSavingAddress(true);
+    try {
+      if (addressModalMode === 'add') {
+        await addResellerAddress({
+          name: addrFormName.trim(),
+          phone: cleanPhone,
+          address: addrFormStreet.trim(),
+          city: addrFormCity.trim(),
+          state: addrFormState.trim(),
+          pincode: cleanPin,
+          isDefault: addrFormIsDefault,
+        });
+        setAddressSuccessNotice('Address added to your saved addresses.');
+      } else if (editingAddressId) {
+        await updateResellerAddress(editingAddressId, {
+          name: addrFormName.trim(),
+          phone: cleanPhone,
+          address: addrFormStreet.trim(),
+          city: addrFormCity.trim(),
+          state: addrFormState.trim(),
+          pincode: cleanPin,
+          isDefault: addrFormIsDefault,
+        });
+        setAddressSuccessNotice('Address updated successfully.');
+      }
+      setIsAddressModalOpen(false);
+      setTimeout(() => setAddressSuccessNotice(null), 3000);
+    } catch (err: any) {
+      setAddrFormError(err?.message || 'Failed to save address.');
+    } finally {
+      setIsSavingAddress(false);
+    }
+  };
+
+  const handleDeleteAddress = async (id: string) => {
+    if (window.confirm('Are you sure you want to remove this saved address?')) {
+      try {
+        await deleteResellerAddress(id);
+        setAddressSuccessNotice('Address removed.');
+        setTimeout(() => setAddressSuccessNotice(null), 3000);
+      } catch (err: any) {
+        console.warn('Failed to delete address:', err);
+      }
+    }
+  };
+
+  const handleSetDefaultAddress = async (id: string) => {
+    try {
+      await setDefaultResellerAddress(id);
+      setAddressSuccessNotice('Default address updated.');
+      setTimeout(() => setAddressSuccessNotice(null), 3000);
+    } catch (err: any) {
+      console.warn('Failed to set default address:', err);
+    }
+  };
+
+  // Reseller Notification Click Navigation
+  const handleResellerNotificationClick = (notif: AppNotification) => {
+    markResellerNotificationRead(notif.id);
+    if (notif.type === 'restock') {
+      setActiveTab('catalog');
+      if (notif.productId) {
+        const prod = products.find((p) => p.id === notif.productId);
+        if (prod && onOpenProductModal) {
+          onOpenProductModal(prod);
+        }
+      }
+    } else if (notif.type === 'order') {
+      setActiveTab('orders');
+      if (notif.orderId) {
+        setSelectedResellerOrderId(notif.orderId);
+        setOrderSearchQuery(notif.orderNumber || notif.orderId);
+      }
+    } else if (notif.type === 'chat') {
+      setActiveTab('orders');
+      if (notif.orderId) {
+        setExpandedChatOrderId(notif.orderId);
+      }
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -1639,6 +1840,37 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
               <TrendingUp className="w-4 h-4" />
               <span>Margin Earnings</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('addresses')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
+                activeTab === 'addresses'
+                  ? 'bg-purple-500 text-white shadow-sm'
+                  : 'text-neutral-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <MapPin className="w-4 h-4" />
+              <span>Saved Addresses ({currentReseller.savedAddresses?.length || 0})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('notifications')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer relative ${
+                activeTab === 'notifications'
+                  ? 'bg-purple-500 text-white shadow-sm'
+                  : 'text-neutral-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <Bell className="w-4 h-4" />
+              <span>Notifications</span>
+              {(resellerNotifications || []).filter((n) => !n.isRead).length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white shadow-xs animate-pulse">
+                  {(resellerNotifications || []).filter((n) => !n.isRead).length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -1901,7 +2133,8 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                             liveProd.stockStatus === 'out_of_stock' ||
                             (liveProd.stockCount !== undefined && liveProd.stockCount <= 0);
 
-                          const isRestocked = Boolean(liveProd.isRestocked && !isOutOfStock);
+                          const isRestocked = isProductRestocked(liveProd, settings?.restockTagDurationHours) && !isOutOfStock;
+                          const restockTimeLeft = isRestocked ? getRestockRemainingTime(liveProd, settings?.restockTagDurationHours) : null;
 
                           const maxStock = liveProd.stockCount !== undefined ? Math.max(0, liveProd.stockCount) : 99;
                           const inCartItem = resellerCart.find((it) => it.product.id === liveProd.id);
@@ -1933,9 +2166,17 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                       Reseller: {currentReseller.wholesaleDiscountPercent}% OFF
                                     </span>
                                     {isRestocked && (
-                                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md flex items-center gap-1 border border-emerald-400 animate-in fade-in">
+                                      <span 
+                                        title={restockTimeLeft ? `Restocked! Expires in ${restockTimeLeft}` : 'Restocked'}
+                                        className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md flex items-center gap-1 border border-emerald-400 animate-in fade-in"
+                                      >
                                         <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
                                         <span>Restocked</span>
+                                        {restockTimeLeft && (
+                                          <span className="text-[9px] bg-emerald-700/80 px-1 py-0.2 rounded-full font-mono normal-case">
+                                            {restockTimeLeft}
+                                          </span>
+                                        )}
                                       </span>
                                     )}
                                   </div>
@@ -3799,147 +4040,242 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                         </div>
                       )}
 
-                      {/* Step 1: Delivery Destination */}
+                      {/* Step 1: Delivery Destination (Dropship Only - My Business Address Removed) */}
                       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-2xs space-y-3">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <label className="block text-xs font-bold uppercase tracking-wider text-neutral-800">
-                            1. Delivery Destination
+                            1. Delivery Destination (Customer Dropship)
                           </label>
-                          <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl">
-                            <button
-                              type="button"
-                              onClick={() => setDeliveryType('dropship')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                deliveryType === 'dropship'
-                                  ? 'bg-purple-900 text-white shadow-xs'
-                                  : 'text-neutral-600 hover:text-neutral-900'
-                              }`}
-                            >
-                              Customer Dropship
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeliveryType('self')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                deliveryType === 'self'
-                                  ? 'bg-purple-900 text-white shadow-xs'
-                                  : 'text-neutral-600 hover:text-neutral-900'
-                              }`}
-                            >
-                              My Business Address
-                            </button>
-                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                            Direct to End-Buyer
+                          </span>
                         </div>
 
-                        {deliveryType === 'dropship' ? (
-                          <div className="space-y-3 pt-1">
-                            <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200/80 text-[11px] text-purple-900 flex items-center gap-2">
-                              <ShieldCheck className="w-4 h-4 text-purple-700 shrink-0" />
-                              <span>
-                                <strong>Discreet Dropship:</strong> Plain unbranded parcel without boutique price tags or invoices.
+                        <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200/80 text-[11px] text-purple-900 flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-purple-700 shrink-0" />
+                          <span>
+                            <strong>Discreet Dropship:</strong> Plain unbranded parcel without boutique price tags or invoices.
+                          </span>
+                        </div>
+
+                        {/* Prompt to select from Saved Addresses if available */}
+                        {currentReseller.savedAddresses && currentReseller.savedAddresses.length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-neutral-700">
+                                Select from Saved Addresses:
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSavedAddressId('new');
+                                  setRecipientName('');
+                                  setRecipientPhone('');
+                                  setRecipientAddress('');
+                                  setRecipientCity('');
+                                  setRecipientState('Tamil Nadu');
+                                  setRecipientPincode('');
+                                }}
+                                className={`text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                                  selectedSavedAddressId === 'new'
+                                    ? 'text-purple-900 underline'
+                                    : 'text-neutral-500 hover:text-purple-900'
+                                }`}
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>+ Enter New Address</span>
+                              </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2.5">
-                              <div>
-                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                  Customer Name *
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={recipientName}
-                                  onChange={(e) => setRecipientName(e.target.value)}
-                                  placeholder="End buyer name"
-                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                  Customer Phone (10 digits) *
-                                </label>
-                                <input
-                                  type="tel"
-                                  required
-                                  maxLength={10}
-                                  value={recipientPhone}
-                                  onChange={(e) => setRecipientPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                                  placeholder="9876543210"
-                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono focus:ring-1 focus:ring-purple-700 focus:outline-none"
-                                />
-                              </div>
+                            <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
+                              {currentReseller.savedAddresses.map((addr) => {
+                                const isSelected = selectedSavedAddressId === addr.id;
+                                return (
+                                  <div
+                                    key={addr.id}
+                                    onClick={() => {
+                                      setSelectedSavedAddressId(addr.id);
+                                      setRecipientName(addr.name);
+                                      setRecipientPhone(addr.phone);
+                                      setRecipientAddress(addr.address);
+                                      setRecipientCity(addr.city);
+                                      setRecipientState(addr.state || 'Tamil Nadu');
+                                      setRecipientPincode(addr.pincode);
+                                    }}
+                                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex items-start justify-between gap-3 ${
+                                      isSelected
+                                        ? 'border-purple-600 bg-purple-50/70 shadow-xs ring-1 ring-purple-600'
+                                        : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                                    }`}
+                                  >
+                                    <div className="space-y-0.5 text-xs">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-bold text-neutral-900">{addr.name}</span>
+                                        {addr.isDefault && (
+                                          <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-400 text-purple-950">
+                                            Default
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-neutral-600 text-[11px]">{addr.address}</p>
+                                      <p className="text-neutral-500 text-[11px]">
+                                        {addr.city}, {addr.state || 'Tamil Nadu'} - {addr.pincode} &bull; Ph: +91 {addr.phone}
+                                      </p>
+                                    </div>
+                                    <div className="pt-0.5">
+                                      <div
+                                        className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                          isSelected
+                                            ? 'border-purple-600 bg-purple-600 text-white'
+                                            : 'border-neutral-300 bg-white'
+                                        }`}
+                                      >
+                                        {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
+                          </div>
+                        )}
 
+                        {/* Recipient inputs (shown when entering new address OR viewing/verifying selected address) */}
+                        <div className="space-y-3 pt-1">
+                          {selectedSavedAddressId === 'new' && currentReseller.savedAddresses && currentReseller.savedAddresses.length > 0 && (
+                            <div className="text-[11px] font-semibold text-purple-900 bg-purple-50 p-2 rounded-lg border border-purple-200">
+                              Entering new customer address (will be automatically saved for future dropships):
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-2.5">
                             <div>
                               <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                Street Address, House / Flat No. *
+                                Customer Name *
                               </label>
-                              <textarea
-                                rows={2}
+                              <input
+                                type="text"
                                 required
-                                value={recipientAddress}
-                                onChange={(e) => setRecipientAddress(e.target.value)}
-                                placeholder="Door no, Street, Landmark, Area"
+                                value={recipientName}
+                                onChange={(e) => {
+                                  setRecipientName(e.target.value);
+                                  if (selectedSavedAddressId !== 'new') setSelectedSavedAddressId('new');
+                                }}
+                                placeholder="End buyer name"
                                 className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
                               />
                             </div>
-
-                            <div className="grid grid-cols-3 gap-2">
-                              <div>
-                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                  City *
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={recipientCity}
-                                  onChange={(e) => setRecipientCity(e.target.value)}
-                                  placeholder="e.g. Madurai"
-                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                  State *
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={recipientState}
-                                  onChange={(e) => setRecipientState(e.target.value)}
-                                  placeholder="Tamil Nadu"
-                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                  Pincode *
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  maxLength={6}
-                                  value={recipientPincode}
-                                  onChange={(e) => setRecipientPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                  placeholder="625001"
-                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono focus:ring-1 focus:ring-purple-700 focus:outline-none"
-                                />
-                              </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                Customer Phone (10 digits) *
+                              </label>
+                              <input
+                                type="tel"
+                                required
+                                maxLength={10}
+                                value={recipientPhone}
+                                onChange={(e) => {
+                                  setRecipientPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                                  if (selectedSavedAddressId !== 'new') setSelectedSavedAddressId('new');
+                                }}
+                                placeholder="9876543210"
+                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                              />
                             </div>
                           </div>
-                        ) : (
-                          <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100 text-xs text-neutral-800 space-y-1">
-                            <p className="font-bold text-purple-950">
-                              Deliver to Registered Reseller Address:
-                            </p>
-                            <p>
-                              <strong>{currentReseller.businessName}</strong> &bull; Attn: {currentReseller.name}
-                            </p>
-                            <p className="text-neutral-600">
-                              {currentReseller.city || 'Salem'}, Tamil Nadu &bull; WhatsApp: +91 {currentReseller.whatsappNumber}
-                            </p>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                              Street Address, House / Flat No. *
+                            </label>
+                            <textarea
+                              rows={2}
+                              required
+                              value={recipientAddress}
+                              onChange={(e) => {
+                                setRecipientAddress(e.target.value);
+                                if (selectedSavedAddressId !== 'new') setSelectedSavedAddressId('new');
+                              }}
+                              placeholder="Door no, Street, Landmark, Area"
+                              className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                            />
                           </div>
-                        )}
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                City *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={recipientCity}
+                                onChange={(e) => {
+                                  setRecipientCity(e.target.value);
+                                  if (selectedSavedAddressId !== 'new') setSelectedSavedAddressId('new');
+                                }}
+                                placeholder="e.g. Madurai"
+                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                State *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={recipientState}
+                                onChange={(e) => {
+                                  setRecipientState(e.target.value);
+                                  if (selectedSavedAddressId !== 'new') setSelectedSavedAddressId('new');
+                                }}
+                                placeholder="Tamil Nadu"
+                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                Pincode *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                maxLength={6}
+                                value={recipientPincode}
+                                onChange={(e) => {
+                                  setRecipientPincode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                                  if (selectedSavedAddressId !== 'new') setSelectedSavedAddressId('new');
+                                }}
+                                placeholder="625001"
+                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Address Options: Auto-save & Set Default */}
+                          <div className="pt-2 border-t border-neutral-100 space-y-1.5">
+                            <label className="flex items-center gap-2 cursor-pointer text-xs text-neutral-700 select-none">
+                              <input
+                                type="checkbox"
+                                checked={saveAddressForFuture}
+                                onChange={(e) => setSaveAddressForFuture(e.target.checked)}
+                                className="w-3.5 h-3.5 text-purple-900 rounded border-neutral-300 focus:ring-purple-900"
+                              />
+                              <span>Save address to "Saved Addresses" for future dropships</span>
+                            </label>
+
+                            <label className="flex items-center gap-2 cursor-pointer text-xs text-neutral-700 select-none">
+                              <input
+                                type="checkbox"
+                                checked={isNewAddressDefault}
+                                onChange={(e) => setIsNewAddressDefault(e.target.checked)}
+                                className="w-3.5 h-3.5 text-purple-900 rounded border-neutral-300 focus:ring-purple-900"
+                              />
+                              <span>Set as my default dropship address</span>
+                            </label>
+                          </div>
+                        </div>
 
                         <div>
                           <label className="block text-[11px] font-bold text-neutral-700 mb-1">
@@ -4147,6 +4483,458 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: DEDICATED SAVED ADDRESSES SECTION */}
+            {activeTab === 'addresses' && (
+              <div className="space-y-5 animate-in fade-in duration-200">
+                {/* Header Card */}
+                <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-xl bg-purple-100 text-purple-900 flex items-center justify-center font-bold">
+                        <MapPin className="w-4 h-4 text-purple-800" />
+                      </span>
+                      <h3 className="font-serif font-bold text-lg text-neutral-900">
+                        Saved Delivery Addresses
+                      </h3>
+                    </div>
+                    <p className="text-xs text-neutral-500">
+                      Manage client and recurring delivery locations for immediate 1-click dropship dispatch.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenAddAddressModal}
+                    className="px-4 py-2.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add New Address</span>
+                  </button>
+                </div>
+
+                {addressSuccessNotice && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{addressSuccessNotice}</span>
+                  </div>
+                )}
+
+                {/* Addresses Grid */}
+                {!currentReseller.savedAddresses || currentReseller.savedAddresses.length === 0 ? (
+                  <div className="bg-white rounded-3xl p-10 text-center border border-dashed border-neutral-300 space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-purple-50 text-purple-700 mx-auto flex items-center justify-center">
+                      <MapPin className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-1 max-w-md mx-auto">
+                      <h4 className="font-serif font-bold text-base text-neutral-900">
+                        No Saved Addresses Yet
+                      </h4>
+                      <p className="text-xs text-neutral-500 leading-relaxed">
+                        Addresses you save during dropship checkout or add manually here will be preserved for quick reordering without re-typing client details.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenAddAddressModal}
+                      className="px-4 py-2 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Create First Saved Address</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {currentReseller.savedAddresses.map((addr) => (
+                      <div
+                        key={addr.id}
+                        className={`bg-white rounded-2xl border p-4.5 transition flex flex-col justify-between gap-4 shadow-2xs relative ${
+                          addr.isDefault
+                            ? 'border-purple-300 ring-1 ring-purple-400/50 bg-gradient-to-b from-purple-50/20 to-white'
+                            : 'border-neutral-200 hover:border-neutral-300'
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className="font-bold text-sm text-neutral-900 truncate">
+                              {addr.name}
+                            </h4>
+                            {addr.isDefault && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-purple-950 shrink-0">
+                                Default
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="space-y-1 text-xs text-neutral-600">
+                            <p className="flex items-center gap-1.5 font-mono text-neutral-800">
+                              <Phone className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                              <span>+91 {addr.phone}</span>
+                            </p>
+                            <p className="text-neutral-700 leading-relaxed line-clamp-2">
+                              {addr.address}
+                            </p>
+                            <p className="text-neutral-500 font-medium">
+                              {addr.city}, {addr.state || 'Tamil Nadu'} &bull; <span className="font-mono">{addr.pincode}</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="pt-3 border-t border-neutral-100 flex items-center justify-between gap-2 text-xs">
+                          <div>
+                            {!addr.isDefault ? (
+                              <button
+                                type="button"
+                                onClick={() => handleSetDefaultAddress(addr.id)}
+                                className="text-[11px] font-bold text-purple-900 hover:text-purple-700 transition cursor-pointer"
+                              >
+                                Set as Default
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-neutral-400 font-medium">
+                                Active Default
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditAddressModal(addr)}
+                              className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-semibold text-[11px] transition cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAddress(addr.id)}
+                              className="p-1 rounded-lg text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                              title="Delete address"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 6: NOTIFICATIONS SECTION WITH DIRECT NAVIGATION */}
+            {activeTab === 'notifications' && (
+              <div className="space-y-5 animate-in fade-in duration-200">
+                {/* Header Card */}
+                <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-xl bg-purple-100 text-purple-900 flex items-center justify-center font-bold">
+                        <Bell className="w-4 h-4 text-purple-800" />
+                      </span>
+                      <h3 className="font-serif font-bold text-lg text-neutral-900">
+                        Reseller Updates & Notifications
+                      </h3>
+                    </div>
+                    <p className="text-xs text-neutral-500">
+                      Stay informed on freshly restocked inventory, dropship milestones & direct boutique chats. Click any alert to navigate directly.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={markAllResellerNotificationsRead}
+                      className="px-3 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Mark all read
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearResellerNotifications}
+                      className="px-3 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter Chips */}
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                  {[
+                    { id: 'all', label: `All Updates (${(resellerNotifications || []).length})` },
+                    { id: 'restock', label: `Restocked Sarees ✨ (${(resellerNotifications || []).filter((n) => n.type === 'restock').length})` },
+                    { id: 'order', label: `Dropship Orders 📦 (${(resellerNotifications || []).filter((n) => n.type === 'order').length})` },
+                    { id: 'chat', label: `Concierge Chat 💬 (${(resellerNotifications || []).filter((n) => n.type === 'chat').length})` },
+                  ].map((chip) => (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => setResellerNotifFilter(chip.id as any)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                        resellerNotifFilter === chip.id
+                          ? 'bg-purple-900 text-white shadow-xs'
+                          : 'bg-white text-neutral-600 hover:text-neutral-900 border border-neutral-200'
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Notification Items List */}
+                {(() => {
+                  const filtered = (resellerNotifications || []).filter((n) => {
+                    if (resellerNotifFilter === 'all') return true;
+                    return n.type === resellerNotifFilter;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="bg-white rounded-3xl p-10 text-center border border-dashed border-neutral-300 space-y-3">
+                        <div className="w-14 h-14 rounded-full bg-purple-50 text-purple-700 mx-auto flex items-center justify-center">
+                          <Bell className="w-7 h-7" />
+                        </div>
+                        <h4 className="font-serif font-bold text-base text-neutral-900">
+                          No Notifications in this Category
+                        </h4>
+                        <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                          You are completely up to date. You will receive real-time notifications when catalog sarees restock or dropship dispatches change.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2.5">
+                      {filtered.map((notif) => (
+                        <div
+                          key={notif.id}
+                          onClick={() => handleResellerNotificationClick(notif)}
+                          className={`p-4 rounded-2xl border transition cursor-pointer flex items-start justify-between gap-3 shadow-2xs group ${
+                            notif.isRead
+                              ? 'bg-white border-neutral-200 hover:border-neutral-300'
+                              : 'bg-purple-50/50 border-purple-200 hover:border-purple-300'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span
+                              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                notif.type === 'restock'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : notif.type === 'order'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {notif.type === 'restock' ? (
+                                <Sparkles className="w-4 h-4 text-emerald-700" />
+                              ) : notif.type === 'order' ? (
+                                <Package className="w-4 h-4 text-blue-700" />
+                              ) : (
+                                <MessageSquare className="w-4 h-4 text-amber-700" />
+                              )}
+                            </span>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4
+                                  className={`text-xs font-bold ${
+                                    notif.isRead ? 'text-neutral-900' : 'text-purple-950 font-black'
+                                  }`}
+                                >
+                                  {notif.title}
+                                </h4>
+                                {!notif.isRead && (
+                                  <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
+                                )}
+                              </div>
+                              <p className="text-xs text-neutral-600 leading-relaxed">
+                                {notif.message}
+                              </p>
+                              <div className="flex items-center gap-3 pt-1 text-[11px] text-neutral-400">
+                                <span>{new Date(notif.timestamp || notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>&bull;</span>
+                                <span className="text-purple-900 group-hover:underline font-semibold flex items-center gap-1">
+                                  <span>
+                                    {notif.type === 'restock'
+                                      ? 'View in Saree Catalog'
+                                      : notif.type === 'order'
+                                      ? 'Track Dropship Order'
+                                      : 'Open Concierge Chat'}
+                                  </span>
+                                  <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markResellerNotificationRead(notif.id);
+                            }}
+                            className="p-1 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition shrink-0"
+                            title={notif.isRead ? 'Mark as read' : 'Mark as read'}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* MODAL 0: Reseller Address Add / Edit Modal */}
+            {isAddressModalOpen && (
+              <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+                <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in zoom-in-95 duration-200">
+                  <div className="p-5 bg-gradient-to-r from-purple-950 to-neutral-900 text-white flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-5 h-5 text-purple-300" />
+                      <h3 className="font-serif text-base font-bold">
+                        {addressModalMode === 'add' ? 'Add Saved Address' : 'Edit Saved Address'}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddressModalOpen(false)}
+                      className="p-1 rounded-full text-neutral-400 hover:text-white cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveAddressFormSubmit} className="p-5 space-y-3.5 text-xs">
+                    {addrFormError && (
+                      <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-medium flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{addrFormError}</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block font-bold text-neutral-800 mb-1">
+                        Contact / Client Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={addrFormName}
+                        onChange={(e) => setAddrFormName(e.target.value)}
+                        placeholder="Full recipient name"
+                        className="w-full p-2.5 rounded-xl border border-neutral-300 focus:ring-1 focus:ring-purple-700 focus:outline-none text-neutral-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-neutral-800 mb-1">
+                        Phone Number (10 digits) *
+                      </label>
+                      <input
+                        type="tel"
+                        required
+                        maxLength={10}
+                        value={addrFormPhone}
+                        onChange={(e) => setAddrFormPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        placeholder="9876543210"
+                        className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono focus:ring-1 focus:ring-purple-700 focus:outline-none text-neutral-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-neutral-800 mb-1">
+                        Street Address / Landmark *
+                      </label>
+                      <textarea
+                        rows={2}
+                        required
+                        value={addrFormStreet}
+                        onChange={(e) => setAddrFormStreet(e.target.value)}
+                        placeholder="Door no, Building, Street, Landmark"
+                        className="w-full p-2.5 rounded-xl border border-neutral-300 focus:ring-1 focus:ring-purple-700 focus:outline-none text-neutral-900"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block font-bold text-neutral-800 mb-1">City *</label>
+                        <input
+                          type="text"
+                          required
+                          value={addrFormCity}
+                          onChange={(e) => setAddrFormCity(e.target.value)}
+                          placeholder="Madurai"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-neutral-800 mb-1">State *</label>
+                        <input
+                          type="text"
+                          required
+                          value={addrFormState}
+                          onChange={(e) => setAddrFormState(e.target.value)}
+                          placeholder="Tamil Nadu"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-neutral-800 mb-1">Pincode *</label>
+                        <input
+                          type="text"
+                          required
+                          maxLength={6}
+                          value={addrFormPincode}
+                          onChange={(e) => setAddrFormPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="625001"
+                          className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-neutral-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-neutral-700 select-none">
+                        <input
+                          type="checkbox"
+                          checked={addrFormIsDefault}
+                          onChange={(e) => setAddrFormIsDefault(e.target.checked)}
+                          className="w-3.5 h-3.5 text-purple-900 rounded border-neutral-300 focus:ring-purple-900"
+                        />
+                        <span>Set as Default Address for Dropshipping</span>
+                      </label>
+                    </div>
+
+                    <div className="pt-3 flex flex-col gap-2">
+                      <button
+                        type="submit"
+                        disabled={isSavingAddress}
+                        className="w-full py-2.5 px-4 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50 active:scale-98"
+                      >
+                        {isSavingAddress ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                        <span>{addressModalMode === 'add' ? 'Save Address' : 'Update Address'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsAddressModalOpen(false)}
+                        className="w-full py-2 rounded-xl text-neutral-600 hover:bg-neutral-100 font-semibold cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}

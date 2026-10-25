@@ -31,7 +31,10 @@
         "isSkuLocked": { "type": "boolean" },
         "category": { "type": "string", "maxLength": 100 },
         "crossSellProductIds": { "type": "array" },
-        "crossSellCategoryNames": { "type": "array" }
+        "crossSellCategoryNames": { "type": "array" },
+        "isRestocked": { "type": "boolean" },
+        "restockedAt": { "type": "string" },
+        "restockDurationHours": { "type": "number" }
       },
       "required": ["id", "productCode", "title", "fabric", "color", "price", "stockStatus", "isVisible"]
     },
@@ -181,6 +184,7 @@
         "city": { "type": "string", "maxLength": 100 },
         "state": { "type": "string", "maxLength": 100 },
         "wholesaleDiscountPercent": { "type": "number" },
+        "savedAddresses": { "type": "array" },
         "status": { "type": "string", "enum": ["active", "pending", "suspended"] },
         "createdAt": { "type": "string" }
       },
