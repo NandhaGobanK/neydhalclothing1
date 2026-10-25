@@ -1261,11 +1261,36 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const cleanInput = emailOrPhone.trim().toLowerCase();
     const cleanPhone = emailOrPhone.replace(/\D/g, '').slice(-10);
 
-    const found = customers.find(
+    // Look in memory / cache first
+    let found = customers.find(
       (c) =>
         (cleanPhone && c.phone && c.phone.replace(/\D/g, '').slice(-10) === cleanPhone) ||
         (c.email && c.email.toLowerCase() === cleanInput)
     );
+
+    // If not found in cache, check Firestore directly
+    if (!found) {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'customers'));
+        querySnapshot.forEach((docSnap) => {
+          const data = { id: docSnap.id, ...docSnap.data() } as CustomerUser;
+          const dPhone = (data.phone || '').replace(/\D/g, '').slice(-10);
+          const dEmail = (data.email || '').toLowerCase().trim();
+          if ((cleanPhone && dPhone === cleanPhone) || (cleanInput && dEmail === cleanInput)) {
+            found = data;
+          }
+        });
+        if (found) {
+          setCustomers((prev) => {
+            const next = [found!, ...prev.filter((c) => c.id !== found!.id)];
+            saveToStorage('aara_boutique_customers_v3', next);
+            return next;
+          });
+        }
+      } catch (err) {
+        console.warn('Firestore customer lookup notice:', err);
+      }
+    }
 
     if (found) {
       if (found.password && password && found.password !== password) {
@@ -1288,7 +1313,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       authMethod: password ? 'password' : 'guest',
     };
 
-    setCustomers((prev) => [newCust, ...prev]);
+    setCustomers((prev) => {
+      const next = [newCust, ...prev];
+      saveToStorage('aara_boutique_customers_v3', next);
+      return next;
+    });
     setCurrentCustomer(newCust);
     saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, newCust);
     setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust)).catch(() => {});
@@ -1312,7 +1341,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const name = (options?.name || fbUser.displayName || (email ? email.split('@')[0] : 'Valued Patron')).trim();
       const phoneInput = (options?.phone || (fbUser.phoneNumber ? fbUser.phoneNumber.replace(/\D/g, '').slice(-10) : '')).trim();
 
-      // Check if customer profile exists in Firestore /customers collection
+      // Check if customer profile exists in Firestore /customers collection or local cache
       let existingCustomer: CustomerUser | null = null;
       try {
         const docSnap = await getDoc(doc(db, 'customers', fbUser.uid));
@@ -1334,43 +1363,83 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
 
       if (mode === 'signin') {
-        if (!existingCustomer) {
-          // Customer is NOT registered yet!
-          // Unset auth and inform user to register with Google first.
-          await googleSignOut().catch(() => {});
-          return {
-            success: false,
-            isNotRegistered: true,
-            email,
-            displayName: fbUser.displayName || undefined,
-            error: `No patron account registered for "${email}". Please click "Register with Google" to create your verified patron account.`,
-          };
-        }
+        // Authenticated customer: whether previously existing or newly created via Google Auth
+        const updated: CustomerUser = existingCustomer
+          ? {
+              ...existingCustomer,
+              id: existingCustomer.id || fbUser.uid,
+              name: existingCustomer.name || name,
+              email: existingCustomer.email || email,
+              avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
+              authMethod: 'google',
+            }
+          : {
+              id: fbUser.uid,
+              name: name || fbUser.displayName || (email ? email.split('@')[0] : 'Valued Patron'),
+              email,
+              phone: phoneInput || (fbUser.phoneNumber ? fbUser.phoneNumber.replace(/\D/g, '').slice(-10) : ''),
+              avatarUrl: fbUser.photoURL || undefined,
+              savedAddresses: [],
+              createdAt: new Date().toISOString(),
+              authMethod: 'google',
+            };
 
-        // Authenticated existing registered customer
-        const updated: CustomerUser = {
-          ...existingCustomer,
-          name: existingCustomer.name || name,
-          email: existingCustomer.email || email,
-          avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
-          authMethod: 'google',
-        };
         setCurrentCustomer(updated);
         saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, updated);
-        setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-        setDoc(doc(db, 'customers', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(() => {});
+        setCustomers((prev) => {
+          const next = [updated, ...prev.filter((c) => c.id !== updated.id && c.email?.toLowerCase() !== email)];
+          saveToStorage('aara_boutique_customers_v3', next);
+          return next;
+        });
+
+        // Persist to Firestore gracefully without failing the sign-in
+        try {
+          await setDoc(doc(db, 'customers', updated.id), sanitizeForFirestore(updated), { merge: true });
+        } catch (fsErr) {
+          console.warn('Firestore customer document write notice (saved locally):', fsErr);
+        }
+
         return { success: true, customer: updated };
       }
 
       // mode === 'register'
       if (existingCustomer) {
-        // Already registered, sign out of Google auth and instruct user to sign in
-        await googleSignOut().catch(() => {});
+        // Account already exists in Google Auth / Firestore: update provided details so registration succeeds gracefully!
+        const updatedCust: CustomerUser = {
+          ...existingCustomer,
+          id: existingCustomer.id || fbUser.uid,
+          name: name || existingCustomer.name || fbUser.displayName || 'Valued Patron',
+          phone: phoneInput || existingCustomer.phone || '',
+          email: email || existingCustomer.email,
+          avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
+          authMethod: 'google',
+        };
+
+        setCustomers((prev) => {
+          const next = [updatedCust, ...prev.filter((c) => c.id !== updatedCust.id && c.email?.toLowerCase() !== email)];
+          saveToStorage('aara_boutique_customers_v3', next);
+          return next;
+        });
+
+        try {
+          await setDoc(doc(db, 'customers', updatedCust.id), sanitizeForFirestore(updatedCust), { merge: true });
+        } catch (fsErr) {
+          console.warn('Firestore customer update notice:', fsErr);
+        }
+
+        const shouldAutoSignIn = options?.autoSignIn ?? false;
+        if (shouldAutoSignIn) {
+          setCurrentCustomer(updatedCust);
+          saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, updatedCust);
+        } else {
+          await googleSignOut().catch(() => {});
+        }
+
         return {
-          success: false,
+          success: true,
+          registered: true,
           isAlreadyRegistered: true,
-          email,
-          error: `An account for "${email}" is already registered. Please proceed to Sign In.`,
+          customer: updatedCust,
         };
       }
 
@@ -1386,8 +1455,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         authMethod: 'google',
       };
 
-      setCustomers((prev) => [newCust, ...prev.filter((c) => c.id !== newCust.id)]);
-      await setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust));
+      setCustomers((prev) => {
+        const next = [newCust, ...prev.filter((c) => c.id !== newCust.id && c.email?.toLowerCase() !== email)];
+        saveToStorage('aara_boutique_customers_v3', next);
+        return next;
+      });
+
+      // Write to Firestore with safe fallback so permission errors or network drops do not block registration
+      try {
+        await setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust));
+      } catch (fsErr: any) {
+        console.warn('Firestore customer create document notice (saved locally):', fsErr?.message || fsErr);
+      }
 
       const shouldAutoSignIn = options?.autoSignIn ?? false;
       if (shouldAutoSignIn) {
@@ -1416,10 +1495,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       savedAddresses: [],
       createdAt: new Date().toISOString(),
     };
-    setCustomers((prev) => [newCust, ...prev]);
+    setCustomers((prev) => {
+      const next = [newCust, ...prev];
+      saveToStorage('aara_boutique_customers_v3', next);
+      return next;
+    });
     setCurrentCustomer(newCust);
     saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, newCust);
-    setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust)).catch(() => {});
+    try {
+      await setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust));
+    } catch (fsErr) {
+      console.warn('Firestore customer document write notice:', fsErr);
+    }
     return { success: true, customer: newCust };
   };
 

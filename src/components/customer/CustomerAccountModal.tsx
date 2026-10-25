@@ -1,8 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { CustomerAddress, Order } from '../../types/store';
+import { CustomerAddress, Order, OrderStatus } from '../../types/store';
 import { formatPrice } from '../../utils/upi';
 import { downloadSingleImage } from '../../utils/imageDownload';
+import { resolveCourierDetails, buildCourierTrackingUrl } from '../../utils/courier';
+import { OrderLiveChat } from '../common/OrderLiveChat';
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  triggerDeviceVibration,
+} from '../../utils/deviceNotifications';
+import { playChatChimeSound } from '../../utils/audio';
 import {
   X,
   User,
@@ -25,6 +33,15 @@ import {
   Bell,
   CheckCheck,
   ArrowRight,
+  ArrowLeft,
+  Copy,
+  Check,
+  Search,
+  Volume2,
+  XCircle,
+  RotateCcw,
+  Phone,
+  Printer,
 } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 import { AppNotification } from '../../types/store';
@@ -35,6 +52,7 @@ interface CustomerAccountModalProps {
   onClose: () => void;
   onOpenOrderChat?: (orderId: string) => void;
   onOpenProductDetails?: (productId: string) => void;
+  initialOrderId?: string;
 }
 
 export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
@@ -42,6 +60,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   onClose,
   onOpenOrderChat,
   onOpenProductDetails,
+  initialOrderId,
 }) => {
   const {
     currentCustomer,
@@ -59,11 +78,181 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     markAllCustomerNotificationsRead,
     clearCustomerNotifications,
     setActiveProductModal,
+    requestOrderCancellation,
+    reportCustomerDeliveryIssue,
   } = useStore();
 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [activeTab, setActiveTab] = useState<'orders' | 'notifications' | 'addresses' | 'wishlist' | 'profile'>('orders');
   const [notifFilter, setNotifFilter] = useState<'all' | 'restock' | 'order' | 'chat'>('all');
+
+  // Customer Orders Tracking State (Matches Reseller Portal Tracking Layout)
+  const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState<string | null>(initialOrderId || null);
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'Shipped' | 'Confirmed' | 'Delivered' | 'Pending' | 'Cancelled'>('all');
+  const [copiedOrderKey, setCopiedOrderKey] = useState<string | null>(null);
+
+  // Cancellation and Issue Reporting
+  const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState('Found another weave / Changed mind');
+  const [cancelStatusMsg, setCancelStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Notifications alert system state
+  const [notificationPermission, setNotificationPermission] = useState<string>(() => {
+    return getNotificationPermission();
+  });
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+  const [headerNotice, setHeaderNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialOrderId) {
+      setSelectedCustomerOrderId(initialOrderId);
+      setActiveTab('orders');
+    }
+  }, [initialOrderId]);
+
+  const copyOrderText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedOrderKey(key);
+    setTimeout(() => setCopiedOrderKey(null), 2000);
+  };
+
+  const handleEnableNotifications = async () => {
+    setIsRequestingPermission(true);
+    const granted = await requestNotificationPermission();
+    setNotificationPermission(getNotificationPermission());
+    setIsRequestingPermission(false);
+    if (granted) {
+      playChatChimeSound(true);
+      triggerDeviceVibration([150, 75, 150]);
+      setHeaderNotice('Device notifications active!');
+      setTimeout(() => setHeaderNotice(null), 3000);
+    } else {
+      setHeaderNotice('Notifications blocked in browser settings.');
+      setTimeout(() => setHeaderNotice(null), 3500);
+    }
+  };
+
+  const handleTestSound = () => {
+    playChatChimeSound(true);
+    triggerDeviceVibration([180, 80, 180]);
+    setHeaderNotice('Sound & haptic vibration tested!');
+    setTimeout(() => setHeaderNotice(null), 2500);
+  };
+
+  const getStatusStepIndex = (status: OrderStatus) => {
+    switch (status) {
+      case 'Pending':
+        return 0;
+      case 'Confirmed':
+        return 1;
+      case 'Shipped':
+        return 2;
+      case 'Delivered':
+        return 3;
+      default:
+        return -1;
+    }
+  };
+
+  const getStatusBadge = (status: OrderStatus) => {
+    switch (status) {
+      case 'Pending':
+        return {
+          bg: 'bg-amber-100 text-amber-900 border-amber-300',
+          icon: Clock,
+          label: 'Pending Confirmation',
+        };
+      case 'Confirmed':
+        return {
+          bg: 'bg-purple-100 text-purple-900 border-purple-300',
+          icon: CheckCircle,
+          label: 'Confirmed & In Packing',
+        };
+      case 'Shipped':
+        return {
+          bg: 'bg-blue-100 text-blue-900 border-blue-300',
+          icon: Truck,
+          label: 'Dispatched / In Transit',
+        };
+      case 'Delivered':
+        return {
+          bg: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+          icon: Package,
+          label: 'Delivered',
+        };
+      case 'Cancelled':
+      case 'Rejected':
+        return {
+          bg: 'bg-rose-100 text-rose-900 border-rose-300',
+          icon: XCircle,
+          label: 'Cancelled',
+        };
+      case 'Refunded':
+        return {
+          bg: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+          icon: RotateCcw,
+          label: 'Refund Settled',
+        };
+      default:
+        return {
+          bg: 'bg-neutral-100 text-neutral-800 border-neutral-300',
+          icon: Clock,
+          label: status,
+        };
+    }
+  };
+
+  // Filtered customer orders list
+  const filteredCustomerOrders = useMemo(() => {
+    let list = customerOrders;
+    if (orderStatusFilter !== 'all') {
+      if (orderStatusFilter === 'Cancelled') {
+        list = list.filter((o) => o.status === 'Cancelled' || o.status === 'Rejected' || o.status === 'Refunded');
+      } else {
+        list = list.filter((o) => o.status === orderStatusFilter);
+      }
+    }
+    if (orderSearchQuery.trim()) {
+      const q = orderSearchQuery.toLowerCase().trim();
+      list = list.filter((o) => {
+        if (o.orderNumber?.toLowerCase().includes(q)) return true;
+        if (o.customer?.name?.toLowerCase().includes(q)) return true;
+        if (o.customer?.city?.toLowerCase().includes(q)) return true;
+        if (o.shippingDetails?.trackingNumber?.toLowerCase().includes(q)) return true;
+        if (o.shippingDetails?.courierName?.toLowerCase().includes(q)) return true;
+        if (o.items.some((i) => i.product.title.toLowerCase().includes(q) || i.product.productCode?.toLowerCase().includes(q))) return true;
+        return false;
+      });
+    }
+    return list;
+  }, [customerOrders, orderStatusFilter, orderSearchQuery]);
+
+  const orderStatusCounts = useMemo(() => {
+    const counts = {
+      all: customerOrders.length,
+      Shipped: 0,
+      Confirmed: 0,
+      Delivered: 0,
+      Pending: 0,
+      Cancelled: 0,
+    };
+    customerOrders.forEach((o) => {
+      if (o.status === 'Shipped') counts.Shipped++;
+      else if (o.status === 'Confirmed') counts.Confirmed++;
+      else if (o.status === 'Delivered') counts.Delivered++;
+      else if (o.status === 'Pending') counts.Pending++;
+      else if (o.status === 'Cancelled' || o.status === 'Rejected' || o.status === 'Refunded') counts.Cancelled++;
+    });
+    return counts;
+  }, [customerOrders]);
+
+  const selectedCustomerOrder = useMemo(() => {
+    if (!selectedCustomerOrderId) return null;
+    return customerOrders.find(
+      (o) => o.id === selectedCustomerOrderId || o.orderNumber.toUpperCase() === selectedCustomerOrderId.toUpperCase()
+    ) || null;
+  }, [selectedCustomerOrderId, customerOrders]);
 
   const unreadNotifCount = customerNotifications.filter((n) => !n.read).length;
 
@@ -80,15 +269,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         onClose();
       }
     } else if (notif.targetType === 'order') {
-      onClose();
-      setIsTrackOrderOpen(true);
-    } else if (notif.targetType === 'chat' && notif.targetId) {
-      if (onOpenOrderChat) {
-        onOpenOrderChat(notif.targetId);
-      } else {
-        onClose();
-        setIsTrackOrderOpen(true);
+      setActiveTab('orders');
+      if (notif.targetId || notif.orderId) {
+        setSelectedCustomerOrderId(notif.targetId || notif.orderId || null);
       }
+    } else if (notif.targetType === 'chat' && notif.targetId) {
+      setActiveTab('orders');
+      setSelectedCustomerOrderId(notif.targetId);
     } else {
       onClose();
     }
@@ -120,8 +307,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     });
     setShowAddressForm(false);
     setAddrStreet('');
-    setAddrCity('');
-    setAddrPincode('');
   };
 
   const wishlistProducts = products.filter((p) => wishlist.includes(p.id));
@@ -265,183 +450,938 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
         {/* Tab Content Body */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 bg-neutral-50/50">
-          {/* TAB 1: ORDERS (STRICTLY ISOLATED TO THIS CUSTOMER) */}
+          {/* TAB 1: ORDERS (RICH RESELLER-STYLE TRACKING LAYOUT) */}
           {activeTab === 'orders' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              {/* Header Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-2xs">
                 <div>
-                  <h3 className="text-base font-bold text-neutral-900 font-serif">
-                    Order History & Deliveries
-                  </h3>
-                  <p className="text-xs text-neutral-500">
-                    Strictly isolated: Only orders placed with your phone/email are displayed.
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-bold text-neutral-900 font-serif">
+                      My Orders & Consignment Tracking
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                      {customerOrders.length} {customerOrders.length === 1 ? 'Order' : 'Orders'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Live dispatch transit, stage progression & boutique concierge chat for patron: <strong>{currentCustomer.name}</strong>
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    setIsTrackOrderOpen(true);
-                  }}
-                  className="text-xs font-bold text-rose-900 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
-                >
-                  <Truck className="w-3.5 h-3.5" />
-                  <span>Public Courier Tracker &rarr;</span>
-                </button>
-              </div>
-
-              {customerOrders.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-2xl border border-neutral-200/80 p-8 space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mx-auto text-neutral-400">
-                    <Package className="w-6 h-6" />
-                  </div>
-                  <h4 className="font-serif font-bold text-neutral-800 text-base">No orders placed yet</h4>
-                  <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-                    When you purchase Kanjivaram silk sarees or designer wear, your orders will appear here with live tracking.
-                  </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Device Notification Alert Button */}
                   <button
                     type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 rounded-xl bg-neutral-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-neutral-800 transition cursor-pointer"
+                    onClick={handleEnableNotifications}
+                    disabled={isRequestingPermission}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                      notificationPermission === 'granted'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-white hover:bg-neutral-100 text-neutral-700 border-neutral-300'
+                    }`}
+                    title="Enable device notifications for real-time dispatch and chat updates"
                   >
-                    Explore Boutique Collections
+                    <Bell className={`w-3.5 h-3.5 ${notificationPermission === 'granted' ? 'text-emerald-600' : 'text-neutral-500'}`} />
+                    <span className="hidden sm:inline">
+                      {notificationPermission === 'granted' ? 'Alerts Active' : 'Enable Alerts'}
+                    </span>
                   </button>
+
+                  {/* Sound Chime Test Button */}
+                  <button
+                    type="button"
+                    onClick={handleTestSound}
+                    className="p-2 rounded-xl bg-white hover:bg-neutral-100 text-neutral-600 border border-neutral-300 transition cursor-pointer"
+                    title="Test chime and haptic alert"
+                  >
+                    <Volume2 className="w-3.5 h-3.5 text-neutral-700" />
+                  </button>
+
+                  {selectedCustomerOrderId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCustomerOrderId(null)}
+                      className="px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back to All Orders</span>
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <div className="space-y-3.5">
-                  {customerOrders.map((ord) => {
-                    const statusColors = {
-                      Pending: 'bg-amber-100 text-amber-900 border-amber-300',
-                      Confirmed: 'bg-blue-100 text-blue-900 border-blue-300',
-                      Shipped: 'bg-purple-100 text-purple-900 border-purple-300',
-                      Delivered: 'bg-emerald-100 text-emerald-900 border-emerald-300',
-                      Cancelled: 'bg-rose-100 text-rose-900 border-rose-300',
-                      Refunded: 'bg-orange-100 text-orange-900 border-orange-300',
-                      Rejected: 'bg-neutral-100 text-neutral-700 border-neutral-300',
-                    }[ord.status] || 'bg-neutral-100 text-neutral-800';
+              </div>
 
-                    return (
-                      <div
-                        key={ord.id}
-                        className="bg-white rounded-2xl border border-neutral-200/80 p-4 sm:p-5 shadow-2xs hover:shadow-md transition space-y-3"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs font-bold text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded">
-                                #{ord.orderNumber}
-                              </span>
-                              <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColors}`}
-                              >
-                                {ord.status}
-                              </span>
-                              {ord.orderType === 'reseller' && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-300">
-                                  Reseller Order
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-neutral-400 mt-0.5">
-                              Ordered on {new Date(ord.createdAt).toLocaleDateString()} at{' '}
-                              {new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
+              {headerNotice && (
+                <div className="p-3 rounded-xl bg-neutral-900 text-white text-xs font-medium animate-in fade-in flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{headerNotice}</span>
+                </div>
+              )}
 
-                          <div className="text-right flex items-center sm:flex-col sm:items-end justify-between sm:justify-center">
-                            <span className="text-xs text-neutral-500">Order Amount</span>
-                            <span className="font-bold text-neutral-900 text-sm">
-                              {formatPrice(ord.totalAmount)}
+              {cancelStatusMsg && (
+                <div
+                  className={`p-3.5 rounded-xl text-xs flex items-center gap-2 ${
+                    cancelStatusMsg.type === 'success'
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+                      : 'bg-rose-50 border border-rose-200 text-rose-900'
+                  }`}
+                >
+                  {cancelStatusMsg.type === 'success' ? (
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span className="font-medium">{cancelStatusMsg.text}</span>
+                </div>
+              )}
+
+              {/* =========================================================================
+                  VIEW 1: LIST VIEW (when selectedCustomerOrderId === null)
+                 ========================================================================= */}
+              {!selectedCustomerOrder ? (
+                <div className="space-y-4">
+                  {/* Search & Status Filter Chips */}
+                  <div className="bg-white p-4 rounded-2xl border border-neutral-200 space-y-3 shadow-2xs">
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                      <input
+                        type="text"
+                        value={orderSearchQuery}
+                        onChange={(e) => setOrderSearchQuery(e.target.value)}
+                        placeholder="Search Order # (e.g. NYD-1001), saree title, city, or AWB tracking..."
+                        className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-neutral-300 bg-white text-xs sm:text-sm text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                      />
+                      {orderSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setOrderSearchQuery('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                          title="Clear search"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Results Count Bar */}
+                    <div className="flex items-center justify-between pt-1 text-xs text-neutral-600">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-neutral-800">
+                          {orderSearchQuery ? `Search Results for "${orderSearchQuery}"` : 'Your Placed Orders'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-bold">
+                          {filteredCustomerOrders.length}
+                        </span>
+                      </div>
+
+                      {orderSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setOrderSearchQuery('')}
+                          className="text-amber-800 hover:underline font-semibold text-xs cursor-pointer"
+                        >
+                          Clear Filter
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Status Filter Tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+                      {[
+                        { id: 'all', label: 'All Orders', count: orderStatusCounts.all },
+                        { id: 'Shipped', label: 'Dispatched / In Transit', count: orderStatusCounts.Shipped },
+                        { id: 'Confirmed', label: 'Confirmed & In Packing', count: orderStatusCounts.Confirmed },
+                        { id: 'Delivered', label: 'Delivered', count: orderStatusCounts.Delivered },
+                        { id: 'Pending', label: 'Pending', count: orderStatusCounts.Pending },
+                        { id: 'Cancelled', label: 'Cancelled / Refunded', count: orderStatusCounts.Cancelled },
+                      ].map((tab) => {
+                        const isActive = orderStatusFilter === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setOrderStatusFilter(tab.id as any)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                              isActive
+                                ? 'bg-neutral-900 text-white shadow-xs'
+                                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                            }`}
+                          >
+                            <span>{tab.label}</span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                                isActive ? 'bg-white/20 text-white' : 'bg-neutral-200 text-neutral-800'
+                              }`}
+                            >
+                              {tab.count}
                             </span>
-                          </div>
-                        </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-                        {/* Order Items Preview */}
-                        <div className="space-y-2">
-                          {ord.items.map((it, idx) => (
-                            <div key={idx} className="flex items-center justify-between gap-3 text-xs">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                {it.product.images?.[0] ? (
-                                  <img
-                                    src={it.product.images[0]}
-                                    alt={it.product.title}
-                                    className="w-10 h-12 object-cover rounded-md border border-neutral-200 shrink-0"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-12 rounded-md bg-neutral-100 flex items-center justify-center shrink-0">
-                                    <Package className="w-4 h-4 text-neutral-400" />
+                  {filteredCustomerOrders.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-neutral-200 p-8 space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mx-auto text-neutral-400">
+                        <Package className="w-6 h-6" />
+                      </div>
+                      <h4 className="font-serif font-bold text-neutral-800 text-base">
+                        {orderSearchQuery ? 'No matching orders found' : 'No orders in this status category'}
+                      </h4>
+                      <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                        {orderSearchQuery
+                          ? 'Try searching by a different order number, saree name, or tracking waybill.'
+                          : 'Explore our artisan handloom collections to place a bespoke saree reservation.'}
+                      </p>
+                      {orderSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOrderSearchQuery('');
+                            setOrderStatusFilter('all');
+                          }}
+                          className="px-4 py-2 rounded-xl bg-neutral-900 text-white font-bold text-xs hover:bg-neutral-800 transition cursor-pointer"
+                        >
+                          View All Orders
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3.5">
+                      {filteredCustomerOrders.map((ord) => {
+                        const badge = getStatusBadge(ord.status);
+                        const BadgeIcon = badge.icon;
+                        const itemCount = ord.items.reduce((sum, item) => sum + (item.quantity || 1), 0);
+                        const courier = resolveCourierDetails(ord.shippingDetails?.courierName, settings.courierServices);
+                        const trackingUrl = buildCourierTrackingUrl(
+                          courier,
+                          ord.shippingDetails?.courierName,
+                          ord.shippingDetails?.trackingNumber
+                        );
+
+                        return (
+                          <div
+                            key={ord.id}
+                            onClick={() => setSelectedCustomerOrderId(ord.id)}
+                            className="bg-white rounded-2xl border border-neutral-200 p-4 sm:p-5 shadow-2xs hover:shadow-md transition cursor-pointer group"
+                          >
+                            {/* Top Card Row */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-bold text-neutral-950 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded">
+                                  #{ord.orderNumber}
+                                </span>
+                                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${badge.bg}`}>
+                                  <BadgeIcon className="w-3 h-3" />
+                                  <span>{badge.label}</span>
+                                </span>
+                                <span className="text-[11px] text-neutral-400">
+                                  {new Date(ord.createdAt).toLocaleDateString('en-GB')} at{' '}
+                                  {new Date(ord.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-3 justify-between sm:justify-end">
+                                <span className="font-serif font-bold text-sm sm:text-base text-neutral-900 tabular-nums">
+                                  {formatPrice(ord.totalAmount)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Middle Items Row */}
+                            <div className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <img
+                                  src={ord.items[0]?.product.images?.[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                                  alt={ord.items[0]?.product.title}
+                                  className="w-14 h-14 rounded-xl object-cover border border-neutral-200 shrink-0 bg-neutral-100"
+                                />
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-neutral-900 truncate">
+                                    {ord.items[0]?.product.title}
+                                    {ord.items.length === 1 && ord.items[0]?.quantity > 1 ? ` (x${ord.items[0].quantity})` : ''}
+                                    {ord.items.length > 1 ? ` and ${ord.items.length - 1} other saree${ord.items.length > 2 ? 's' : ''}` : ''}
+                                  </p>
+                                  <div className="flex items-center gap-2 text-[11px] text-neutral-500 mt-0.5 flex-wrap">
+                                    <span>{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+                                    <span>·</span>
+                                    <span className="font-medium text-neutral-700">
+                                      Deliver To: {ord.customer.name} ({ord.customer.city}, {ord.customer.state})
+                                    </span>
+                                    {ord.assignedStaffName && (
+                                      <>
+                                        <span>·</span>
+                                        <span className="text-purple-800 font-semibold">Concierge: {ord.assignedStaffName}</span>
+                                      </>
+                                    )}
                                   </div>
-                                )}
-                                <div className="truncate">
-                                  <p className="font-medium text-neutral-900 truncate">
-                                    {it.product.title}
-                                  </p>
-                                  <p className="text-[11px] text-neutral-500">
-                                    Qty: {it.quantity} · {formatPrice(it.product.price)} each
-                                  </p>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                {it.product.images?.[0] && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      downloadSingleImage(
-                                        it.product.images[0],
-                                        `${it.product.title}_${it.product.productCode || 'sku'}.jpg`
-                                      )
-                                    }
-                                    className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition cursor-pointer"
-                                    title="Download product photo"
-                                  >
-                                    <Download className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
+                              {/* Action Callout */}
+                              <div className="flex items-center gap-2 text-xs font-bold text-amber-900 group-hover:text-amber-700 transition shrink-0 ml-auto md:ml-0">
+                                <span>View Tracking & Live Progression</span>
+                                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                               </div>
                             </div>
-                          ))}
-                        </div>
 
-                        {/* Tracking / Shipping Info if Shipped */}
-                        {ord.shippingDetails?.trackingNumber && (
-                          <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-100 text-xs flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 text-purple-950 font-medium">
-                              <Truck className="w-4 h-4 text-purple-700 shrink-0" />
-                              <span>
-                                {ord.shippingDetails.courierName || 'Courier'}:{' '}
-                                <strong className="font-mono">{ord.shippingDetails.trackingNumber}</strong>
+                            {/* Customer Delivery Address Box */}
+                            <div className="mt-2.5 p-2.5 rounded-xl bg-neutral-50 border border-neutral-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+                                  DELIVERY DESTINATION
+                                </span>
+                                <p className="text-neutral-900 font-medium text-[11px] truncate">
+                                  <strong>{ord.customer.name}</strong> · 📱 +91 {ord.customer.phone} · {ord.customer.address}, {ord.customer.city}, {ord.customer.state} - {ord.customer.pincode}
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md shrink-0">
+                                Heirloom Silk Packaging
                               </span>
                             </div>
-                            <span className="text-[10px] text-purple-700 font-bold bg-white px-2 py-0.5 rounded-md border border-purple-200">
-                              Dispatched
+
+                            {/* Courier Snippet with direct Tracking link */}
+                            {ord.shippingDetails?.trackingNumber && (
+                              <div className="mt-2.5 p-2.5 rounded-xl bg-blue-50/90 border border-blue-200 text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 text-xs min-w-0">
+                                  <Truck className="w-4 h-4 text-blue-700 shrink-0" />
+                                  <span className="truncate">
+                                    <strong>{ord.shippingDetails.courierName || 'Partner Courier'}</strong>:{' '}
+                                    <code className="font-mono font-bold">{ord.shippingDetails.trackingNumber}</code>
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                                    In Transit
+                                  </span>
+                                  {trackingUrl && (
+                                    <a
+                                      href={trackingUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition shadow-2xs cursor-pointer"
+                                    >
+                                      <span>Track on Courier Portal</span>
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* =========================================================================
+                    VIEW 2: DETAILED ORDER TRACKING VIEW (matches Reseller Tracking)
+                   ========================================================================= */
+                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm space-y-5 p-4 sm:p-6">
+                  {/* Top Navigation Bar */}
+                  <div className="flex items-center justify-between gap-3 pb-4 border-b border-neutral-200 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCustomerOrderId(null)}
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-bold text-xs transition cursor-pointer"
+                    >
+                      <ArrowLeft className="w-4 h-4 text-neutral-800" />
+                      <span>← Back to My Orders</span>
+                    </button>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Copyable Order Number */}
+                      <div className="flex items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                        <span className="font-mono font-bold text-xs text-amber-950">
+                          #{selectedCustomerOrder.orderNumber}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyOrderText(selectedCustomerOrder.orderNumber, `ord-num-${selectedCustomerOrder.id}`)}
+                          className="p-0.5 text-amber-800 hover:text-amber-950 rounded cursor-pointer"
+                          title="Copy Order Reference"
+                        >
+                          {copiedOrderKey === `ord-num-${selectedCustomerOrder.id}` ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Status Badge */}
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusBadge(selectedCustomerOrder.status).bg}`}>
+                        {getStatusBadge(selectedCustomerOrder.status).label}
+                      </span>
+
+                      {/* Device Alerts Active / Enable Button */}
+                      {notificationPermission === 'granted' ? (
+                        <div className="hidden sm:flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-xl px-2.5 py-1 text-xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                          <span className="font-bold text-emerald-800 text-[11px]">Alerts Active</span>
+                          <button
+                            type="button"
+                            onClick={handleTestSound}
+                            className="ml-1 p-0.5 rounded text-neutral-500 hover:text-neutral-800 transition cursor-pointer"
+                            title="Test alert chime & vibration"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleEnableNotifications}
+                          disabled={isRequestingPermission}
+                          className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 text-[11px] font-bold transition cursor-pointer"
+                          title="Enable notifications for live concierge & courier tracking updates"
+                        >
+                          <Bell className="w-3.5 h-3.5 animate-bounce shrink-0" />
+                          <span>{isRequestingPermission ? 'Enabling...' : 'Enable Alerts'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Customer Delivery Destination Card */}
+                  <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <span className="text-[10px] text-neutral-400 uppercase font-bold tracking-wider">
+                        Delivery Destination
+                      </span>
+                      <h4 className="font-serif font-bold text-base text-neutral-900 mt-0.5">
+                        {selectedCustomerOrder.customer.name}
+                      </h4>
+                      <p className="text-xs text-neutral-600 mt-1">
+                        {selectedCustomerOrder.customer.address}, {selectedCustomerOrder.customer.city},{' '}
+                        {selectedCustomerOrder.customer.state} - <strong>{selectedCustomerOrder.customer.pincode}</strong>
+                      </p>
+                      <div className="flex items-center gap-3 mt-2 text-xs">
+                        <a
+                          href={`tel:+91${selectedCustomerOrder.customer.phone}`}
+                          className="inline-flex items-center gap-1 text-amber-900 font-semibold hover:underline"
+                        >
+                          <Phone className="w-3.5 h-3.5 text-amber-800" />
+                          <span>+91 {selectedCustomerOrder.customer.phone}</span>
+                        </a>
+                        <span className="text-neutral-300">|</span>
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[10px] font-bold border border-amber-200">
+                          Heirloom Silk Packaging
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-left md:text-right border-t md:border-t-0 pt-3 md:pt-0 border-neutral-200">
+                      <span className="text-[10px] text-neutral-400 uppercase font-bold tracking-wider">
+                        Order Settlement
+                      </span>
+                      <p className="font-serif font-bold text-2xl text-neutral-900 tabular-nums">
+                        {formatPrice(selectedCustomerOrder.totalAmount)}
+                      </p>
+                      <span className="text-[11px] text-neutral-500 mt-0.5 block">
+                        Placed on {new Date(selectedCustomerOrder.createdAt).toLocaleDateString('en-GB')} at{' '}
+                        {new Date(selectedCustomerOrder.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Cancellation Request Banner if pending */}
+                  {selectedCustomerOrder.cancellationRequest?.requested &&
+                    selectedCustomerOrder.cancellationRequest.status === 'pending' && (
+                      <div className="p-4 bg-amber-50 rounded-2xl border border-amber-300 text-amber-950 space-y-1 text-xs">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                          <Clock className="w-4 h-4 text-amber-600" />
+                          <span>Cancellation Request Submitted (Under Review)</span>
+                        </div>
+                        <p className="leading-relaxed">
+                          Your request to cancel this order has been submitted to the boutique on{' '}
+                          {new Date(selectedCustomerOrder.cancellationRequest.requestedAt).toLocaleDateString('en-IN')}. Our dispatch team is reviewing before shipment handover.
+                        </p>
+                        <p className="text-amber-800 italic">
+                          Reason: "{selectedCustomerOrder.cancellationRequest.reason}"
+                        </p>
+                      </div>
+                    )}
+
+                  {/* Stage Timeline (4-Step Stepper) */}
+                  {selectedCustomerOrder.status !== 'Cancelled' &&
+                  selectedCustomerOrder.status !== 'Rejected' &&
+                  selectedCustomerOrder.status !== 'Refunded' ? (
+                    <div className="p-4 rounded-2xl border border-neutral-200 bg-white space-y-3">
+                      {/* Concierge Assigned Banner */}
+                      {selectedCustomerOrder.assignedStaffName ? (
+                        <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-700 to-indigo-800 text-white font-serif font-bold text-xs flex items-center justify-center shadow-2xs shrink-0">
+                              {selectedCustomerOrder.assignedStaffName.charAt(0)}
+                            </span>
+                            <div>
+                              <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider block">
+                                Dedicated Concierge Assigned
+                              </span>
+                              <h4 className="font-serif font-bold text-xs sm:text-sm text-neutral-900">
+                                {selectedCustomerOrder.assignedStaffName}
+                              </h4>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold shrink-0">
+                            Concierge Assigned ✓
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs shrink-0">
+                              <Clock className="w-4 h-4 text-amber-700" />
+                            </span>
+                            <div>
+                              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                                Order in Fulfillment Queue
+                              </span>
+                              <h4 className="font-serif font-bold text-xs text-neutral-900">
+                                Awaiting Master Weaver Quality Check & Packing
+                              </h4>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold shrink-0">
+                            In Queue
+                          </span>
+                        </div>
+                      )}
+
+                      {/* 4-Step Visual Progression Stepper */}
+                      <div className="pt-2">
+                        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wide block mb-3">
+                          Live Delivery Progression
+                        </span>
+                        <div className="grid grid-cols-4 gap-2 pt-1">
+                          {[
+                            { name: 'Pending', icon: Clock },
+                            { name: 'Confirmed', icon: CheckCircle },
+                            { name: 'Shipped', icon: Truck },
+                            { name: 'Delivered', icon: Package },
+                          ].map((step, idx) => {
+                            const currentStep = getStatusStepIndex(selectedCustomerOrder.status);
+                            const isDone = currentStep >= idx;
+                            const isCurrent = currentStep === idx;
+                            const StepIcon = step.icon;
+                            return (
+                              <div key={step.name} className="flex flex-col items-center text-center">
+                                <div
+                                  className={`w-9 h-9 rounded-full flex items-center justify-center transition ${
+                                    isDone
+                                      ? 'bg-emerald-600 text-white'
+                                      : 'bg-neutral-100 text-neutral-400'
+                                  } ${isCurrent ? 'ring-4 ring-emerald-100' : ''}`}
+                                >
+                                  <StepIcon className="w-4 h-4" />
+                                </div>
+                                <span
+                                  className={`text-[11px] mt-1.5 font-semibold ${
+                                    isCurrent
+                                      ? 'text-emerald-800 font-bold'
+                                      : isDone
+                                      ? 'text-neutral-800'
+                                      : 'text-neutral-400'
+                                  }`}
+                                >
+                                  {step.name}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Cancellation & Refund Progression */
+                    <div className="p-4 rounded-2xl border border-neutral-200 bg-white space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide">
+                          Cancellation & Refund Progression
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            selectedCustomerOrder.status === 'Refunded'
+                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                              : 'bg-rose-100 text-rose-900 border border-rose-300'
+                          }`}
+                        >
+                          {selectedCustomerOrder.status === 'Refunded' ? 'Stage: Refund Completed ✓' : 'Stage: Order Cancelled'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 pt-1">
+                        {[
+                          { name: 'Placed', isDone: true, isCurrent: false, icon: Clock },
+                          { name: 'Confirmed', isDone: true, isCurrent: false, icon: CheckCircle },
+                          {
+                            name: 'Cancelled',
+                            isDone: true,
+                            isCurrent:
+                              selectedCustomerOrder.status === 'Cancelled' ||
+                              selectedCustomerOrder.status === 'Rejected',
+                            icon: XCircle,
+                          },
+                          {
+                            name: 'Refunded',
+                            isDone:
+                              selectedCustomerOrder.status === 'Refunded' ||
+                              selectedCustomerOrder.refundDetails?.refundStatus === 'processed',
+                            isCurrent: selectedCustomerOrder.status === 'Refunded',
+                            icon: RotateCcw,
+                          },
+                        ].map((step) => {
+                          const StepIcon = step.icon;
+                          return (
+                            <div key={step.name} className="flex flex-col items-center text-center">
+                              <div
+                                className={`w-9 h-9 rounded-full flex items-center justify-center transition ${
+                                  step.name === 'Refunded' && step.isDone
+                                    ? 'bg-emerald-600 text-white ring-4 ring-emerald-100'
+                                    : step.name === 'Cancelled' && step.isCurrent
+                                    ? 'bg-rose-600 text-white ring-4 ring-rose-100'
+                                    : step.isDone
+                                    ? 'bg-neutral-800 text-white'
+                                    : 'bg-neutral-100 text-neutral-400'
+                                }`}
+                              >
+                                <StepIcon className="w-4 h-4" />
+                              </div>
+                              <span
+                                className={`text-[11px] mt-1.5 font-semibold ${
+                                  step.isCurrent
+                                    ? 'text-neutral-900 font-bold'
+                                    : step.isDone
+                                    ? 'text-neutral-700'
+                                    : 'text-neutral-400'
+                                }`}
+                              >
+                                {step.name}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {selectedCustomerOrder.status === 'Refunded' ? (
+                        <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-300 text-emerald-950 space-y-1.5 mt-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                              <CheckCircle className="w-4 h-4 text-emerald-600" />
+                              <span>Refund Settled Successfully</span>
+                            </span>
+                            <span className="font-mono font-bold text-emerald-800 text-xs">
+                              UTR: {selectedCustomerOrder.refundDetails?.refundUtr || 'Processed'}
                             </span>
                           </div>
-                        )}
+                          <p className="text-[11px] text-emerald-800">
+                            Amount of {formatPrice(selectedCustomerOrder.totalAmount)} refunded to customer account.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-rose-950 text-xs mt-2">
+                          <p>
+                            <strong>Cancellation Reason:</strong> {selectedCustomerOrder.cancellationReason || 'Customer requested'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                        {/* Order Actions */}
-                        <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
-                          <div className="text-[11px] text-neutral-500">
-                            Deliver to: <strong className="text-neutral-700">{ord.customer.city}, {ord.customer.pincode}</strong>
-                          </div>
+                  {/* Courier Consignment & Official Tracking Box */}
+                  {(selectedCustomerOrder.status === 'Shipped' || selectedCustomerOrder.shippingDetails?.trackingNumber) && (
+                    <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-950 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-blue-700" />
+                          <h4 className="font-bold text-xs sm:text-sm">Courier Consignment Dispatch Information</h4>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                          In Transit
+                        </span>
+                      </div>
 
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onClose();
-                                setIsTrackOrderOpen(true);
-                              }}
-                              className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
-                            >
-                              <Truck className="w-3.5 h-3.5" />
-                              <span>Live Tracker</span>
-                            </button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-white p-3.5 rounded-xl border border-blue-100">
+                        <div>
+                          <span className="text-neutral-500 text-[11px] font-semibold">Courier Partner:</span>
+                          <p className="font-bold text-neutral-900 text-sm mt-0.5">
+                            {selectedCustomerOrder.shippingDetails?.courierName || 'Assigned Logistics Partner'}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500 text-[11px] font-semibold">
+                            Consignment Tracking / Waybill Number:
+                          </span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <code className="font-mono font-bold text-xs text-neutral-900 bg-neutral-100 px-2 py-1 rounded">
+                              {selectedCustomerOrder.shippingDetails?.trackingNumber || 'Pending Waybill'}
+                            </code>
+                            {selectedCustomerOrder.shippingDetails?.trackingNumber && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copyOrderText(
+                                    selectedCustomerOrder.shippingDetails!.trackingNumber,
+                                    `track-${selectedCustomerOrder.id}`
+                                  )
+                                }
+                                className="p-1.5 hover:bg-neutral-100 rounded text-neutral-600 cursor-pointer"
+                                title="Copy Consignment ID"
+                              >
+                                {copiedOrderKey === `track-${selectedCustomerOrder.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
+
+                      {/* Official Courier Tracking Button */}
+                      {(() => {
+                        const courier = resolveCourierDetails(
+                          selectedCustomerOrder.shippingDetails?.courierName,
+                          settings.courierServices
+                        );
+                        const trackingPortalUrl = buildCourierTrackingUrl(
+                          courier,
+                          selectedCustomerOrder.shippingDetails?.courierName,
+                          selectedCustomerOrder.shippingDetails?.trackingNumber
+                        );
+
+                        return trackingPortalUrl ? (
+                          <div className="pt-2 border-t border-blue-200/80 flex items-center justify-between flex-wrap gap-2">
+                            <span className="text-[11px] text-blue-900 font-semibold flex items-center gap-1">
+                              <Truck className="w-3.5 h-3.5 text-blue-700" />
+                              <span>Live Courier Tracking:</span>
+                            </span>
+                            <a
+                              href={trackingPortalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-2xs cursor-pointer"
+                            >
+                              <span>Track on {selectedCustomerOrder.shippingDetails?.courierName || 'Courier'} Portal</span>
+                              <ExternalLink className="w-3.5 h-3.5 text-white/90" />
+                            </a>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Ordered Items Breakdown */}
+                  <div className="p-4 rounded-2xl border border-neutral-200 bg-white space-y-3">
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wide block">
+                      Ordered Items ({selectedCustomerOrder.items.length})
+                    </span>
+                    <div className="divide-y divide-neutral-100">
+                      {selectedCustomerOrder.items.map((item, idx) => (
+                        <div key={idx} className="py-3 flex items-center justify-between gap-3 first:pt-0 last:pb-0">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <img
+                              src={item.product.images?.[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                              alt={item.product.title}
+                              className="w-14 h-14 rounded-xl object-cover border border-neutral-200 shrink-0 bg-neutral-100"
+                            />
+                            <div className="min-w-0">
+                              <h4 className="font-serif font-bold text-xs sm:text-sm text-neutral-900 truncate">
+                                {item.product.title}
+                              </h4>
+                              <div className="flex items-center gap-2 text-[11px] text-neutral-500 mt-0.5 flex-wrap">
+                                <span className="font-mono font-bold text-amber-950 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                  SKU: {item.product.productCode}
+                                </span>
+                                <span>{item.product.fabric}</span>
+                                <span>·</span>
+                                <span>{item.product.color}</span>
+                                <span>·</span>
+                                <span className="font-semibold text-neutral-700">Qty: {item.quantity}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0">
+                            {item.product.images?.[0] && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  downloadSingleImage(
+                                    item.product.images[0],
+                                    `${item.product.title}_${item.product.productCode || 'sku'}.jpg`
+                                  )
+                                }
+                                className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 hover:text-emerald-700 border border-neutral-200 transition cursor-pointer flex items-center gap-1 text-[10px] font-semibold"
+                                title="Download saree photo"
+                              >
+                                <Download className="w-3 h-3 text-emerald-600" />
+                                <span className="hidden sm:inline">Save</span>
+                              </button>
+                            )}
+                            <div className="text-right">
+                              <span className="font-serif font-bold text-sm text-neutral-900 tabular-nums block">
+                                {formatPrice(item.product.price * item.quantity)}
+                              </span>
+                              <span className="text-[10px] text-neutral-400">
+                                ({formatPrice(item.product.price)} each)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Payment Verification & UTR Details */}
+                  <div className="p-4 rounded-2xl border border-neutral-200 bg-neutral-50/80 space-y-3">
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wide block">
+                      Payment Verification & Settlement Details
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="p-3 rounded-xl bg-white border border-neutral-200">
+                        <span className="text-[10px] font-semibold text-neutral-400 uppercase block">
+                          Payment Transaction ID (UTR)
+                        </span>
+                        <div className="flex items-center justify-between mt-1">
+                          <code className="font-mono font-bold text-neutral-900 text-xs">
+                            {selectedCustomerOrder.upiTransactionId || 'Prepaid UPI Confirmed'}
+                          </code>
+                          {selectedCustomerOrder.upiTransactionId && (
+                            <button
+                              type="button"
+                              onClick={() => copyOrderText(selectedCustomerOrder.upiTransactionId!, `utr-${selectedCustomerOrder.id}`)}
+                              className="p-1 text-neutral-500 hover:text-neutral-900 rounded cursor-pointer"
+                              title="Copy Payment UTR"
+                            >
+                              {copiedOrderKey === `utr-${selectedCustomerOrder.id}` ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-white border border-neutral-200">
+                        <span className="text-[10px] font-semibold text-neutral-400 uppercase block">
+                          Payment Mode
+                        </span>
+                        <p className="font-bold text-neutral-900 text-xs mt-1">
+                          {selectedCustomerOrder.checkoutMethod === 'submit_order'
+                            ? 'Instant Online Order Placement'
+                            : 'WhatsApp Concierge Reservation'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Interactive Live Concierge Chat Desk for This Order */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-purple-700" />
+                        <h4 className="font-bold text-xs sm:text-sm text-neutral-900">
+                          Boutique Concierge & Dispatch Desk
+                        </h4>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
+                        Live Master Weaver Support
+                      </span>
+                    </div>
+
+                    <OrderLiveChat
+                      order={selectedCustomerOrder}
+                      mode="customer"
+                      className="border border-neutral-200 rounded-2xl shadow-2xs overflow-hidden"
+                    />
+                  </div>
+
+                  {/* Customer Order Actions (Cancellation Request) */}
+                  {settings.storefrontDisplay?.allowPublicCancellation &&
+                    (selectedCustomerOrder.status === 'Pending' || selectedCustomerOrder.status === 'Confirmed') &&
+                    !selectedCustomerOrder.cancellationRequest?.requested && (
+                      <div className="p-4 rounded-2xl bg-rose-50/70 border border-rose-200 space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div>
+                            <h5 className="font-bold text-xs text-rose-900">Need to cancel this order?</h5>
+                            <p className="text-[11px] text-rose-700">
+                              You can request cancellation before your saree is packaged and handed over to the courier partner.
+                            </p>
+                          </div>
+                          {!cancellingOrder ? (
+                            <button
+                              type="button"
+                              onClick={() => setCancellingOrder(selectedCustomerOrder)}
+                              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition cursor-pointer"
+                            >
+                              Request Order Cancellation
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {cancellingOrder?.id === selectedCustomerOrder.id && (
+                          <div className="p-3 bg-white rounded-xl border border-rose-200 space-y-2.5 animate-in fade-in">
+                            <label className="block text-[11px] font-semibold text-neutral-700">
+                              Reason for cancellation:
+                            </label>
+                            <select
+                              value={cancelReason}
+                              onChange={(e) => setCancelReason(e.target.value)}
+                              className="w-full p-2 rounded-lg border border-neutral-300 text-xs text-neutral-900"
+                            >
+                              <option value="Found another weave / Changed mind">Found another weave / Changed mind</option>
+                              <option value="Ordered duplicate by mistake">Ordered duplicate by mistake</option>
+                              <option value="Event postponed / No longer needed">Event postponed / No longer needed</option>
+                              <option value="Delivery timeline too slow">Delivery timeline too slow</option>
+                              <option value="Other / Personal reason">Other / Personal reason</option>
+                            </select>
+
+                            <div className="flex items-center gap-2 justify-end pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setCancellingOrder(null)}
+                                className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-semibold text-xs cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const res = requestOrderCancellation(
+                                    selectedCustomerOrder.orderNumber,
+                                    selectedCustomerOrder.customer.phone,
+                                    cancelReason
+                                  );
+                                  if (res?.success) {
+                                    setCancelStatusMsg({
+                                      type: 'success',
+                                      text: 'Cancellation request submitted to boutique team.',
+                                    });
+                                    setCancellingOrder(null);
+                                  } else {
+                                    setCancelStatusMsg({
+                                      type: 'error',
+                                      text: res?.message || 'Could not process cancellation request.',
+                                    });
+                                  }
+                                }}
+                                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-2xs"
+                              >
+                                Confirm Cancellation Request
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                 </div>
               )}
             </div>
