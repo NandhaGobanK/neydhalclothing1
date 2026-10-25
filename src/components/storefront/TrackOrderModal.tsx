@@ -906,7 +906,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                     </span>
                     {selectedOrder.orderType === 'reseller' && (
                       <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
-                        Wholesale Dropship
+                        Reseller Dropship
                       </span>
                     )}
                   </div>

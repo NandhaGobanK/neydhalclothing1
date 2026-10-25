@@ -348,6 +348,7 @@ interface StoreContextType {
   updateResellerStatus: (resellerId: string, status: 'active' | 'suspended' | 'locked') => Promise<{ success: boolean; error?: string }>;
   toggleResellerLock: (resellerId: string, forceLocked?: boolean) => Promise<{ success: boolean; isLocked?: boolean; error?: string }>;
   deleteReseller: (resellerId: string) => Promise<{ success: boolean; error?: string }>;
+  updateResellerMargin: (resellerId: string, marginPercent: number) => Promise<{ success: boolean; error?: string }>;
   resellerLogout: () => void;
   resellerOrders: Order[];
   placeResellerOrder: (input: {
@@ -1571,6 +1572,48 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch (err: any) {
       console.warn('Error deleting reseller in Firestore:', err);
     }
+    return { success: true };
+  };
+
+  const updateResellerMargin = async (resellerId: string, marginPercent: number) => {
+    const cleanMargin = Math.max(0, Math.min(100, Math.round(Number(marginPercent) || 0)));
+    const target = resellers.find((r) => r.id === resellerId);
+    if (!target) return { success: false, error: 'Reseller not found.' };
+
+    const updated = resellers.map((r) =>
+      r.id === resellerId
+        ? {
+            ...r,
+            wholesaleDiscountPercent: cleanMargin,
+            updatedAt: new Date().toISOString(),
+          }
+        : r
+    );
+    setResellers(updated);
+    saveToStorage('aara_boutique_resellers_v3', updated);
+
+    if (currentReseller?.id === resellerId || (target.email && currentReseller?.email?.toLowerCase() === target.email.toLowerCase())) {
+      const updatedCurrent: ResellerUser = {
+        ...currentReseller,
+        wholesaleDiscountPercent: cleanMargin,
+      };
+      setCurrentReseller(updatedCurrent);
+      saveToStorage(STORAGE_KEYS.CURRENT_RESELLER, updatedCurrent);
+    }
+
+    try {
+      await setDoc(
+        doc(db, 'reseller', resellerId),
+        {
+          wholesaleDiscountPercent: cleanMargin,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (err: any) {
+      console.warn('Error updating reseller margin in Firestore:', err);
+    }
+
     return { success: true };
   };
 
@@ -3067,10 +3110,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       cancellationReason?: string;
     }
   ) => {
-    let orderToSync: Partial<Order> | null = null;
+    let orderToSync: any = null;
     const isNowCancelled = status === 'Cancelled' || status === 'Rejected';
     if (isNowCancelled) {
-      const targetOrder = orders.find((o) => o.id === orderId);
+      const targetOrder = orders.find((o) => o.id === orderId || o.orderNumber === orderId);
       if (
         targetOrder &&
         !targetOrder.isRestocked &&
@@ -3082,7 +3125,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     setOrders((prev) =>
       prev.map((ord) => {
-        if (ord.id !== orderId) return ord;
+        if (ord.id !== orderId && ord.orderNumber !== orderId) return ord;
 
         const isNowRefunded = status === 'Refunded';
 
@@ -3187,8 +3230,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
 
     if (orderToSync) {
-      updateDoc(doc(db, 'orders', orderId), sanitizeForFirestore(orderToSync)).catch((err) =>
-        handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`)
+      const syncDocId = orderToSync.id || orderId;
+      updateDoc(doc(db, 'orders', syncDocId), sanitizeForFirestore(orderToSync)).catch((err) =>
+        handleFirestoreError(err, OperationType.UPDATE, `orders/${syncDocId}`)
       );
     }
   };
@@ -5421,6 +5465,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateResellerStatus,
         toggleResellerLock,
         deleteReseller,
+        updateResellerMargin,
         resellerLogout,
         resellerOrders,
         placeResellerOrder,

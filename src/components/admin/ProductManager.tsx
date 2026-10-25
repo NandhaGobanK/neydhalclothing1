@@ -1043,7 +1043,7 @@ export const ProductManager: React.FC = () => {
       crossSellProductIds,
       crossSellCategoryNames,
       isWholesaleAvailable,
-      wholesalePrice: customWholesalePrice ? Number(customWholesalePrice) : undefined,
+      wholesalePrice: undefined,
       resellerOnly,
     };
 
@@ -2428,11 +2428,11 @@ export const ProductManager: React.FC = () => {
                   )}
                 </div>
 
-                {/* Reseller B2B Wholesale Pricing & Channel Categorization Card */}
+                {/* Reseller B2B Wholesale Availability & Channel Categorization Card */}
                 <div className="sm:col-span-2 p-3.5 rounded-2xl bg-purple-50/90 border border-purple-200 shadow-2xs space-y-2.5">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-1.5 text-purple-950 font-bold text-xs">
-                      <span>🤝 B2B Reseller Portal Availability & Margins</span>
+                      <span>🤝 B2B Reseller Portal Availability</span>
                     </div>
                     <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-purple-900">
                       <input
@@ -2446,24 +2446,7 @@ export const ProductManager: React.FC = () => {
                   </div>
 
                   {isWholesaleAvailable && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 text-xs">
-                      <div>
-                        <label className="block text-purple-900 font-semibold mb-1">
-                          Wholesale Price (₹) (Optional Override)
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={customWholesalePrice || ''}
-                          onChange={(e) => setCustomWholesalePrice(e.target.value ? Number(e.target.value) : undefined)}
-                          placeholder={`Default 20% tier: ₹${Math.round((price || 0) * 0.8)}`}
-                          className="w-full p-2.5 rounded-xl border border-purple-300 bg-white text-neutral-900 font-bold text-xs"
-                        />
-                        <p className="text-[10px] text-purple-700 mt-1">
-                          Leave blank to use standard 20% discount (₹{Math.round((price || 0) * 0.8)}).
-                        </p>
-                      </div>
-
+                    <div className="mt-1 text-xs">
                       <div className="flex flex-col justify-center bg-white/70 p-2.5 rounded-xl border border-purple-200">
                         <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-purple-950">
                           <input
@@ -2475,7 +2458,7 @@ export const ProductManager: React.FC = () => {
                           <span>Reseller Exclusive (Hide from public store)</span>
                         </label>
                         <p className="text-[10px] text-purple-700 mt-1">
-                          When checked, this piece is categorized exclusively for registered Resellers.
+                          When checked, this piece is categorized exclusively for registered Resellers. Wholesale margin discounts apply automatically based on each reseller's approved margin.
                         </p>
                       </div>
                     </div>

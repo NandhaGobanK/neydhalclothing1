@@ -243,17 +243,17 @@ export const DEFAULT_CUSTOMER_LOGIN_DISPLAY: CustomerLoginDisplaySettings = {
 };
 
 export const DEFAULT_RESELLER_LOGIN_DISPLAY: ResellerLoginDisplaySettings = {
-  headerBadgeText: 'B2B Wholesale Portal',
+  headerBadgeText: 'Reseller Portal',
   headerSubtitle:
     'Exclusive partner channel for boutiques, WhatsApp resellers & catalog dropshippers',
-  programBadge: 'Wholesale Partner Program',
+  programBadge: 'Reseller Partner Program',
   headline: 'Empowering Resellers & Boutiques',
   description:
-    'Join our enterprise network to source pure handcrafted silk sarees at direct weaver wholesale prices with guaranteed high margins and zero dead-stock risk.',
+    'Join our enterprise network to source pure handcrafted silk sarees at direct weaver reseller prices with guaranteed high margins and zero dead-stock risk.',
   perks: [
     {
       id: 'perk-margin',
-      title: '20% Flat Wholesale Margin',
+      title: '20% Flat Reseller Margin',
       description:
         'Instant discount applied to all Kanjivaram, Banarasi, and Chanderi sarees.',
       iconName: 'dollar',
@@ -758,7 +758,7 @@ export const INITIAL_ORDERS: Order[] = [
       {
         status: 'Pending',
         timestamp: '2026-10-25T10:55:00.000Z',
-        note: 'Wholesale dropship submitted by reseller partner',
+        note: 'Reseller dropship submitted by reseller partner',
       },
       {
         status: 'Confirmed',

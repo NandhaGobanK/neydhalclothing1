@@ -30,6 +30,8 @@ import {
   Lock,
   Unlock,
   AlertTriangle,
+  Edit2,
+  Sliders,
 } from 'lucide-react';
 
 export const ResellerLedgerManager: React.FC = () => {
@@ -42,6 +44,7 @@ export const ResellerLedgerManager: React.FC = () => {
     updateResellerStatus,
     toggleResellerLock,
     deleteReseller,
+    updateResellerMargin,
     resellerOrders,
     settings,
   } = useStore();
@@ -75,6 +78,13 @@ export const ResellerLedgerManager: React.FC = () => {
   // Decline prompt modal
   const [decliningRequest, setDecliningRequest] = useState<ResellerAccessRequest | null>(null);
   const [declineReason, setDeclineReason] = useState('');
+
+  // Wholesale Margin Edit States (Editable margins for approved resellers)
+  const [editingMarginReseller, setEditingMarginReseller] = useState<ResellerUser | null>(null);
+  const [editingMarginValue, setEditingMarginValue] = useState<number>(20);
+  const [isSavingMargin, setIsSavingMargin] = useState(false);
+  const [inlineEditingResellerId, setInlineEditingResellerId] = useState<string | null>(null);
+  const [inlineMarginValue, setInlineMarginValue] = useState<number>(20);
 
   // Pending requests count
   const pendingRequests = useMemo(() => {
@@ -183,6 +193,59 @@ export const ResellerLedgerManager: React.FC = () => {
       }
     } catch (err: any) {
       alert(err?.message || 'Error removing reseller.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleOpenMarginModal = (reseller: ResellerUser) => {
+    setEditingMarginReseller(reseller);
+    setEditingMarginValue(reseller.wholesaleDiscountPercent ?? 20);
+  };
+
+  const handleSaveModalMargin = async () => {
+    if (!editingMarginReseller) return;
+    const cleanMargin = Math.max(0, Math.min(100, Math.round(Number(editingMarginValue) || 0)));
+    setIsSavingMargin(true);
+    try {
+      const res = await updateResellerMargin(editingMarginReseller.id, cleanMargin);
+      if (res.success) {
+        showFeedback(
+          `Wholesale margin for "${editingMarginReseller.businessName || editingMarginReseller.name}" updated to ${cleanMargin}%.`
+        );
+        setEditingMarginReseller(null);
+      } else {
+        alert(res.error || 'Failed to update wholesale margin.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error updating wholesale margin.');
+    } finally {
+      setIsSavingMargin(false);
+    }
+  };
+
+  const handleStartInlineEditMargin = (reseller: ResellerUser) => {
+    setInlineEditingResellerId(reseller.id);
+    setInlineMarginValue(reseller.wholesaleDiscountPercent ?? 20);
+  };
+
+  const handleCancelInlineEdit = () => {
+    setInlineEditingResellerId(null);
+  };
+
+  const handleSaveInlineMargin = async (resellerId: string) => {
+    const cleanMargin = Math.max(0, Math.min(100, Math.round(Number(inlineMarginValue) || 0)));
+    setProcessingId(resellerId);
+    try {
+      const res = await updateResellerMargin(resellerId, cleanMargin);
+      if (res.success) {
+        showFeedback(`Wholesale margin updated to ${cleanMargin}%.`);
+        setInlineEditingResellerId(null);
+      } else {
+        alert(res.error || 'Failed to update wholesale margin.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error updating wholesale margin.');
     } finally {
       setProcessingId(null);
     }
@@ -723,12 +786,84 @@ export const ResellerLedgerManager: React.FC = () => {
                             {r.city && <p className="text-[10px] text-neutral-500">{r.city}</p>}
                           </td>
 
-                          {/* Wholesale Margin */}
+                          {/* Wholesale Margin (Editable) */}
                           <td className="py-3.5 px-4">
-                            <span className="font-bold text-neutral-900">
-                              {r.wholesaleDiscountPercent || 20}%
-                            </span>
-                            <span className="text-[10px] text-neutral-400 block">flat discount</span>
+                            {inlineEditingResellerId === r.id ? (
+                              <div className="flex flex-col gap-1.5 min-w-[130px]">
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={inlineMarginValue}
+                                    onChange={(e) => setInlineMarginValue(Number(e.target.value))}
+                                    className="w-14 px-2 py-1 text-xs font-bold text-neutral-900 border border-purple-300 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+                                  />
+                                  <span className="text-xs font-bold text-purple-900">%</span>
+                                  <button
+                                    type="button"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleSaveInlineMargin(r.id)}
+                                    className="p-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs transition cursor-pointer"
+                                    title="Save margin"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelInlineEdit}
+                                    className="p-1 rounded-md bg-neutral-200 hover:bg-neutral-300 text-neutral-700 text-xs transition cursor-pointer"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                <div className="flex items-center gap-1 text-[10px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setInlineMarginValue((prev) => Math.max(0, prev - 5))}
+                                    className="px-1.5 py-0.5 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-semibold cursor-pointer"
+                                  >
+                                    -5%
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setInlineMarginValue((prev) => Math.min(100, prev + 5))}
+                                    className="px-1.5 py-0.5 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-semibold cursor-pointer"
+                                  >
+                                    +5%
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-neutral-900 text-sm">
+                                    {r.wholesaleDiscountPercent ?? 20}%
+                                  </span>
+                                  <span className="text-[10px] text-neutral-400">discount</span>
+                                </div>
+                                <div className="flex items-center gap-1 mt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenMarginModal(r)}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-900 border border-purple-200 hover:bg-purple-100 hover:border-purple-300 transition cursor-pointer"
+                                    title="Click to increase or decrease wholesale margin"
+                                  >
+                                    <Edit2 className="w-2.5 h-2.5 text-purple-700" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartInlineEditMargin(r)}
+                                    className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100 transition cursor-pointer"
+                                    title="Quick edit inline"
+                                  >
+                                    Quick +/-
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </td>
 
                           {/* Status Badge */}
@@ -1342,6 +1477,138 @@ export const ResellerLedgerManager: React.FC = () => {
                 className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {processingId === resellerToRemove.id ? 'Removing...' : 'Confirm Remove & Block'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Wholesale Margin */}
+      {editingMarginReseller && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <span className="w-10 h-10 rounded-xl bg-purple-100 text-purple-900 flex items-center justify-center">
+                  <Percent className="w-5 h-5 text-purple-900" />
+                </span>
+                <h3 className="font-serif text-lg font-bold text-neutral-900 mt-2">
+                  Edit Wholesale Margin
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  Adjust commission & wholesale discount for this approved partner.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingMarginReseller(null)}
+                className="text-neutral-400 hover:text-neutral-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Reseller Info Card */}
+            <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-1">
+              <p className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
+                <Building className="w-3.5 h-3.5 text-purple-800" />
+                <span>{editingMarginReseller.businessName || editingMarginReseller.name}</span>
+              </p>
+              <p className="text-[11px] text-neutral-600">
+                Contact: <span className="font-medium text-neutral-900">{editingMarginReseller.name}</span> •{' '}
+                <span className="font-mono text-purple-900 font-bold">{editingMarginReseller.email}</span>
+              </p>
+            </div>
+
+            {/* Margin Slider & Input */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-neutral-800 uppercase tracking-wider">
+                  Wholesale Margin Percentage
+                </label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={editingMarginValue}
+                    onChange={(e) => setEditingMarginValue(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                    className="w-16 px-2.5 py-1 rounded-xl border border-purple-300 font-bold text-sm text-center text-purple-950 focus:outline-hidden focus:ring-2 focus:ring-purple-900/30"
+                  />
+                  <span className="font-bold text-purple-900 text-sm">%</span>
+                </div>
+              </div>
+
+              {/* Slider */}
+              <input
+                type="range"
+                min={0}
+                max={60}
+                step={1}
+                value={editingMarginValue}
+                onChange={(e) => setEditingMarginValue(Number(e.target.value))}
+                className="w-full accent-purple-800 cursor-pointer"
+              />
+
+              {/* Preset Buttons */}
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                {[10, 15, 20, 25, 30, 35, 40, 50].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setEditingMarginValue(preset)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      editingMarginValue === preset
+                        ? 'bg-purple-900 text-white shadow-2xs'
+                        : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+                    }`}
+                  >
+                    {preset}%
+                  </button>
+                ))}
+              </div>
+
+              {/* Live Preview Calculation */}
+              <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200 text-xs space-y-1.5">
+                <p className="font-bold text-neutral-700 text-[11px] uppercase tracking-wider">
+                  Live Pricing Calculation Example (₹10,000 Saree)
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 rounded-xl bg-white border border-neutral-200">
+                    <span className="text-[10px] text-neutral-500 block">Wholesale Purchase Cost</span>
+                    <span className="font-bold text-purple-950 text-sm">
+                      ₹{Math.round(10000 * (1 - editingMarginValue / 100)).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-white border border-neutral-200">
+                    <span className="text-[10px] text-neutral-500 block">Reseller Profit Margin</span>
+                    <span className="font-bold text-emerald-700 text-sm">
+                      ₹{Math.round(10000 * (editingMarginValue / 100)).toLocaleString('en-IN')} ({editingMarginValue}%)
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-neutral-500 pt-0.5">
+                  Saved margins apply instantly to this partner's reseller cart and dropship orders.
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingMarginReseller(null)}
+                className="flex-1 py-2.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSavingMargin}
+                onClick={handleSaveModalMargin}
+                className="flex-1 py-2.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {isSavingMargin ? 'Updating Margin...' : 'Save Wholesale Margin'}
               </button>
             </div>
           </div>

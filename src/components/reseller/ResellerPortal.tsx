@@ -42,12 +42,18 @@ import {
   Send,
   Sparkles,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
+  Layers,
   LogOut,
   AlertCircle,
   ArrowRight,
   ArrowLeft,
   ShoppingBag,
+  ShoppingCart,
+  Plus,
+  Minus,
+  Trash2,
   Clock,
   XCircle,
   RotateCcw,
@@ -61,6 +67,12 @@ import {
   Volume2,
 } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
+
+export interface ResellerCartItem {
+  product: Product;
+  quantity: number;
+  resalePrice: number;
+}
 
 interface ResellerPortalProps {
   isOpen: boolean;
@@ -93,6 +105,8 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     settings,
     requestOrderCancellation,
     reportCustomerDeliveryIssue,
+    updateOrderStatus,
+    replenishOrderInventory,
   } = useStore();
 
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
@@ -226,18 +240,42 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
   };
 
   // Portal view state
-  const [activeTab, setActiveTab] = useState<'catalog' | 'orders' | 'new_order' | 'earnings'>('catalog');
+  const [activeTab, setActiveTab] = useState<'catalog' | 'orders' | 'cart' | 'earnings' | 'new_order'>('catalog');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCat, setSelectedCat] = useState('all');
+  const [selectedCat, setSelectedCat] = useState<string | null>(null);
 
   // Media download & copy states
   const [downloadingZipId, setDownloadingZipId] = useState<string | null>(null);
   const [copiedPitchId, setCopiedPitchId] = useState<string | null>(null);
 
-  // New Wholesale / Dropship Order Flow
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [orderQuantity, setOrderQuantity] = useState(1);
-  const [resaleSellingPrice, setResaleSellingPrice] = useState<number>(0);
+  // Reseller Cart & Multi-Item Ordering Flow
+  const [resellerCart, setResellerCart] = useState<ResellerCartItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('neydhal_reseller_cart');
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // Local quantity selector per product in catalog before adding (default 1)
+  const [catalogCardQuantities, setCatalogCardQuantities] = useState<Record<string, number>>({});
+  const [addedCartFeedbackId, setAddedCartFeedbackId] = useState<string | null>(null);
+
+  // Persist reseller cart in local storage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('neydhal_reseller_cart', JSON.stringify(resellerCart));
+      } catch (e) {
+        console.warn('Failed to store reseller cart:', e);
+      }
+    }
+  }, [resellerCart]);
+
   const [deliveryType, setDeliveryType] = useState<'dropship' | 'self'>('dropship');
 
   // End-customer dropship recipient fields
@@ -588,14 +626,23 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     if (!cancellingOrder) return;
     const finalReason =
       cancelReason === 'Other' ? customCancelReason.trim() || 'Reseller requested' : cancelReason;
-    const phoneToUse = cancellingOrder.dropshipRecipient?.phone || cancellingOrder.customer.phone;
-    const res = requestOrderCancellation(cancellingOrder.orderNumber, phoneToUse, finalReason);
-    if (res.success) {
-      setCancelStatusMsg({ type: 'success', text: res.message });
-      setCancellingOrder(null);
-    } else {
-      setCancelStatusMsg({ type: 'error', text: res.message });
-    }
+
+    // Direct dynamic order cancellation & dynamic stock replenishment
+    updateOrderStatus(cancellingOrder.id, 'Cancelled', {
+      cancellationReason: `Cancelled by Reseller: ${finalReason}`,
+    });
+    replenishOrderInventory(cancellingOrder);
+
+    const totalRestockedCount = cancellingOrder.items.reduce(
+      (sum, it) => sum + (it.quantity || 1),
+      0
+    );
+
+    setCancelStatusMsg({
+      type: 'success',
+      text: `Order #${cancellingOrder.orderNumber} has been cancelled successfully. ${totalRestockedCount} unit(s) of reserved saree inventory have been restocked dynamically to inventory!`,
+    });
+    setCancellingOrder(null);
   };
 
   const handleSubmitIssue = async (e: React.FormEvent) => {
@@ -660,6 +707,16 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     return (products || []).filter((p) => p.isVisible !== false && p.isWholesaleAvailable !== false);
   }, [products]);
 
+  // Group products by category to show counts on category catalog cards
+  const categoryCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    wholesaleProducts.forEach((p) => {
+      const cat = p.category || 'Uncategorized';
+      map[cat] = (map[cat] || 0) + 1;
+    });
+    return map;
+  }, [wholesaleProducts]);
+
   // Filtered catalog for wholesale resellers
   const filteredProducts = useMemo(() => {
     return wholesaleProducts.filter((p) => {
@@ -671,6 +728,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
         p.color?.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchCat =
+        !selectedCat ||
         selectedCat === 'all' ||
         p.category?.toLowerCase() === selectedCat.toLowerCase() ||
         p.fabric?.toLowerCase() === selectedCat.toLowerCase();
@@ -705,19 +763,148 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     setTimeout(() => setCopiedPitchId(null), 2500);
   };
 
-  // Select product for wholesale order
-  const handleStartOrder = (prod: Product) => {
-    setSelectedProduct(prod);
-    setOrderQuantity(1);
-    setResaleSellingPrice(prod.price);
-    setActiveTab('new_order');
+  // Reseller Cart Actions (Dynamically constrained by product stock value)
+  const addToResellerCart = (prod: Product, quantity = 1, targetResalePrice?: number) => {
+    // Find current live product in inventory state for freshest stockCount
+    const liveProd = products.find((p) => p.id === prod.id) || prod;
+    const isOutOfStock =
+      liveProd.stockStatus === 'out_of_stock' ||
+      (liveProd.stockCount !== undefined && liveProd.stockCount <= 0);
+
+    const maxStock = liveProd.stockCount !== undefined ? Math.max(0, liveProd.stockCount) : 99;
+
+    if (isOutOfStock || maxStock <= 0) {
+      return;
+    }
+
+    const defaultResale = targetResalePrice !== undefined ? targetResalePrice : liveProd.price;
+
+    setResellerCart((prev) => {
+      const idx = prev.findIndex((item) => item.product.id === liveProd.id);
+      if (idx > -1) {
+        const currentQty = prev[idx].quantity;
+        const allowableAdd = Math.max(0, Math.min(quantity, maxStock - currentQty));
+        if (allowableAdd <= 0) return prev;
+        const copy = [...prev];
+        copy[idx] = {
+          ...copy[idx],
+          product: liveProd,
+          quantity: currentQty + allowableAdd,
+          resalePrice: targetResalePrice !== undefined ? targetResalePrice : copy[idx].resalePrice,
+        };
+        return copy;
+      }
+      const initialQty = Math.min(Math.max(1, quantity), maxStock);
+      return [
+        ...prev,
+        {
+          product: liveProd,
+          quantity: initialQty,
+          resalePrice: defaultResale,
+        },
+      ];
+    });
+
+    setAddedCartFeedbackId(liveProd.id);
+    setTimeout(() => {
+      setAddedCartFeedbackId(null);
+    }, 1800);
+  };
+
+  const updateCartQuantity = (productId: string, newQty: number) => {
+    if (newQty <= 0) {
+      removeFromResellerCart(productId);
+      return;
+    }
+    const liveProd = products.find((p) => p.id === productId);
+    const maxStock = liveProd?.stockCount !== undefined ? Math.max(1, liveProd.stockCount) : 99;
+    const cappedQty = Math.min(newQty, maxStock);
+
+    setResellerCart((prev) =>
+      prev.map((item) =>
+        item.product.id === productId
+          ? { ...item, product: liveProd || item.product, quantity: cappedQty }
+          : item
+      )
+    );
+  };
+
+  const updateCartResalePrice = (productId: string, price: number) => {
+    const safePrice = Math.max(0, price);
+    setResellerCart((prev) =>
+      prev.map((item) => (item.product.id === productId ? { ...item, resalePrice: safePrice } : item))
+    );
+  };
+
+  const removeFromResellerCart = (productId: string) => {
+    setResellerCart((prev) => prev.filter((item) => item.product.id !== productId));
+  };
+
+  const clearResellerCart = () => {
+    setResellerCart([]);
+  };
+
+  // Card quantity helper for catalog stepper constrained by available physical stock
+  const getCardSelectedQty = (productId: string) => {
+    const liveProd = products.find((p) => p.id === productId);
+    const maxStock = liveProd?.stockCount !== undefined ? Math.max(0, liveProd.stockCount) : 99;
+    const inCart = resellerCart.find((it) => it.product.id === productId)?.quantity || 0;
+    const remainingStock = Math.max(0, maxStock - inCart);
+    if (remainingStock <= 0) return 0;
+    const current = catalogCardQuantities[productId] || 1;
+    return Math.min(current, remainingStock);
+  };
+
+  const setCardSelectedQty = (productId: string, qty: number) => {
+    const liveProd = products.find((p) => p.id === productId);
+    const maxStock = liveProd?.stockCount !== undefined ? Math.max(0, liveProd.stockCount) : 99;
+    const inCart = resellerCart.find((it) => it.product.id === productId)?.quantity || 0;
+    const remainingStock = Math.max(0, maxStock - inCart);
+    const safeQty = Math.max(1, Math.min(qty, remainingStock > 0 ? remainingStock : 1));
+
+    setCatalogCardQuantities((prev) => ({
+      ...prev,
+      [productId]: safeQty,
+    }));
+  };
+
+  // Reseller Cart Totals
+  const totalCartItems = useMemo(() => {
+    return resellerCart.reduce((sum, item) => sum + item.quantity, 0);
+  }, [resellerCart]);
+
+  const totalResellerCost = useMemo(() => {
+    return resellerCart.reduce((sum, item) => {
+      const unitCost = getWholesalePrice(item.product.price);
+      return sum + unitCost * item.quantity;
+    }, 0);
+  }, [resellerCart, wholesaleDiscountRate]);
+
+  const totalCustomerValue = useMemo(() => {
+    return resellerCart.reduce((sum, item) => {
+      const price = item.resalePrice || item.product.price;
+      return sum + price * item.quantity;
+    }, 0);
+  }, [resellerCart]);
+
+  const totalEstimatedMargin = useMemo(() => {
+    return Math.max(0, totalCustomerValue - totalResellerCost);
+  }, [totalCustomerValue, totalResellerCost]);
+
+  // Quick action to add product and immediately view cart
+  const handleQuickAddAndCheckout = (prod: Product, quantity = 1) => {
+    addToResellerCart(prod, quantity);
+    setActiveTab('cart');
     setOrderSuccess(null);
     setOrderError('');
   };
 
   const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProduct || !currentReseller) return;
+    if (resellerCart.length === 0 || !currentReseller) {
+      setOrderError('Your reseller cart is empty. Please add sarees from the catalog before checking out.');
+      return;
+    }
     setOrderError('');
 
     if (deliveryType === 'dropship') {
@@ -738,24 +925,19 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
     const cleanUtr = orderUtr.replace(/\D/g, '');
     if (!cleanUtr || cleanUtr.length !== 12) {
-      setOrderError('Please enter the 12-digit UPI Transaction ID (UTR) for wholesale settlement.');
+      setOrderError('Please enter the 12-digit UPI Transaction ID (UTR) for reseller settlement.');
       return;
     }
 
     setIsPlacingOrder(true);
     try {
-      const wholesaleUnitPrice = getWholesalePrice(selectedProduct.price);
-      const totalWholesaleCost = wholesaleUnitPrice * orderQuantity;
-      const totalCustomerPrice = (resaleSellingPrice || selectedProduct.price) * orderQuantity;
-      const calculatedMargin = Math.max(0, totalCustomerPrice - totalWholesaleCost);
-
-      const cartItem: CartItem = {
+      const cartItems: CartItem[] = resellerCart.map((item) => ({
         product: {
-          ...selectedProduct,
-          price: wholesaleUnitPrice, // wholesale price charged to reseller
+          ...item.product,
+          price: getWholesalePrice(item.product.price), // Wholesale unit rate charged to reseller
         },
-        quantity: orderQuantity,
-      };
+        quantity: item.quantity,
+      }));
 
       const recipient =
         deliveryType === 'dropship'
@@ -777,20 +959,22 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
             };
 
       const newOrder = await placeResellerOrder({
-        items: [cartItem],
+        items: cartItems,
         dropshipRecipient: recipient,
-        resellerMargin: calculatedMargin,
+        resellerMargin: totalEstimatedMargin,
         upiTransactionId: cleanUtr,
         notes: `[Reseller: ${currentReseller.businessName}] ${orderNotes ? `Notes: ${orderNotes}` : ''}`,
       });
 
       setOrderSuccess(newOrder);
+      setResellerCart([]); // Clear cart upon successful order
       setOrderUtr('');
       setRecipientName('');
       setRecipientPhone('');
       setRecipientAddress('');
       setRecipientCity('');
       setRecipientPincode('');
+      setOrderNotes('');
     } catch (err: any) {
       setOrderError(err?.message || 'Failed to place reseller order.');
     } finally {
@@ -845,7 +1029,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                   {settings.boutiqueName || 'Neydhal'}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-200 border border-amber-400/30">
-                  {settings.resellerLoginDisplay?.headerBadgeText || 'B2B Wholesale Portal'}
+                  {settings.resellerLoginDisplay?.headerBadgeText || 'Reseller Portal'}
                 </span>
               </div>
               <p className="text-xs text-purple-200/80 hidden sm:block">
@@ -867,19 +1051,19 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
         {/* Main Content: Full-Page Layout with Left Perks and Right Dual Action Card */}
         <main className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12 my-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Left Column: B2B Value Proposition & Wholesale Perks */}
+            {/* Left Column: B2B Value Proposition & Reseller Perks */}
             <div className="lg:col-span-5 space-y-6">
               <div className="space-y-3">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-400/30">
                   <Sparkles className="w-3.5 h-3.5" />
-                  {settings.resellerLoginDisplay?.programBadge || 'Wholesale Partner Program'}
+                  {settings.resellerLoginDisplay?.programBadge || 'Reseller Partner Program'}
                 </span>
                 <h2 className="text-3xl sm:text-4xl font-serif font-bold text-white leading-tight">
                   {settings.resellerLoginDisplay?.headline || 'Empowering Resellers & Boutiques'}
                 </h2>
                 <p className="text-sm text-neutral-300 leading-relaxed">
                   {settings.resellerLoginDisplay?.description ||
-                    'Join our enterprise network to source pure handcrafted silk sarees at direct weaver wholesale prices with guaranteed high margins and zero dead-stock risk.'}
+                    'Join our enterprise network to source pure handcrafted silk sarees at direct weaver reseller prices with guaranteed high margins and zero dead-stock risk.'}
                 </p>
               </div>
 
@@ -890,7 +1074,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                   : [
                       {
                         id: 'perk-margin',
-                        title: '20% Flat Wholesale Margin',
+                        title: '20% Flat Reseller Margin',
                         description: 'Instant discount applied to all Kanjivaram, Banarasi, and Chanderi sarees.',
                         iconName: 'dollar',
                       },
@@ -1086,7 +1270,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                         B2B Partner Sign In
                       </h3>
                       <p className="text-xs text-neutral-500 leading-relaxed">
-                        Sign in with your approved Google email to unlock wholesale margins, blind dropshipping, and high-res media packs.
+                        Sign in with your approved Google email to unlock reseller margins, blind dropshipping, and high-res media packs.
                       </p>
                     </div>
 
@@ -1119,7 +1303,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
                     <div className="text-center pt-2">
                       <p className="text-xs text-neutral-600">
-                        Need wholesale access?{' '}
+                        Need reseller access?{' '}
                         <button
                           type="button"
                           onClick={() => {
@@ -1352,11 +1536,11 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                     {currentReseller.businessName}
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/30 text-purple-200 border border-purple-400/30">
-                    B2B Wholesale Hub
+                    Reseller Hub
                   </span>
                 </div>
                 <p className="text-xs text-neutral-300 mt-0.5">
-                  Logged in: {currentReseller.name} &middot; WhatsApp: +91 {currentReseller.whatsappNumber} &middot; Tier: {currentReseller.wholesaleDiscountPercent}% Wholesale Margin
+                  Logged in: {currentReseller.name} &middot; WhatsApp: +91 {currentReseller.whatsappNumber} &middot; Tier: {currentReseller.wholesaleDiscountPercent}% Reseller Margin
                 </p>
               </div>
             </div>
@@ -1398,7 +1582,10 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
           <div className="flex items-center gap-2 mt-5 overflow-x-auto no-scrollbar border-t border-white/10 pt-3">
             <button
               type="button"
-              onClick={() => setActiveTab('catalog')}
+              onClick={() => {
+                setActiveTab('catalog');
+                setSelectedCat(null);
+              }}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
                 activeTab === 'catalog'
                   ? 'bg-purple-500 text-white shadow-sm'
@@ -1406,7 +1593,25 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
               }`}
             >
               <Store className="w-4 h-4" />
-              <span>Wholesale Catalog ({filteredProducts.length})</span>
+              <span>Reseller Catalog ({wholesaleProducts.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('cart')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer relative ${
+                activeTab === 'cart' || activeTab === 'new_order'
+                  ? 'bg-purple-500 text-white shadow-sm'
+                  : 'text-neutral-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              <span>Reseller Cart</span>
+              {totalCartItems > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-purple-950 shadow-xs">
+                  {totalCartItems}
+                </span>
+              )}
             </button>
 
             <button
@@ -1420,19 +1625,6 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
             >
               <Package className="w-4 h-4" />
               <span>My Dropships & Orders ({resellerOrders.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('new_order')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
-                activeTab === 'new_order'
-                  ? 'bg-purple-500 text-white shadow-sm'
-                  : 'text-neutral-300 hover:text-white bg-white/5'
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>Create Dropship Order</span>
             </button>
 
             <button
@@ -1453,164 +1645,565 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
       {/* Authenticated Reseller Content Body */}
       <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-neutral-50/50 max-w-7xl mx-auto w-full">
-            {/* TAB 1: WHOLESALE CATALOG & MEDIA PACKS */}
+            {/* TAB 1: RESELLER CATALOG & MEDIA PACKS */}
             {activeTab === 'catalog' && (
               <div className="space-y-4">
-                {/* Search & Category Filter Toolbar */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-neutral-200 shadow-2xs">
-                  <div className="relative w-full sm:w-72">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                      <Search className="w-4 h-4" />
-                    </span>
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search wholesale products..."
-                      className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-neutral-200 text-xs focus:outline-none focus:ring-1 focus:ring-purple-700"
-                    />
-                  </div>
+                {/* 1. Category Catalog Cards Overview (When no category is selected and no search query) */}
+                {!selectedCat && !searchQuery.trim() ? (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    {/* Header Bar */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-2xs">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-8 h-8 rounded-xl bg-purple-100 text-purple-900 flex items-center justify-center font-bold">
+                            <Layers className="w-4 h-4 text-purple-800" />
+                          </span>
+                          <h3 className="font-serif font-bold text-base sm:text-lg text-neutral-900">
+                            Reseller Category Catalog
+                          </h3>
+                        </div>
+                        <p className="text-xs text-neutral-500">
+                          Click any category below to open collection, view reseller pricing, download HD photo packs & dropship.
+                        </p>
+                      </div>
 
-                  <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCat('all')}
-                      className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
-                        selectedCat === 'all'
-                          ? 'bg-purple-900 text-white'
-                          : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                      }`}
-                    >
-                      All Categories
-                    </button>
-                    {categories.slice(0, 5).map((cat) => (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => setSelectedCat(cat.name)}
-                        className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
-                          selectedCat === cat.name
-                            ? 'bg-purple-900 text-white'
-                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                        }`}
-                      >
-                        {cat.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                      <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                        <div className="relative w-full sm:w-64">
+                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                            <Search className="w-4 h-4" />
+                          </span>
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search all reseller sarees..."
+                            className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-200 text-xs focus:outline-none focus:ring-1 focus:ring-purple-700 bg-neutral-50/50"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCat('all')}
+                          className="px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold whitespace-nowrap transition cursor-pointer"
+                        >
+                          View All ({wholesaleProducts.length})
+                        </button>
+                      </div>
+                    </div>
 
-                {/* Catalog Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredProducts.map((prod) => {
-                    const wholesalePrice = getWholesalePrice(prod.price);
-                    const retailPrice = prod.price;
-                    const estimatedMargin = retailPrice - wholesalePrice;
+                    {/* Category Cards Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {categories.map((category) => {
+                        const count =
+                          categoryCounts[category.name] ??
+                          wholesaleProducts.filter(
+                            (p) =>
+                              p.category?.toLowerCase() === category.name.toLowerCase() ||
+                              p.fabric?.toLowerCase() === category.name.toLowerCase()
+                          ).length;
 
-                    return (
-                      <div
-                        key={prod.id}
-                        className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs hover:shadow-md transition flex flex-col justify-between"
-                      >
-                        <div>
-                          {/* Image Thumbnail with 1-Click Download Pack */}
-                          <div className="relative aspect-4/3 bg-neutral-100 overflow-hidden">
-                            <img
-                              src={prod.images[0]}
-                              alt={prod.title}
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute top-2 left-2 flex items-center gap-1">
-                              <span className="px-2 py-0.5 rounded-full bg-purple-900/90 text-white text-[10px] font-bold backdrop-blur-xs shadow-xs">
-                                Wholesale Tier: {currentReseller.wholesaleDiscountPercent}% OFF
-                              </span>
+                        const previewImg =
+                          category.imageUrl ||
+                          wholesaleProducts.find(
+                            (p) =>
+                              p.category?.toLowerCase() === category.name.toLowerCase() ||
+                              p.fabric?.toLowerCase() === category.name.toLowerCase()
+                          )?.images[0] ||
+                          '/assets/images/hero_saree_atelier_1791651761357.jpg';
+
+                        return (
+                          <div
+                            key={category.id}
+                            onClick={() => {
+                              setSelectedCat(category.name);
+                              setSearchQuery('');
+                            }}
+                            className="group relative bg-white rounded-2xl border border-neutral-200/90 overflow-hidden shadow-2xs hover:shadow-xl hover:border-purple-300 transition-all duration-300 cursor-pointer flex flex-col justify-between"
+                          >
+                            {/* Visual Category Preview Image */}
+                            <div className="relative aspect-16/10 sm:aspect-4/3 w-full overflow-hidden bg-neutral-900 flex items-center justify-center">
+                              <img
+                                src={previewImg}
+                                alt={category.name}
+                                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                                loading="lazy"
+                              />
+                              <div className="absolute inset-0 z-10 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent pointer-events-none" />
+
+                              {/* Reseller Margin Badge */}
+                              <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5">
+                                <span className="px-2.5 py-1 rounded-full bg-purple-900/90 text-white text-[10px] font-bold backdrop-blur-xs shadow-md border border-purple-400/30 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
+                                  <span>{currentReseller.wholesaleDiscountPercent}% Reseller Margin</span>
+                                </span>
+                              </div>
+
+                              {/* Saree Count Pill */}
+                              <div className="absolute top-3 right-3 z-20 bg-white/95 backdrop-blur-md text-neutral-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
+                                {count} {count === 1 ? 'Saree' : 'Sarees'}
+                              </div>
+
+                              {/* Category Title & Labels Overlay */}
+                              <div className="absolute inset-x-0 bottom-0 z-20 p-4 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent text-white pointer-events-none">
+                                <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300 drop-shadow block">
+                                  Reseller Catalog
+                                </span>
+                                <h4 className="font-serif font-bold text-lg sm:text-xl text-white group-hover:text-amber-200 transition drop-shadow-md">
+                                  {category.name}
+                                </h4>
+                              </div>
                             </div>
 
-                            {/* Download All Images Pack Button */}
-                            <button
-                              type="button"
-                              onClick={(e) => handleDownloadImagePack(prod, e)}
-                              disabled={downloadingZipId === prod.id}
-                              className="absolute bottom-2 right-2 px-2.5 py-1.5 rounded-xl bg-black/80 hover:bg-black text-white text-[11px] font-bold backdrop-blur-xs shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                              title="Download complete high-res photo pack in ZIP"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>
-                                {downloadingZipId === prod.id ? 'Packaging...' : 'Download HD Pack (.ZIP)'}
+                            {/* Category Card Footer */}
+                            <div className="p-4 bg-white flex items-center justify-between text-xs border-t border-neutral-100">
+                              <p className="text-neutral-500 line-clamp-1 pr-2 text-[11px]">
+                                {category.description || 'Authentic pure handloom weave with tested quality.'}
+                              </p>
+                              <span className="text-purple-900 font-bold inline-flex items-center gap-1 shrink-0 group-hover:translate-x-1 transition-transform">
+                                <span>Open Collection</span>
+                                <ArrowRight className="w-3.5 h-3.5 text-purple-700" />
                               </span>
-                            </button>
+                            </div>
                           </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  /* 2. Open Category Saree Catalog View */
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    {/* Header Bar with Back Button and Quick Switcher */}
+                    <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-2xs space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCat(null);
+                              setSearchQuery('');
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-purple-900 hover:text-purple-950 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 transition cursor-pointer"
+                          >
+                            <ChevronLeft className="w-4 h-4 text-purple-800" />
+                            <span>&larr; Back to Categories</span>
+                          </button>
 
-                          <div className="p-4 space-y-2">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
-                                {prod.fabric || prod.category}
-                              </span>
-                              <span className="font-mono text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded">
-                                {prod.productCode}
-                              </span>
-                            </div>
-
-                            <h3 className="font-serif font-bold text-sm text-neutral-900 leading-tight">
-                              {prod.title}
+                          <div>
+                            <h3 className="font-serif font-bold text-base sm:text-lg text-neutral-900 leading-tight">
+                              {selectedCat === 'all'
+                                ? 'All Reseller Sarees'
+                                : selectedCat
+                                ? `${selectedCat} Collection`
+                                : 'Search Results'}
                             </h3>
-
-                            {/* Pricing & Margin Card */}
-                            <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-100 flex items-center justify-between">
-                              <div>
-                                <span className="block text-[10px] text-purple-700 font-semibold uppercase">
-                                  Your Wholesale Cost
-                                </span>
-                                <span className="text-sm font-bold text-purple-950">
-                                  {formatPrice(wholesalePrice)}
-                                </span>
-                              </div>
-                              <div className="text-right">
-                                <span className="block text-[10px] text-neutral-500">
-                                  Retail MRP: {formatPrice(retailPrice)}
-                                </span>
-                                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                                  +₹{estimatedMargin.toLocaleString('en-IN')} Margin
-                                </span>
-                              </div>
-                            </div>
+                            <p className="text-[11px] text-neutral-500">
+                              Showing {filteredProducts.length} {filteredProducts.length === 1 ? 'saree' : 'sarees'} with {currentReseller.wholesaleDiscountPercent}% reseller margin
+                            </p>
                           </div>
                         </div>
 
-                        {/* Action buttons */}
-                        <div className="p-4 pt-0 grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => handleCopyWhatsAppPitch(prod, e)}
-                            className="py-2 px-2.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
-                            title="Copy ready-to-share product description for WhatsApp"
-                          >
-                            {copiedPitchId === prod.id ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                <span className="text-emerald-700">Copied Pitch!</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>Copy WhatsApp Pitch</span>
-                              </>
-                            )}
-                          </button>
+                        {/* In-category Search Input */}
+                        <div className="relative w-full sm:w-72">
+                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                            <Search className="w-4 h-4" />
+                          </span>
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={`Search ${selectedCat && selectedCat !== 'all' ? selectedCat : 'sarees'}...`}
+                            className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-neutral-200 text-xs focus:outline-none focus:ring-1 focus:ring-purple-700 bg-neutral-50/50"
+                          />
+                          {searchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery('')}
+                              className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-neutral-400 hover:text-neutral-600 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
+                      {/* Horizontal Category Switcher */}
+                      <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-neutral-100 no-scrollbar">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCat(null);
+                            setSearchQuery('');
+                          }}
+                          className="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition bg-neutral-100 text-neutral-700 hover:bg-neutral-200 cursor-pointer"
+                        >
+                          &larr; Categories Grid
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCat('all')}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                            selectedCat === 'all'
+                              ? 'bg-purple-900 text-white'
+                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                          }`}
+                        >
+                          All Sarees ({wholesaleProducts.length})
+                        </button>
+                        {categories.map((cat) => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setSelectedCat(cat.name)}
+                            className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                              selectedCat === cat.name
+                                ? 'bg-purple-900 text-white'
+                                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                            }`}
+                          >
+                            {cat.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Empty State if no products match */}
+                    {filteredProducts.length === 0 ? (
+                      <div className="p-12 text-center bg-white rounded-3xl border border-neutral-200 space-y-3">
+                        <Package className="w-10 h-10 text-neutral-300 mx-auto" />
+                        <h4 className="font-serif font-bold text-base text-neutral-900">
+                          No sarees found
+                        </h4>
+                        <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                          There are currently no active sarees matching your filters in this category.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCat(null);
+                            setSearchQuery('');
+                          }}
+                          className="px-4 py-2 rounded-xl bg-purple-900 text-white text-xs font-bold cursor-pointer"
+                        >
+                          Return to Categories
+                        </button>
+                      </div>
+                    ) : (
+                      /* Saree Product Cards Grid */
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filteredProducts.map((prod) => {
+                          // Look up real-time live product from context to guarantee freshest stock count
+                          const liveProd = products.find((p) => p.id === prod.id) || prod;
+                          const wholesalePrice = getWholesalePrice(liveProd.price);
+                          const retailPrice = liveProd.price;
+                          const estimatedMargin = retailPrice - wholesalePrice;
+
+                          // Dynamic stock states
+                          const isOutOfStock =
+                            liveProd.stockStatus === 'out_of_stock' ||
+                            (liveProd.stockCount !== undefined && liveProd.stockCount <= 0);
+
+                          const isRestocked = Boolean(liveProd.isRestocked && !isOutOfStock);
+
+                          const maxStock = liveProd.stockCount !== undefined ? Math.max(0, liveProd.stockCount) : 99;
+                          const inCartItem = resellerCart.find((it) => it.product.id === liveProd.id);
+                          const inCartQty = inCartItem?.quantity || 0;
+                          const remainingStock = Math.max(0, maxStock - inCartQty);
+                          const cardQty = getCardSelectedQty(liveProd.id);
+
+                          return (
+                            <div
+                              key={liveProd.id}
+                              className={`bg-white rounded-2xl border overflow-hidden shadow-2xs hover:shadow-md transition flex flex-col justify-between ${
+                                isOutOfStock ? 'border-neutral-300 opacity-90' : 'border-neutral-200'
+                              }`}
+                            >
+                              <div>
+                                {/* Image Thumbnail with Stock Badges, Restocked Indicator & Out of Stock Overlay */}
+                                <div className="relative aspect-4/3 bg-neutral-100 overflow-hidden group">
+                                  <img
+                                    src={liveProd.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                                    alt={liveProd.title}
+                                    className={`w-full h-full object-cover transition-transform duration-300 ${
+                                      isOutOfStock ? 'grayscale opacity-60' : 'group-hover:scale-105'
+                                    }`}
+                                  />
+
+                                  {/* Top Left: Reseller Tier Discount Tag & Restocked Badge */}
+                                  <div className="absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
+                                    <span className="px-2 py-0.5 rounded-full bg-purple-900/90 text-white text-[10px] font-bold backdrop-blur-xs shadow-xs border border-purple-400/30">
+                                      Reseller: {currentReseller.wholesaleDiscountPercent}% OFF
+                                    </span>
+                                    {isRestocked && (
+                                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md flex items-center gap-1 border border-emerald-400 animate-in fade-in">
+                                        <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
+                                        <span>Restocked</span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Top Right: Quantity Available Stock Badge on Product Image */}
+                                  <div className="absolute top-2 right-2 z-10">
+                                    {isOutOfStock ? (
+                                      <span className="px-2.5 py-1 rounded-full bg-rose-900/90 text-rose-100 text-[10px] font-bold border border-rose-500/50 backdrop-blur-xs shadow-sm flex items-center gap-1">
+                                        <Ban className="w-3 h-3 text-rose-300" />
+                                        <span>0 Available · Sold Out</span>
+                                      </span>
+                                    ) : liveProd.stockCount !== undefined && liveProd.stockCount <= 3 ? (
+                                      <span className="px-2.5 py-1 rounded-full bg-amber-500 text-neutral-950 text-[10px] font-black shadow-sm flex items-center gap-1.5 border border-amber-300">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
+                                        <span>Only {liveProd.stockCount} Left</span>
+                                      </span>
+                                    ) : (
+                                      <span className="px-2.5 py-1 rounded-full bg-white/95 text-neutral-900 text-[10px] font-bold shadow-sm border border-neutral-200 backdrop-blur-xs flex items-center gap-1">
+                                        <Package className="w-3 h-3 text-purple-700" />
+                                        <span>{liveProd.stockCount !== undefined ? `${liveProd.stockCount} Available` : 'In Stock'}</span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Center Out of Stock Overlay */}
+                                  {isOutOfStock && (
+                                    <div className="absolute inset-0 bg-neutral-950/70 backdrop-blur-[2px] flex flex-col items-center justify-center p-3 text-center z-20">
+                                      <span className="px-3.5 py-1.5 rounded-full bg-rose-600 text-white text-xs font-black uppercase tracking-wider shadow-lg flex items-center gap-1.5 border border-rose-400">
+                                        <Ban className="w-4 h-4" />
+                                        <span>Out of Stock</span>
+                                      </span>
+                                      <span className="text-[11px] text-rose-200 mt-1.5 font-medium">
+                                        Sold Out · Dynamic restock on cancellation
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {/* Download All Images Pack Button */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleDownloadImagePack(liveProd, e)}
+                                    disabled={downloadingZipId === liveProd.id}
+                                    className="absolute bottom-2 right-2 z-10 px-2.5 py-1.5 rounded-xl bg-black/80 hover:bg-black text-white text-[11px] font-bold backdrop-blur-xs shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    title="Download complete high-res photo pack in ZIP"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                    <span>
+                                      {downloadingZipId === liveProd.id ? 'Packaging...' : 'Download HD Pack (.ZIP)'}
+                                    </span>
+                                  </button>
+                                </div>
+
+                                <div className="p-4 space-y-2">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                                      {liveProd.fabric || liveProd.category}
+                                    </span>
+                                    <span className="font-mono text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded">
+                                      {liveProd.productCode}
+                                    </span>
+                                  </div>
+
+                                  <h3 className="font-serif font-bold text-sm text-neutral-900 leading-tight">
+                                    {liveProd.title}
+                                  </h3>
+
+                                  {/* Number of Quantity Available Display */}
+                                  <div className="flex items-center justify-between text-xs py-1 border-y border-neutral-100">
+                                    <span className="text-[11px] text-neutral-500 font-medium">Quantity Available:</span>
+                                    {isOutOfStock ? (
+                                      <span className="text-[11px] font-bold text-rose-600 flex items-center gap-1">
+                                        <Ban className="w-3 h-3" />
+                                        <span>0 units (Out of Stock)</span>
+                                      </span>
+                                    ) : liveProd.stockCount !== undefined && liveProd.stockCount <= 3 ? (
+                                      <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                        <span>Only {liveProd.stockCount} units available</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                                        <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                        <span>{liveProd.stockCount !== undefined ? `${liveProd.stockCount} units in stock` : 'In Stock'}</span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Pricing & Margin Card */}
+                                  <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-100 flex items-center justify-between">
+                                    <div>
+                                      <span className="block text-[10px] text-purple-700 font-semibold uppercase">
+                                        Your Reseller Cost
+                                      </span>
+                                      <span className="text-sm font-bold text-purple-950">
+                                        {formatPrice(wholesalePrice)}
+                                      </span>
+                                    </div>
+                                    <div className="text-right">
+                                      <span className="block text-[10px] text-neutral-500">
+                                        Retail MRP: {formatPrice(retailPrice)}
+                                      </span>
+                                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                        +₹{estimatedMargin.toLocaleString('en-IN')} Margin
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Public Front Quantity Selector & Add to Reseller Cart */}
+                              <div className="p-4 pt-0 space-y-2 border-t border-neutral-100 mt-2">
+                                {/* Copy Pitch & Cart Status Bar */}
+                                <div className="flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleCopyWhatsAppPitch(liveProd, e)}
+                                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                                    title="Copy ready-to-share product description for WhatsApp"
+                                  >
+                                    {copiedPitchId === liveProd.id ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span className="text-emerald-700">Copied Pitch!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>Copy WhatsApp Pitch</span>
+                                      </>
+                                    )}
+                                  </button>
+                                  {inCartItem && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveTab('cart')}
+                                      className="px-2.5 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-900 text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
+                                      title="View in Reseller Cart"
+                                    >
+                                      <ShoppingCart className="w-3.5 h-3.5 text-purple-700" />
+                                      <span>In Cart ({inCartItem.quantity})</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Quantity Stepper & Add to Reseller Cart Action */}
+                                <div className="flex items-center gap-2">
+                                  {/* Quantity Stepper (Stock constrained) */}
+                                  <div className="flex items-center border border-neutral-200 rounded-xl bg-neutral-50 shadow-2xs overflow-hidden shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const current = getCardSelectedQty(liveProd.id);
+                                        if (current > 1) setCardSelectedQty(liveProd.id, current - 1);
+                                      }}
+                                      disabled={isOutOfStock || remainingStock <= 0 || cardQty <= 1}
+                                      className="p-2 hover:bg-neutral-200 text-neutral-600 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                                      aria-label="Decrease quantity"
+                                    >
+                                      <Minus className="w-3 h-3" />
+                                    </button>
+                                    <span className="px-2 text-xs font-bold tabular-nums text-neutral-800 min-w-5 text-center">
+                                      {isOutOfStock || remainingStock <= 0 ? 0 : cardQty}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const current = getCardSelectedQty(liveProd.id);
+                                        if (current < remainingStock) {
+                                          setCardSelectedQty(liveProd.id, current + 1);
+                                        }
+                                      }}
+                                      disabled={isOutOfStock || remainingStock <= 0 || cardQty >= remainingStock}
+                                      className="p-2 hover:bg-neutral-200 text-neutral-600 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                                      aria-label="Increase quantity"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                    </button>
+                                  </div>
+
+                                  {/* Add to Reseller Cart Button */}
+                                  <button
+                                    type="button"
+                                    disabled={isOutOfStock || remainingStock <= 0}
+                                    onClick={() => {
+                                      const qtyToAdd = Math.min(cardQty, remainingStock);
+                                      if (qtyToAdd > 0) {
+                                        addToResellerCart(liveProd, qtyToAdd);
+                                      }
+                                    }}
+                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs ${
+                                      isOutOfStock
+                                        ? 'bg-neutral-200 text-neutral-500 cursor-not-allowed border border-neutral-300'
+                                        : remainingStock <= 0
+                                        ? 'bg-purple-100 text-purple-900 cursor-not-allowed border border-purple-200'
+                                        : addedCartFeedbackId === liveProd.id
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-purple-900 hover:bg-purple-800 text-white cursor-pointer active:scale-98'
+                                    }`}
+                                  >
+                                    {isOutOfStock ? (
+                                      <>
+                                        <Ban className="w-3.5 h-3.5" />
+                                        <span>Out of Stock</span>
+                                      </>
+                                    ) : remainingStock <= 0 ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-purple-700" />
+                                        <span>All in Cart ({inCartQty})</span>
+                                      </>
+                                    ) : addedCartFeedbackId === liveProd.id ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>Added ({cardQty})!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ShoppingCart className="w-3.5 h-3.5" />
+                                        <span>Add to Cart</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Sticky Reseller Cart Quick-Bar (shown when items exist in cart) */}
+                    {totalCartItems > 0 && (
+                      <div className="sticky bottom-4 z-30 mt-6 max-w-4xl mx-auto bg-gradient-to-r from-purple-950 via-neutral-900 to-indigo-950 text-white p-3.5 sm:p-4 rounded-2xl shadow-2xl border border-purple-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in slide-in-from-bottom-3 duration-300">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-amber-400 text-purple-950 flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">
+                            <ShoppingCart className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                              <span>Reseller Cart: {totalCartItems} {totalCartItems === 1 ? 'Saree' : 'Sarees'}</span>
+                              <span className="text-amber-300 font-extrabold">&bull; {formatPrice(totalResellerCost)}</span>
+                            </p>
+                            <p className="text-[11px] text-purple-200">
+                              Estimated Reseller Margin: <strong className="text-emerald-300 font-bold">+₹{totalEstimatedMargin.toLocaleString('en-IN')}</strong>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                           <button
                             type="button"
-                            onClick={() => handleStartOrder(prod)}
-                            className="py-2 px-2.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                            onClick={() => clearResellerCart()}
+                            className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-neutral-200 transition cursor-pointer"
                           >
-                            <ShoppingBag className="w-3.5 h-3.5" />
-                            <span>Order Wholesale</span>
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('cart')}
+                            className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-purple-950 text-xs font-bold transition shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 whitespace-nowrap"
+                          >
+                            <span>Proceed to Cart & Checkout &rarr;</span>
                           </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1845,7 +2438,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                         <p className="text-xs text-neutral-500 max-w-sm mx-auto">
                           {orderSearchQuery || orderStatusFilter !== 'all'
                             ? 'Try clearing your search query or switching to another status filter.'
-                            : 'Browse the wholesale catalog, share saree pitches on WhatsApp, and place your first dropship order.'}
+                            : 'Browse the reseller catalog, share saree pitches on WhatsApp, and place your first dropship order.'}
                         </p>
                         {orderSearchQuery || orderStatusFilter !== 'all' ? (
                           <button
@@ -1861,10 +2454,13 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => setActiveTab('catalog')}
+                            onClick={() => {
+                              setActiveTab('catalog');
+                              setSelectedCat(null);
+                            }}
                             className="px-4 py-2 rounded-xl bg-purple-900 text-white font-bold text-xs cursor-pointer"
                           >
-                            Browse Wholesale Catalog
+                            Browse Reseller Catalog
                           </button>
                         )}
                       </div>
@@ -1924,7 +2520,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                     #{ord.orderNumber}
                                   </span>
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
-                                    Wholesale Dropship
+                                    Reseller Dropship
                                   </span>
 
                                   {/* Status Pill */}
@@ -1972,7 +2568,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
                                 <div className="flex items-center gap-4 text-left sm:text-right">
                                   <div>
-                                    <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Wholesale Total</span>
+                                    <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Reseller Total</span>
                                     <span className="font-serif font-bold text-base text-neutral-900 tabular-nums">
                                       {formatPrice(ord.totalAmount)}
                                     </span>
@@ -2212,7 +2808,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
                       <div className="text-left md:text-right border-t md:border-t-0 pt-3 md:pt-0 border-neutral-200">
                         <span className="text-[10px] text-neutral-400 uppercase font-bold tracking-wider">
-                          Wholesale Settlement
+                          Reseller Settlement
                         </span>
                         <p className="font-serif font-bold text-2xl text-neutral-900 tabular-nums">
                           {formatPrice(selectedResellerOrder.totalAmount)}
@@ -2572,7 +3168,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                   {formatPrice(item.product.price * item.quantity)}
                                 </span>
                                 <span className="text-[10px] text-neutral-400">
-                                  ({formatPrice(item.product.price)} each wholesale)
+                                  ({formatPrice(item.product.price)} each reseller price)
                                 </span>
                               </div>
                             </div>
@@ -2626,7 +3222,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                               +₹{selectedResellerOrder.resellerMargin?.toLocaleString('en-IN') || 0}
                             </span>
                             <span className="text-[11px] text-neutral-500">
-                              Wholesale Discount: {currentReseller.wholesaleDiscountPercent}%
+                              Reseller Discount: {currentReseller.wholesaleDiscountPercent}%
                             </span>
                           </div>
                         </div>
@@ -2851,11 +3447,11 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                         type="button"
                         onClick={() => {
                           setSelectedResellerOrderId(null);
-                          setActiveTab('new_order');
+                          setActiveTab('catalog');
                         }}
                         className="px-4 py-2 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition cursor-pointer shadow-xs"
                       >
-                        + Place Another Dropship
+                        + Shop Reseller Catalog
                       </button>
                     </div>
                   </div>
@@ -2863,342 +3459,610 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
               </div>
             )}
 
-            {/* TAB 3: CREATE NEW DROPSHIP ORDER */}
-            {activeTab === 'new_order' && (
-              <div className="max-w-2xl mx-auto space-y-4">
-                <div>
-                  <h3 className="text-base font-bold text-neutral-900 font-serif">
-                    Create Wholesale Dropship Order
-                  </h3>
-                  <p className="text-xs text-neutral-500">
-                    Boutique packages discreetly with plain packaging (no boutique price tags).
-                  </p>
+            {/* TAB 3: RESELLER CART & MULTI-ITEM CHECKOUT */}
+            {(activeTab === 'cart' || activeTab === 'new_order') && (
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-2xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-xl bg-purple-100 text-purple-900 flex items-center justify-center font-bold">
+                        <ShoppingCart className="w-4 h-4 text-purple-800" />
+                      </span>
+                      <h3 className="font-serif font-bold text-base sm:text-lg text-neutral-900">
+                        Reseller Cart & Checkout
+                      </h3>
+                      {totalCartItems > 0 && (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-purple-950 border border-amber-300">
+                          {totalCartItems} {totalCartItems === 1 ? 'Saree' : 'Sarees'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Review selected products, configure customer resale prices, and place dropship or self-stock orders with discreet packaging.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('catalog')}
+                      className="px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add More Sarees</span>
+                    </button>
+                    {resellerCart.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => clearResellerCart()}
+                        className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Clear Cart</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {orderSuccess ? (
-                  <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center space-y-3 animate-in fade-in">
-                    <CheckCircle className="w-12 h-12 text-emerald-600 mx-auto" />
-                    <h4 className="font-serif font-bold text-lg text-emerald-950">
-                      Wholesale Order Placed Successfully!
-                    </h4>
-                    <p className="text-xs text-emerald-800">
-                      Order reference <strong className="font-mono">#{orderSuccess.orderNumber}</strong> has
-                      been dispatched to the boutique fulfillment team.
-                    </p>
-                    <div className="pt-2 flex items-center justify-center gap-3">
+                  /* Order Success Confirmation Card */
+                  <div className="max-w-2xl mx-auto p-6 sm:p-8 rounded-3xl bg-emerald-50 border border-emerald-200 text-center space-y-4 animate-in fade-in zoom-in-95 shadow-md">
+                    <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                      <CheckCircle className="w-9 h-9" />
+                    </div>
+                    <div>
+                      <h4 className="font-serif font-bold text-xl sm:text-2xl text-emerald-950">
+                        Reseller Order Placed Successfully!
+                      </h4>
+                      <p className="text-xs sm:text-sm text-emerald-800 mt-1">
+                        Order reference <strong className="font-mono bg-emerald-100 px-2 py-0.5 rounded text-emerald-950">#{orderSuccess.orderNumber}</strong> has been dispatched to the boutique fulfillment queue.
+                      </p>
+                    </div>
+
+                    <div className="bg-white/80 backdrop-blur-xs p-4 rounded-2xl border border-emerald-200 text-left space-y-2 text-xs">
+                      <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
+                        <span className="text-neutral-600">Total Sarees Placed:</span>
+                        <strong className="text-neutral-900 font-mono font-bold">
+                          {orderSuccess.items.reduce((s, it) => s + it.quantity, 0)} pieces ({orderSuccess.items.length} styles)
+                        </strong>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
+                        <span className="text-neutral-600">Settled with Boutique:</span>
+                        <strong className="text-purple-950 font-bold">{formatPrice(orderSuccess.totalAmount)}</strong>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
+                        <span className="text-emerald-800 font-bold">Locked Reseller Margin:</span>
+                        <strong className="text-emerald-700 font-bold text-sm">+₹{(orderSuccess.resellerMargin || 0).toLocaleString('en-IN')}</strong>
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-neutral-600">Packaging Type:</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px]">
+                          Plain Discreet Packaging (No Boutique Tags)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
                       <button
                         type="button"
-                        onClick={() => setActiveTab('orders')}
-                        className="px-4 py-2 rounded-xl bg-emerald-800 text-white font-bold text-xs cursor-pointer"
+                        onClick={() => {
+                          setSelectedResellerOrderId(orderSuccess.id);
+                          setActiveTab('orders');
+                        }}
+                        className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs transition cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                       >
-                        View in Reseller Orders &rarr;
+                        <Package className="w-4 h-4" />
+                        <span>Track in Reseller Orders &rarr;</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => {
                           setOrderSuccess(null);
-                          setSelectedProduct(null);
+                          setActiveTab('catalog');
                         }}
-                        className="px-4 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-bold text-xs cursor-pointer"
+                        className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-white hover:bg-neutral-50 border border-neutral-300 text-neutral-800 font-bold text-xs transition cursor-pointer"
                       >
-                        Place Another Order
+                        Shop More Sarees
+                      </button>
+                    </div>
+                  </div>
+                ) : resellerCart.length === 0 ? (
+                  /* Empty Cart View */
+                  <div className="p-12 text-center bg-white rounded-3xl border border-neutral-200 space-y-4 max-w-2xl mx-auto shadow-2xs">
+                    <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
+                      <ShoppingCart className="w-8 h-8 text-purple-800" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="font-serif font-bold text-lg text-neutral-900">
+                        Your Reseller Cart is Empty
+                      </h4>
+                      <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                        You haven't selected any sarees yet. Browse through our Reseller Catalog to pick pure silk, Kanchipuram, and designer sarees, set quantities, and checkout for direct customer dropship.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('catalog')}
+                        className="px-6 py-3 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs transition cursor-pointer shadow-md inline-flex items-center gap-2"
+                      >
+                        <Store className="w-4 h-4" />
+                        <span>Browse Reseller Catalog &rarr;</span>
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <form onSubmit={handlePlaceOrderSubmit} className="space-y-4">
-                    {orderError && (
-                      <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                        <span>{orderError}</span>
-                      </div>
-                    )}
+                  /* Active Multi-Item Cart & Checkout Grid */
+                  <form onSubmit={handlePlaceOrderSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    {/* Left Column: Cart Items List */}
+                    <div className="lg:col-span-7 space-y-4">
+                      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-2xs space-y-4">
+                        <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+                          <h4 className="font-serif font-bold text-sm text-neutral-900 uppercase tracking-wider">
+                            Selected Sarees ({resellerCart.length})
+                          </h4>
+                          <span className="text-xs text-neutral-500 font-medium">
+                            {totalCartItems} total pieces
+                          </span>
+                        </div>
 
-                    {/* Step 1: Select Item */}
-                    <div className="bg-white p-4 rounded-2xl border border-neutral-200 space-y-3">
-                      <label className="block text-xs font-bold uppercase tracking-wider text-neutral-800">
-                        1. Select Product for Dropship
-                      </label>
-                      {selectedProduct ? (
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50/70 border border-purple-100">
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={selectedProduct.images[0]}
-                              alt={selectedProduct.title}
-                              className="w-12 h-14 object-cover rounded-md border border-purple-200"
-                            />
-                            <div>
-                              <p className="font-serif font-bold text-xs text-neutral-900">
-                                {selectedProduct.title}
-                              </p>
-                              <p className="text-[11px] text-neutral-500 font-mono">
-                                Code: {selectedProduct.productCode}
-                              </p>
-                              <p className="text-xs text-purple-900 font-bold mt-0.5">
-                                Wholesale Price: {formatPrice(getWholesalePrice(selectedProduct.price))}
-                              </p>
-                            </div>
-                          </div>
+                        {/* Items List */}
+                        <div className="space-y-3.5 divide-y divide-neutral-100">
+                          {resellerCart.map((item) => {
+                            const unitWholesale = getWholesalePrice(item.product.price);
+                            const retailMRP = item.product.price;
+                            const resalePrice = item.resalePrice || retailMRP;
+                            const unitMargin = Math.max(0, resalePrice - unitWholesale);
+                            const lineTotalWholesale = unitWholesale * item.quantity;
+                            const lineTotalMargin = unitMargin * item.quantity;
+
+                            return (
+                              <div
+                                key={item.product.id}
+                                className="pt-3.5 first:pt-0 flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-3.5 group"
+                              >
+                                <div className="flex items-start gap-3 min-w-0">
+                                  <img
+                                    src={item.product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
+                                    alt={item.product.title}
+                                    className="w-16 h-20 sm:w-20 sm:h-24 object-cover rounded-xl border border-neutral-200 shadow-2xs shrink-0"
+                                  />
+                                  <div className="min-w-0 space-y-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded">
+                                        {item.product.fabric || item.product.category}
+                                      </span>
+                                      <span className="font-mono text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded">
+                                        {item.product.productCode}
+                                      </span>
+                                    </div>
+                                    {(() => {
+                                      const liveProd = products.find((p) => p.id === item.product.id) || item.product;
+                                      const maxStock = liveProd.stockCount !== undefined ? Math.max(0, liveProd.stockCount) : 99;
+                                      const isItemOutOfStock =
+                                        liveProd.stockStatus === 'out_of_stock' || (liveProd.stockCount !== undefined && liveProd.stockCount <= 0);
+
+                                      return (
+                                        <>
+                                          <h5 className="font-serif font-bold text-sm text-neutral-900 leading-tight">
+                                            {liveProd.title}
+                                          </h5>
+                                          <div className="flex items-baseline gap-2 text-xs">
+                                            <span className="font-bold text-purple-950">
+                                              Reseller Cost: {formatPrice(unitWholesale)}
+                                            </span>
+                                            <span className="text-[11px] text-neutral-400 line-through">
+                                              MRP: {formatPrice(retailMRP)}
+                                            </span>
+                                          </div>
+
+                                          {/* Live Available Stock Indicator in Cart */}
+                                          <div className="flex items-center gap-2 text-[11px] pt-0.5">
+                                            <span className="text-neutral-500 font-medium">Available Quantity:</span>
+                                            {isItemOutOfStock ? (
+                                              <span className="font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 flex items-center gap-1">
+                                                <Ban className="w-3 h-3" />
+                                                <span>0 Available (Out of Stock)</span>
+                                              </span>
+                                            ) : maxStock <= 3 ? (
+                                              <span className="font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                                <span>Only {maxStock} left in stock</span>
+                                              </span>
+                                            ) : (
+                                              <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                                                <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                                <span>{maxStock} available</span>
+                                              </span>
+                                            )}
+                                          </div>
+                                        </>
+                                      );
+                                    })()}
+
+                                    {/* Reseller Selling Price Override */}
+                                    <div className="pt-1.5 flex items-center gap-2 flex-wrap">
+                                      <label className="text-[11px] font-medium text-neutral-600 whitespace-nowrap">
+                                        Customer Selling Price:
+                                      </label>
+                                      <div className="relative w-28">
+                                        <span className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-neutral-400 text-xs">
+                                          ₹
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          value={resalePrice}
+                                          onChange={(e) =>
+                                            updateCartResalePrice(
+                                              item.product.id,
+                                              parseInt(e.target.value) || 0
+                                            )
+                                          }
+                                          className="w-full pl-6 pr-2 py-1 rounded-lg border border-neutral-200 text-xs font-bold text-neutral-900 focus:outline-none focus:ring-1 focus:ring-purple-700 bg-neutral-50"
+                                          title="Customize your selling price to end-customer"
+                                        />
+                                      </div>
+                                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                        +₹{unitMargin.toLocaleString('en-IN')}/pc margin
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right Side: Stepper, Line Totals & Trash */}
+                                <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-neutral-100">
+                                  {/* Quantity Stepper (Constrained strictly by stock) */}
+                                  {(() => {
+                                    const liveProd = products.find((p) => p.id === item.product.id) || item.product;
+                                    const maxStock = liveProd.stockCount !== undefined ? Math.max(0, liveProd.stockCount) : 99;
+                                    const isOutOfStock = liveProd.stockStatus === 'out_of_stock' || maxStock <= 0;
+
+                                    return (
+                                      <div className="flex items-center border border-neutral-200 rounded-xl bg-neutral-50 shadow-2xs overflow-hidden">
+                                        <button
+                                          type="button"
+                                          onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)}
+                                          className="p-1.5 hover:bg-neutral-200 text-neutral-600 transition cursor-pointer"
+                                          title="Decrease quantity"
+                                        >
+                                          <Minus className="w-3.5 h-3.5" />
+                                        </button>
+                                        <span className="px-2.5 text-xs font-bold tabular-nums text-neutral-800 min-w-6 text-center">
+                                          {item.quantity}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          disabled={item.quantity >= maxStock || isOutOfStock}
+                                          onClick={() => {
+                                            if (item.quantity < maxStock && !isOutOfStock) {
+                                              updateCartQuantity(item.product.id, item.quantity + 1);
+                                            }
+                                          }}
+                                          className="p-1.5 hover:bg-neutral-200 text-neutral-600 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                                          title={item.quantity >= maxStock ? `Maximum available stock reached (${maxStock} units)` : "Increase quantity"}
+                                        >
+                                          <Plus className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {/* Line Total Reseller Cost & Margin */}
+                                  <div className="text-right">
+                                    <span className="block text-xs font-bold text-neutral-900">
+                                      {formatPrice(lineTotalWholesale)}
+                                    </span>
+                                    <span className="block text-[10px] font-bold text-emerald-700">
+                                      Margin: +₹{lineTotalMargin.toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+
+                                  {/* Remove item button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeFromResellerCart(item.product.id)}
+                                    className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                    title="Remove this saree from reseller cart"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Continue shopping link */}
+                        <div className="pt-3 border-t border-neutral-100 flex items-center justify-between">
                           <button
                             type="button"
-                            onClick={() => setSelectedProduct(null)}
-                            className="text-xs text-purple-700 font-bold hover:underline"
+                            onClick={() => setActiveTab('catalog')}
+                            className="text-xs font-bold text-purple-900 hover:text-purple-700 flex items-center gap-1 cursor-pointer"
                           >
-                            Change
+                            <span>&larr; Browse & Add More Sarees</span>
                           </button>
+                          <span className="text-xs text-neutral-500">
+                            {totalCartItems} total pieces ready for dispatch
+                          </span>
                         </div>
-                      ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1">
-                          {publicProducts.map((p) => (
+                      </div>
+                    </div>
+
+                    {/* Right Column: Checkout Panel (Delivery, Margins & UPI Payment) */}
+                    <div className="lg:col-span-5 space-y-4">
+                      {orderError && (
+                        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 animate-in fade-in">
+                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                          <span>{orderError}</span>
+                        </div>
+                      )}
+
+                      {/* Step 1: Delivery Destination */}
+                      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <label className="block text-xs font-bold uppercase tracking-wider text-neutral-800">
+                            1. Delivery Destination
+                          </label>
+                          <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl">
                             <button
-                              key={p.id}
                               type="button"
-                              onClick={() => {
-                                setSelectedProduct(p);
-                                setResaleSellingPrice(p.price);
-                              }}
-                              className="p-2 rounded-xl bg-neutral-50 hover:bg-purple-50 text-left border border-neutral-200 transition cursor-pointer"
+                              onClick={() => setDeliveryType('dropship')}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                deliveryType === 'dropship'
+                                  ? 'bg-purple-900 text-white shadow-xs'
+                                  : 'text-neutral-600 hover:text-neutral-900'
+                              }`}
                             >
-                              <img
-                                src={p.images[0]}
-                                alt={p.title}
-                                className="w-full aspect-square object-cover rounded-lg mb-1"
-                              />
-                              <p className="text-[11px] font-bold text-neutral-900 truncate">
-                                {p.title}
-                              </p>
-                              <p className="text-[10px] text-purple-700 font-bold">
-                                {formatPrice(getWholesalePrice(p.price))}
-                              </p>
+                              Customer Dropship
                             </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Quantity & Resale Price */}
-                      {selectedProduct && (
-                        <div className="grid grid-cols-2 gap-3 pt-2">
-                          <div>
-                            <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                              Quantity
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={selectedProduct.stockCount || 10}
-                              value={orderQuantity}
-                              onChange={(e) => setOrderQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                              Your Customer Resale Price (₹)
-                            </label>
-                            <input
-                              type="number"
-                              value={resaleSellingPrice}
-                              onChange={(e) => setResaleSellingPrice(Math.max(0, parseInt(e.target.value) || 0))}
-                              className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                            />
+                            <button
+                              type="button"
+                              onClick={() => setDeliveryType('self')}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                deliveryType === 'self'
+                                  ? 'bg-purple-900 text-white shadow-xs'
+                                  : 'text-neutral-600 hover:text-neutral-900'
+                              }`}
+                            >
+                              My Business Address
+                            </button>
                           </div>
                         </div>
-                      )}
-                    </div>
 
-                    {/* Step 2: Delivery Destination */}
-                    <div className="bg-white p-4 rounded-2xl border border-neutral-200 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-neutral-800">
-                          2. Delivery Destination
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setDeliveryType('dropship')}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
-                              deliveryType === 'dropship'
-                                ? 'bg-purple-900 text-white'
-                                : 'bg-neutral-100 text-neutral-600'
-                            }`}
-                          >
-                            Direct Customer Dropship
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeliveryType('self')}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
-                              deliveryType === 'self'
-                                ? 'bg-purple-900 text-white'
-                                : 'bg-neutral-100 text-neutral-600'
-                            }`}
-                          >
-                            Ship to My Business
-                          </button>
-                        </div>
-                      </div>
-
-                      {deliveryType === 'dropship' ? (
-                        <div className="space-y-3 pt-1">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                Customer Name *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={recipientName}
-                                onChange={(e) => setRecipientName(e.target.value)}
-                                placeholder="Recipient name"
-                                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                              />
+                        {deliveryType === 'dropship' ? (
+                          <div className="space-y-3 pt-1">
+                            <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200/80 text-[11px] text-purple-900 flex items-center gap-2">
+                              <ShieldCheck className="w-4 h-4 text-purple-700 shrink-0" />
+                              <span>
+                                <strong>Discreet Dropship:</strong> Plain unbranded parcel without boutique price tags or invoices.
+                              </span>
                             </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                Customer Phone (10 digits) *
-                              </label>
-                              <input
-                                type="tel"
-                                required
-                                maxLength={10}
-                                value={recipientPhone}
-                                onChange={(e) => setRecipientPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                                placeholder="9876543210"
-                                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                              />
-                            </div>
-                          </div>
 
-                          <div>
-                            <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                              Street Address, Flat, House No. *
-                            </label>
-                            <textarea
-                              rows={2}
-                              required
-                              value={recipientAddress}
-                              onChange={(e) => setRecipientAddress(e.target.value)}
-                              placeholder="Full delivery location details"
-                              className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                City *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={recipientCity}
-                                onChange={(e) => setRecipientCity(e.target.value)}
-                                placeholder="e.g. Madurai"
-                                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                State *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={recipientState}
-                                onChange={(e) => setRecipientState(e.target.value)}
-                                placeholder="Tamil Nadu"
-                                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                                Pincode *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                maxLength={6}
-                                value={recipientPincode}
-                                onChange={(e) => setRecipientPincode(e.target.value.replace(/\D/g, ''))}
-                                placeholder="625001"
-                                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-xl bg-neutral-100 text-xs text-neutral-700">
-                          Parcel will be delivered directly to <strong>{currentReseller.businessName}</strong>,{' '}
-                          {currentReseller.city || 'Salem'}, Tamil Nadu.
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Step 3: Wholesale Payment Settlement */}
-                    {selectedProduct && (
-                      <div className="bg-white p-4 rounded-2xl border border-neutral-200 space-y-3">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-neutral-800">
-                          3. Wholesale Settlement & UTR
-                        </label>
-
-                        {(() => {
-                          const wholesaleUnit = getWholesalePrice(selectedProduct.price);
-                          const wholesaleTotal = wholesaleUnit * orderQuantity;
-                          const totalCustomer = (resaleSellingPrice || selectedProduct.price) * orderQuantity;
-                          const netMargin = Math.max(0, totalCustomer - wholesaleTotal);
-
-                          return (
-                            <div className="p-3 rounded-xl bg-purple-50/80 border border-purple-200 space-y-2">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-neutral-600">Wholesale Amount to Pay</span>
-                                <span className="font-bold text-purple-950 text-base">
-                                  {formatPrice(wholesaleTotal)}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-neutral-600">Customer Price Collected</span>
-                                <span className="font-bold text-neutral-900">
-                                  {formatPrice(totalCustomer)}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between text-xs border-t border-purple-200/80 pt-1.5">
-                                <span className="font-bold text-emerald-800">Your Reseller Profit Margin</span>
-                                <span className="font-bold text-emerald-700 text-sm">
-                                  +₹{netMargin.toLocaleString('en-IN')}
-                                </span>
-                              </div>
-
-                              <div className="pt-2">
-                                <label className="block text-[11px] font-bold text-neutral-800 mb-1">
-                                  Enter 12-digit Payment UTR *
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                  Customer Name *
                                 </label>
                                 <input
                                   type="text"
                                   required
-                                  maxLength={12}
-                                  value={orderUtr}
-                                  onChange={(e) => setOrderUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                                  placeholder="12-digit UPI Transaction ID (e.g. 504128912345)"
-                                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs font-mono"
+                                  value={recipientName}
+                                  onChange={(e) => setRecipientName(e.target.value)}
+                                  placeholder="End buyer name"
+                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
                                 />
-                                <p className="text-[10px] text-neutral-500 mt-0.5">
-                                  Boutique UPI ID: <strong>{settings.payment.upiId}</strong> ({settings.payment.payeeName})
-                                </p>
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                  Customer Phone (10 digits) *
+                                </label>
+                                <input
+                                  type="tel"
+                                  required
+                                  maxLength={10}
+                                  value={recipientPhone}
+                                  onChange={(e) => setRecipientPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                                  placeholder="9876543210"
+                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                                />
                               </div>
                             </div>
-                          );
-                        })()}
 
-                        <button
-                          type="submit"
-                          disabled={isPlacingOrder || !selectedProduct}
-                          className="w-full py-3 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-50"
-                        >
-                          {isPlacingOrder ? 'Dispatching Order...' : 'Submit Wholesale Dropship Order'}
-                        </button>
+                            <div>
+                              <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                Street Address, House / Flat No. *
+                              </label>
+                              <textarea
+                                rows={2}
+                                required
+                                value={recipientAddress}
+                                onChange={(e) => setRecipientAddress(e.target.value)}
+                                placeholder="Door no, Street, Landmark, Area"
+                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                  City *
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={recipientCity}
+                                  onChange={(e) => setRecipientCity(e.target.value)}
+                                  placeholder="e.g. Madurai"
+                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                  State *
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={recipientState}
+                                  onChange={(e) => setRecipientState(e.target.value)}
+                                  placeholder="Tamil Nadu"
+                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                                  Pincode *
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  maxLength={6}
+                                  value={recipientPincode}
+                                  onChange={(e) => setRecipientPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                  placeholder="625001"
+                                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-mono focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100 text-xs text-neutral-800 space-y-1">
+                            <p className="font-bold text-purple-950">
+                              Deliver to Registered Reseller Address:
+                            </p>
+                            <p>
+                              <strong>{currentReseller.businessName}</strong> &bull; Attn: {currentReseller.name}
+                            </p>
+                            <p className="text-neutral-600">
+                              {currentReseller.city || 'Salem'}, Tamil Nadu &bull; WhatsApp: +91 {currentReseller.whatsappNumber}
+                            </p>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                            Dispatch Notes (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={orderNotes}
+                            onChange={(e) => setOrderNotes(e.target.value)}
+                            placeholder="Special folding, rush delivery, or packaging instruction"
+                            className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs focus:ring-1 focus:ring-purple-700 focus:outline-none"
+                          />
+                        </div>
                       </div>
-                    )}
+
+                      {/* Step 2: Settlement Breakdown & Margin */}
+                      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-2xs space-y-3">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-neutral-800">
+                          2. Settlement & Margin Breakdown
+                        </label>
+
+                        <div className="p-3.5 rounded-xl bg-purple-50/80 border border-purple-200 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-neutral-600">Total Sarees</span>
+                            <span className="font-bold text-neutral-900 font-mono">
+                              {totalCartItems} pcs
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-neutral-600">Reseller Settlement to Pay</span>
+                            <span className="font-bold text-purple-950 text-base">
+                              {formatPrice(totalResellerCost)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-neutral-600">Total Customer Price Collected</span>
+                            <span className="font-bold text-neutral-900">
+                              {formatPrice(totalCustomerValue)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs border-t border-purple-200/80 pt-2">
+                            <span className="font-bold text-emerald-800">Your Net Reseller Margin</span>
+                            <span className="font-bold text-emerald-700 text-sm">
+                              +₹{totalEstimatedMargin.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Step 3: UPI Settlement & UTR */}
+                        <div className="space-y-2 pt-1">
+                          <label className="block text-xs font-bold uppercase tracking-wider text-neutral-800">
+                            3. Pay via UPI & Enter 12-digit UTR
+                          </label>
+
+                          <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-xs space-y-2">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div>
+                                <span className="text-[10px] text-neutral-500 font-bold uppercase block">
+                                  Boutique UPI ID
+                                </span>
+                                <span className="font-mono font-bold text-purple-900 text-sm">
+                                  {settings.payment.upiId}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(settings.payment.upiId);
+                                  setOrderError('UPI ID copied to clipboard!');
+                                  setTimeout(() => setOrderError(''), 2000);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200 text-xs font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                              >
+                                <Copy className="w-3 h-3 text-neutral-500" />
+                                <span>Copy UPI</span>
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-neutral-500">
+                              Payee: <strong>{settings.payment.payeeName}</strong> &bull; Settle amount of <strong>{formatPrice(totalResellerCost)}</strong> via Google Pay / PhonePe / Paytm / BHIM.
+                            </p>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="block text-[11px] font-bold text-neutral-800">
+                                12-digit UPI Transaction ID (UTR) *
+                              </label>
+                              <span className="text-[10px] font-mono text-neutral-400">
+                                {orderUtr.length}/12
+                              </span>
+                            </div>
+                            <input
+                              type="text"
+                              required
+                              maxLength={12}
+                              value={orderUtr}
+                              onChange={(e) => setOrderUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                              placeholder="e.g. 504128912345"
+                              className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-xs font-mono font-bold focus:ring-2 focus:ring-purple-700 focus:outline-none bg-white"
+                            />
+                          </div>
+
+                          {/* Submit Checkout Button */}
+                          <button
+                            type="submit"
+                            disabled={isPlacingOrder || resellerCart.length === 0}
+                            className="w-full py-3.5 px-4 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-50 active:scale-98 mt-2 flex items-center justify-center gap-2"
+                          >
+                            {isPlacingOrder ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Placing Reseller Order...</span>
+                              </>
+                            ) : (
+                              <>
+                                <ShoppingBag className="w-4 h-4" />
+                                <span>Complete Reseller Checkout ({formatPrice(totalResellerCost)})</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </form>
                 )}
               </div>
@@ -3212,7 +4076,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                     Reseller Margins & Commission Ledger
                   </h3>
                   <p className="text-xs text-neutral-500">
-                    Track your wholesale order volume and net profit margin earned.
+                    Track your reseller order volume and net profit margin earned.
                   </p>
                 </div>
 
@@ -3229,7 +4093,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
                   <div className="p-4 rounded-2xl bg-white border border-neutral-200 shadow-2xs space-y-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">
-                      Wholesale Volume
+                      Reseller Volume
                     </span>
                     <p className="text-2xl font-serif font-bold text-purple-950">
                       {formatPrice(totalResellerVolume)}
@@ -3248,7 +4112,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                   </div>
                 </div>
 
-                {/* Wholesale Partner Benefits Card */}
+                {/* Reseller Partner Benefits Card */}
                 <div className="bg-white p-5 rounded-2xl border border-neutral-200 space-y-3">
                   <h4 className="font-serif font-bold text-xs uppercase tracking-wider text-neutral-800">
                     Reseller Partner Perks
@@ -3265,7 +4129,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                       <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                       <div>
                         <strong>Discreet Dropshipping:</strong> Parcels are shipped with neutral packaging and
-                        do not mention wholesale price tags.
+                        do not mention reseller price tags.
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
@@ -3309,15 +4173,15 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                   <form onSubmit={handleSubmitCancellation} className="p-5 space-y-4 text-xs">
                     <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-neutral-700 space-y-1">
                       <p>Order Reference: <strong>#{cancellingOrder.orderNumber}</strong></p>
-                      <p>Wholesale Total: <strong className="text-neutral-900 font-serif">{formatPrice(cancellingOrder.totalAmount)}</strong></p>
-                      <p className="text-[11px] text-emerald-800 pt-1">
-                        Refund will be credited back to your registered reseller account / UPI after boutique review.
+                      <p>Reseller Total: <strong className="text-neutral-900 font-serif">{formatPrice(cancellingOrder.totalAmount)}</strong></p>
+                      <p className="text-[11px] text-purple-900 font-semibold pt-1">
+                        📦 Ordered items: {cancellingOrder.items.reduce((s, it) => s + it.quantity, 0)} saree(s) will be restocked dynamically into inventory upon cancellation.
                       </p>
                     </div>
 
                     <div>
                       <label className="block font-bold text-neutral-800 mb-1">
-                        Reason for Cancellation Request *
+                        Reason for Cancellation *
                       </label>
                       <select
                         value={cancelReason}
@@ -3348,10 +4212,10 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                     <div className="pt-2 flex flex-col gap-2">
                       <button
                         type="submit"
-                        className="w-full py-2.5 px-4 rounded-xl bg-rose-900 hover:bg-rose-800 text-white font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        className="w-full py-2.5 px-4 rounded-xl bg-rose-900 hover:bg-rose-800 text-white font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-98"
                       >
-                        <Check className="w-4 h-4" />
-                        <span>Submit Cancellation Request</span>
+                        <Ban className="w-4 h-4" />
+                        <span>Cancel Order & Dynamic Restock</span>
                       </button>
 
                       <button
