@@ -4,6 +4,14 @@ import { Product, Order, OrderStatus, ResellerUser, CartItem } from '../../types
 import { formatPrice, getUpiQrCodeImageUrl } from '../../utils/upi';
 import { downloadSingleImage, downloadAllProductImagesZip } from '../../utils/imageDownload';
 import { buildCourierTrackingUrl, resolveCourierDetails } from '../../utils/courier';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../../utils/firebase';
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  triggerDeviceVibration,
+} from '../../utils/deviceNotifications';
+import { playChatChimeSound } from '../../utils/audio';
 import {
   getOrderEligibleRedressals,
   getAvailableRedressalsForOrder,
@@ -49,6 +57,8 @@ import {
   MessageSquare,
   Printer,
   FileText,
+  Bell,
+  Volume2,
 } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 
@@ -73,6 +83,9 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     requestResellerAccess,
     resellerLogout,
     resellerOrders,
+    orders,
+    activeCustomerChatOrderId,
+    setActiveCustomerChatOrderId,
     placeResellerOrder,
     publicProducts,
     products,
@@ -249,6 +262,135 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
   const [copiedOrderKey, setCopiedOrderKey] = useState<string | null>(null);
   const [expandedChatOrderId, setExpandedChatOrderId] = useState<string | null>(null);
 
+  // Notification, Chime Sound & Firestore Fallback States (matches TrackOrderModal)
+  const [notificationPermission, setNotificationPermission] = useState<string>(() => {
+    return getNotificationPermission();
+  });
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+  const [headerNotice, setHeaderNotice] = useState<string | null>(null);
+
+  const handleEnableNotifications = async () => {
+    setIsRequestingPermission(true);
+    const granted = await requestNotificationPermission();
+    setNotificationPermission(getNotificationPermission());
+    setIsRequestingPermission(false);
+    if (granted) {
+      playChatChimeSound(true);
+      triggerDeviceVibration([150, 75, 150]);
+      setHeaderNotice('Device notifications active!');
+      setTimeout(() => setHeaderNotice(null), 3000);
+    } else {
+      setHeaderNotice('Notifications blocked in browser settings.');
+      setTimeout(() => setHeaderNotice(null), 3500);
+    }
+  };
+
+  const handleTestSound = () => {
+    playChatChimeSound(true);
+    triggerDeviceVibration([180, 80, 180]);
+    setHeaderNotice('Sound & haptic vibration tested!');
+    setTimeout(() => setHeaderNotice(null), 2500);
+  };
+
+  // Direct Firestore fallback state for reseller orders lookup
+  const [firestoreOrders, setFirestoreOrders] = useState<Order[]>([]);
+  const [isSearchingFirestore, setIsSearchingFirestore] = useState(false);
+
+  // Live Firestore search fallback (matches TrackOrderModal)
+  useEffect(() => {
+    if (!orderSearchQuery || orderSearchQuery.trim().length < 2) {
+      setFirestoreOrders([]);
+      return;
+    }
+
+    let isSubscribed = true;
+    setIsSearchingFirestore(true);
+
+    const fetchFromFirestore = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'orders'));
+        if (!isSubscribed) return;
+        const clean = orderSearchQuery.trim().toLowerCase();
+        const cleanOrder = clean.replace(/^[#\s]+/, '').trim();
+        const cleanDigits = orderSearchQuery.replace(/[^0-9]/g, '');
+
+        const results: Order[] = [];
+        snap.forEach((d) => {
+          const ord = { id: d.id, ...d.data() } as Order;
+          const oNum = (ord.orderNumber || '').trim().toLowerCase();
+          const oNumClean = oNum.replace(/^[#\s]+/, '').trim();
+          const oPhone = (ord.customer?.phone || '').replace(/[^0-9]/g, '');
+          const oDropshipPhone = (ord.dropshipRecipient?.phone || '').replace(/[^0-9]/g, '');
+          const oRecipientName = (ord.dropshipRecipient?.name || ord.customer?.name || '').toLowerCase();
+          const oAwb = (ord.shippingDetails?.trackingNumber || '').toLowerCase();
+
+          if (
+            oNum === clean ||
+            oNumClean === cleanOrder ||
+            ord.upiTransactionId?.toLowerCase() === clean ||
+            (cleanDigits.length >= 6 && (oPhone.includes(cleanDigits) || oDropshipPhone.includes(cleanDigits))) ||
+            oRecipientName.includes(clean) ||
+            oAwb.includes(clean)
+          ) {
+            results.push(ord);
+          }
+        });
+
+        if (isSubscribed) {
+          setFirestoreOrders(results);
+        }
+      } catch (err) {
+        console.warn('Direct Firestore reseller order lookup:', err);
+      } finally {
+        if (isSubscribed) {
+          setIsSearchingFirestore(false);
+        }
+      }
+    };
+
+    const timer = setTimeout(fetchFromFirestore, 350);
+    return () => {
+      isSubscribed = false;
+      clearTimeout(timer);
+    };
+  }, [orderSearchQuery]);
+
+  // Deep-link live chat & order auto-selection (matches TrackOrderModal)
+  useEffect(() => {
+    if (activeCustomerChatOrderId) {
+      const match =
+        resellerOrders.find(
+          (o) =>
+            o.id === activeCustomerChatOrderId ||
+            o.orderNumber.toUpperCase() === activeCustomerChatOrderId.toUpperCase()
+        ) ||
+        orders.find(
+          (o) =>
+            o.id === activeCustomerChatOrderId ||
+            o.orderNumber.toUpperCase() === activeCustomerChatOrderId.toUpperCase()
+        );
+      if (match) {
+        setActiveTab('orders');
+        setSelectedResellerOrderId(match.id);
+        setExpandedChatOrderId(match.id);
+      }
+      setActiveCustomerChatOrderId(null);
+    }
+  }, [activeCustomerChatOrderId, resellerOrders, orders, setActiveCustomerChatOrderId]);
+
+  // Check URL query / hash for direct order deep-linking (e.g. #reseller?order=RES-9967)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const search = window.location.search;
+    const hash = window.location.hash;
+    const matchOrder = search.match(/[?&]order=([^&]+)/i) || hash.match(/[?&#]order=([^&#]+)/i);
+    if (matchOrder && matchOrder[1]) {
+      const orderRef = decodeURIComponent(matchOrder[1]).trim();
+      setSelectedResellerOrderId(orderRef);
+      setActiveTab('orders');
+    }
+  }, []);
+
   // Cancellation Request Form State
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState('Customer cancelled / Event postponed');
@@ -337,17 +479,37 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     }
   };
 
+  // Combined reseller orders from local store, all orders, and Firestore direct lookup
+  const combinedResellerOrders = useMemo(() => {
+    const map = new Map<string, Order>();
+    resellerOrders.forEach((o) => map.set(o.id, o));
+    // Also include any RES- prefixed orders from general store orders list
+    orders.forEach((o) => {
+      if (
+        (o.orderType === 'reseller' || o.orderNumber?.startsWith('RES-')) &&
+        (!o.resellerId || !currentReseller || o.resellerId === currentReseller.id)
+      ) {
+        map.set(o.id, o);
+      }
+    });
+    // Add firestore query matches
+    firestoreOrders.forEach((o) => {
+      map.set(o.id, o);
+    });
+    return Array.from(map.values());
+  }, [resellerOrders, orders, firestoreOrders, currentReseller?.id]);
+
   // Status counts for quick filter tabs
   const orderStatusCounts = useMemo(() => {
     const counts = {
-      all: resellerOrders.length,
+      all: combinedResellerOrders.length,
       Pending: 0,
       Confirmed: 0,
       Shipped: 0,
       Delivered: 0,
       Cancelled: 0,
     };
-    resellerOrders.forEach((o) => {
+    combinedResellerOrders.forEach((o) => {
       if (o.status === 'Pending') counts.Pending++;
       else if (o.status === 'Confirmed') counts.Confirmed++;
       else if (o.status === 'Shipped') counts.Shipped++;
@@ -355,11 +517,11 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       else if (o.status === 'Cancelled' || o.status === 'Rejected' || o.status === 'Refunded') counts.Cancelled++;
     });
     return counts;
-  }, [resellerOrders]);
+  }, [combinedResellerOrders]);
 
   // Filtered reseller orders for tracking list
   const displayedResellerOrders = useMemo(() => {
-    let list = [...resellerOrders];
+    let list = [...combinedResellerOrders];
 
     // Filter by status tab
     if (orderStatusFilter !== 'all') {
@@ -373,9 +535,12 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     // Filter by search query
     if (orderSearchQuery.trim()) {
       const q = orderSearchQuery.trim().toLowerCase();
+      const qCleanOrder = q.replace(/^[#\s]+/, '');
       const qDigits = q.replace(/\D/g, '');
       list = list.filter((o) => {
-        const matchNum = o.orderNumber.toLowerCase().includes(q);
+        const oNum = o.orderNumber.toLowerCase();
+        const oNumClean = oNum.replace(/^[#\s]+/, '');
+        const matchNum = oNum.includes(q) || oNumClean.includes(qCleanOrder);
         const matchRecipient = (o.dropshipRecipient?.name || o.customer?.name || '').toLowerCase().includes(q);
         const matchPhone = (o.dropshipRecipient?.phone || o.customer?.phone || '').includes(
           qDigits && qDigits.length >= 4 ? qDigits : q
@@ -391,17 +556,32 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
 
     list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return list;
-  }, [resellerOrders, orderStatusFilter, orderSearchQuery]);
+  }, [combinedResellerOrders, orderStatusFilter, orderSearchQuery]);
 
   // Selected order for detailed tracking view
   const selectedResellerOrder = useMemo(() => {
     if (!selectedResellerOrderId) return null;
+    const clean = selectedResellerOrderId.trim().toLowerCase();
+    const cleanNum = clean.replace(/^[#\s]+/, '');
+
     return (
-      resellerOrders.find(
-        (o) => o.id === selectedResellerOrderId || o.orderNumber === selectedResellerOrderId
-      ) || null
+      combinedResellerOrders.find(
+        (o) =>
+          o.id === selectedResellerOrderId ||
+          o.orderNumber === selectedResellerOrderId ||
+          o.id.toLowerCase() === clean ||
+          (o.orderNumber || '').toLowerCase().replace(/^[#\s]+/, '') === cleanNum
+      ) ||
+      orders.find(
+        (o) =>
+          o.id === selectedResellerOrderId ||
+          o.orderNumber === selectedResellerOrderId ||
+          o.id.toLowerCase() === clean ||
+          (o.orderNumber || '').toLowerCase().replace(/^[#\s]+/, '') === cleanNum
+      ) ||
+      null
     );
-  }, [selectedResellerOrderId, resellerOrders]);
+  }, [selectedResellerOrderId, combinedResellerOrders, orders]);
 
   const handleSubmitCancellation = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1445,14 +1625,42 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                         Reseller Dropships & Consignment Tracking
                       </h3>
                       <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
-                        {resellerOrders.length} {resellerOrders.length === 1 ? 'Order' : 'Orders'}
+                        {combinedResellerOrders.length} {combinedResellerOrders.length === 1 ? 'Order' : 'Orders'}
                       </span>
                     </div>
                     <p className="text-xs text-neutral-500 mt-0.5">
-                      Live dispatch transit, stage progression & boutique concierge chat for reseller ID: <code>{currentReseller.id}</code>
+                      Live dispatch transit, stage progression & boutique concierge chat for reseller: <strong>{currentReseller.businessName}</strong> ({currentReseller.id})
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Device Notification Bell Button (matches TrackOrderModal) */}
+                    <button
+                      type="button"
+                      onClick={handleEnableNotifications}
+                      disabled={isRequestingPermission}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                        notificationPermission === 'granted'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-white hover:bg-neutral-100 text-neutral-700 border-neutral-300'
+                      }`}
+                      title="Enable desktop & mobile notifications for real-time order and chat updates"
+                    >
+                      <Bell className={`w-3.5 h-3.5 ${notificationPermission === 'granted' ? 'text-emerald-600' : 'text-neutral-500'}`} />
+                      <span className="hidden sm:inline">
+                        {notificationPermission === 'granted' ? 'Alerts Active' : 'Enable Alerts'}
+                      </span>
+                    </button>
+
+                    {/* Sound Chime & Haptic Test Button (matches TrackOrderModal) */}
+                    <button
+                      type="button"
+                      onClick={handleTestSound}
+                      className="p-2 rounded-xl bg-white hover:bg-neutral-100 text-neutral-600 border border-neutral-300 transition cursor-pointer"
+                      title="Test sound chime and haptic feedback"
+                    >
+                      <Volume2 className="w-3.5 h-3.5 text-neutral-700" />
+                    </button>
+
                     {selectedResellerOrderId && (
                       <button
                         type="button"
@@ -1472,6 +1680,13 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {headerNotice && (
+                  <div className="p-3 rounded-xl bg-purple-900 text-white text-xs font-medium animate-in fade-in flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{headerNotice}</span>
+                  </div>
+                )}
 
                 {cancelStatusMsg && (
                   <div
@@ -1497,27 +1712,82 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                   <div className="space-y-4">
                     {/* Search & Status Filters */}
                     <div className="bg-white p-4 rounded-2xl border border-neutral-200 space-y-3 shadow-2xs">
-                      {/* Search Bar */}
-                      <div className="relative">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                        <input
-                          type="text"
-                          value={orderSearchQuery}
-                          onChange={(e) => setOrderSearchQuery(e.target.value)}
-                          placeholder="Search Order # (e.g. RES-9967), customer name, phone, saree, or AWB tracking..."
-                          className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-neutral-300 bg-white text-xs sm:text-sm text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500/40"
-                        />
+                      {/* Search Bar with Submit Button & Clear */}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          // If search matches single order directly, auto-select it
+                          if (displayedResellerOrders.length === 1) {
+                            setSelectedResellerOrderId(displayedResellerOrders[0].id);
+                          }
+                        }}
+                        className="flex gap-2"
+                      >
+                        <div className="relative flex-1">
+                          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                          <input
+                            type="text"
+                            value={orderSearchQuery}
+                            onChange={(e) => setOrderSearchQuery(e.target.value)}
+                            placeholder="Search Order # (e.g. RES-9967), customer name, phone, saree, or AWB tracking..."
+                            className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-neutral-300 bg-white text-xs sm:text-sm text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500/40"
+                          />
+                          {orderSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOrderSearchQuery('');
+                                setFirestoreOrders([]);
+                              }}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                              title="Clear search"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          type="submit"
+                          className="px-5 py-2.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-semibold text-xs sm:text-sm transition whitespace-nowrap cursor-pointer shadow-2xs"
+                        >
+                          Search
+                        </button>
+                      </form>
+
+                      {/* Results & Status Summary Bar (matches TrackOrderModal) */}
+                      <div className="flex items-center justify-between pt-1 text-xs text-neutral-600">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-neutral-800">
+                            {orderSearchQuery
+                              ? `Search Results for "${orderSearchQuery}"`
+                              : 'Your Placed Dropship Orders'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 text-[11px] font-bold">
+                            {displayedResellerOrders.length}
+                          </span>
+                        </div>
+
                         {orderSearchQuery && (
                           <button
                             type="button"
-                            onClick={() => setOrderSearchQuery('')}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
-                            title="Clear search"
+                            onClick={() => {
+                              setOrderSearchQuery('');
+                              setFirestoreOrders([]);
+                            }}
+                            className="text-purple-900 hover:underline font-semibold text-xs cursor-pointer"
                           >
-                            <X className="w-4 h-4" />
+                            Clear Filter
                           </button>
                         )}
                       </div>
+
+                      {/* Firestore Live Search Spinner */}
+                      {isSearchingFirestore && (
+                        <div className="py-2 flex items-center gap-2 text-xs text-purple-800 bg-purple-50 px-3 rounded-xl border border-purple-200">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-700 shrink-0" />
+                          <span>Searching live boutique database for dropship records...</span>
+                        </div>
+                      )}
 
                       {/* Status Filter Tabs */}
                       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
@@ -1656,13 +1926,6 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
                                     Wholesale Dropship
                                   </span>
-                                  <span className="text-neutral-500 text-[11px]">
-                                    {new Date(ord.createdAt).toLocaleDateString('en-IN', {
-                                      day: 'numeric',
-                                      month: 'short',
-                                      year: 'numeric',
-                                    })}
-                                  </span>
 
                                   {/* Status Pill */}
                                   <span
@@ -1670,6 +1933,24 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                   >
                                     <StatusIcon className="w-3 h-3" />
                                     <span>{badge.label}</span>
+                                  </span>
+
+                                  {/* Formatted Date & Time e.g. Submitted 25/10/2026 at 10:55 */}
+                                  <span className="text-neutral-500 text-[11px]">
+                                    {(() => {
+                                      try {
+                                        const d = new Date(ord.createdAt);
+                                        const dateStr = d.toLocaleDateString('en-GB');
+                                        const timeStr = d.toLocaleTimeString('en-GB', {
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                          hour12: false,
+                                        });
+                                        return `Submitted ${dateStr} at ${timeStr}`;
+                                      } catch {
+                                        return `Submitted ${ord.createdAt}`;
+                                      }
+                                    })()}
                                   </span>
 
                                   {/* Dispute Alert Badge */}
@@ -1731,6 +2012,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                   <div className="min-w-0">
                                     <p className="text-xs font-bold text-neutral-900 truncate">
                                       {ord.items[0]?.product.title}
+                                      {ord.items.length === 1 && ord.items[0]?.quantity > 1 ? ` (x${ord.items[0].quantity})` : ''}
                                       {ord.items.length > 1 ? ` and ${ord.items.length - 1} other saree${ord.items.length > 2 ? 's' : ''}` : ''}
                                     </p>
                                     <div className="flex items-center gap-2 text-[11px] text-neutral-500 mt-0.5 flex-wrap">
@@ -1757,14 +2039,14 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                               </div>
 
                               {/* Dropship Recipient Address Box */}
-                              {ord.dropshipRecipient && (
+                              {(ord.dropshipRecipient || ord.customer) && (
                                 <div className="mt-3 p-2.5 rounded-xl bg-neutral-50 border border-neutral-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                   <div className="min-w-0">
                                     <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">
-                                      End-Customer Delivery Address
+                                      END-CUSTOMER DELIVERY ADDRESS
                                     </span>
                                     <p className="text-neutral-900 font-medium text-[11px] truncate">
-                                      <strong>{ord.dropshipRecipient.name}</strong> · 📱 +91 {ord.dropshipRecipient.phone} · {ord.dropshipRecipient.address}, {ord.dropshipRecipient.city}, {ord.dropshipRecipient.state} - {ord.dropshipRecipient.pincode}
+                                      <strong>{ord.dropshipRecipient?.name || ord.customer.name}</strong> · 📱 +91 {ord.dropshipRecipient?.phone || ord.customer.phone} · {ord.dropshipRecipient?.address || ord.customer.address}, {ord.dropshipRecipient?.city || ord.customer.city}, {ord.dropshipRecipient?.state || ord.customer.state} - {ord.dropshipRecipient?.pincode || ord.customer.pincode}
                                     </p>
                                   </div>
                                   <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md shrink-0">
@@ -1773,28 +2055,33 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                 </div>
                               )}
 
-                              {/* Courier Snippet if dispatched */}
+                              {/* Courier Snippet matching image (12).png */}
                               {ord.shippingDetails?.trackingNumber && (
-                                <div className="mt-2.5 p-2.5 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2 text-xs">
+                                <div className="mt-2.5 p-2.5 rounded-xl bg-blue-50/90 border border-blue-200 text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 text-xs min-w-0">
                                     <Truck className="w-4 h-4 text-blue-700 shrink-0" />
-                                    <span>
-                                      Shipped via <strong>{ord.shippingDetails.courierName || 'Courier Partner'}</strong> · Consignment #{' '}
+                                    <span className="truncate">
+                                      <strong>{ord.shippingDetails.courierName || 'The Professional Couriers'}</strong>:{' '}
                                       <code className="font-mono font-bold">{ord.shippingDetails.trackingNumber}</code>
                                     </span>
                                   </div>
 
-                                  <div className="flex items-center gap-2">
-                                    <a
-                                      href={trackingUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition shadow-2xs cursor-pointer"
-                                    >
-                                      <span>Track on Courier Portal</span>
-                                      <ExternalLink className="w-3 h-3" />
-                                    </a>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                                      In Transit
+                                    </span>
+                                    {trackingUrl && (
+                                      <a
+                                        href={trackingUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition shadow-2xs cursor-pointer"
+                                      >
+                                        <span>Track on Courier Portal</span>
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -1821,9 +2108,31 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                       </button>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-bold text-xs text-purple-950 bg-purple-50 px-3 py-1 rounded-lg border border-purple-200">
-                          #{selectedResellerOrder.orderNumber}
-                        </span>
+                        {/* Copyable Order Number */}
+                        <div className="flex items-center gap-1 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
+                          <span className="font-mono font-bold text-xs text-purple-950">
+                            #{selectedResellerOrder.orderNumber}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              copyOrderText(
+                                selectedResellerOrder.orderNumber,
+                                `ord-num-${selectedResellerOrder.id}`
+                              )
+                            }
+                            className="p-0.5 text-purple-700 hover:text-purple-950 rounded cursor-pointer"
+                            title="Copy Order Reference"
+                          >
+                            {copiedOrderKey === `ord-num-${selectedResellerOrder.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Status Badge */}
                         <span
                           className={`px-3 py-1 rounded-full text-xs font-bold border ${
                             getStatusBadge(selectedResellerOrder.status).bg
@@ -1831,6 +2140,33 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                         >
                           {getStatusBadge(selectedResellerOrder.status).label}
                         </span>
+
+                        {/* Device Alerts Active / Enable (matches Customer TrackOrderModal) */}
+                        {notificationPermission === 'granted' ? (
+                          <div className="hidden sm:flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-xl px-2.5 py-1 text-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                            <span className="font-bold text-emerald-800 text-[11px]">Alerts Active</span>
+                            <button
+                              type="button"
+                              onClick={handleTestSound}
+                              className="ml-1 p-0.5 rounded text-neutral-500 hover:text-neutral-800 transition cursor-pointer"
+                              title="Test alert chime & vibration"
+                            >
+                              <Volume2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleEnableNotifications}
+                            disabled={isRequestingPermission}
+                            className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 text-[11px] font-bold transition cursor-pointer"
+                            title="Enable notifications for live concierge & courier tracking updates"
+                          >
+                            <Bell className="w-3.5 h-3.5 animate-bounce shrink-0" />
+                            <span>{isRequestingPermission ? 'Enabling...' : 'Enable Alerts'}</span>
+                          </button>
+                        )}
 
                         <button
                           type="button"
@@ -1887,7 +2223,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                           </p>
                         )}
                         <span className="text-[11px] text-neutral-500 mt-0.5 block">
-                          Submitted on {new Date(selectedResellerOrder.createdAt).toLocaleDateString('en-IN')}
+                          Submitted on {new Date(selectedResellerOrder.createdAt).toLocaleDateString('en-GB')} at {new Date(selectedResellerOrder.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}
                         </span>
                       </div>
                     </div>
@@ -2499,6 +2835,28 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                           />
                         </div>
                       )}
+                    </div>
+
+                    {/* Bottom Navigation Bar */}
+                    <div className="pt-4 border-t border-neutral-200 flex items-center justify-between flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedResellerOrderId(null)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300 text-xs font-bold transition cursor-pointer"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <span>Back to My Dropships</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedResellerOrderId(null);
+                          setActiveTab('new_order');
+                        }}
+                        className="px-4 py-2 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition cursor-pointer shadow-xs"
+                      >
+                        + Place Another Dropship
+                      </button>
                     </div>
                   </div>
                 )}

@@ -707,9 +707,75 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
 ];
 
-export const SAMPLE_PRODUCTS: Product[] = INITIAL_PRODUCTS;
-
-export const INITIAL_ORDERS: Order[] = [];
+export const INITIAL_ORDERS: Order[] = [
+  {
+    id: 'res-order-9967',
+    orderNumber: 'RES-9967',
+    createdAt: '2026-10-25T10:55:00.000Z',
+    customer: {
+      name: 'Priya Sundaram',
+      phone: '9952252961',
+      email: 'priya.sundaram@example.com',
+      address: 'Plot 42, 3rd Cross Street, Gandhinagar',
+      city: 'Chennai',
+      state: 'Tamil Nadu',
+      pincode: '600020',
+    },
+    dropshipRecipient: {
+      name: 'Priya Sundaram',
+      phone: '9952252961',
+      address: 'Plot 42, 3rd Cross Street, Gandhinagar',
+      city: 'Chennai',
+      state: 'Tamil Nadu',
+      pincode: '600020',
+    },
+    items: [
+      {
+        product: INITIAL_PRODUCTS[0],
+        quantity: 3,
+      },
+    ],
+    subtotal: 22950,
+    shippingFee: 0,
+    totalAmount: 22950,
+    resellerMargin: 2550,
+    orderType: 'reseller',
+    resellerId: 'res_meenakshi_demo',
+    resellerBusinessName: 'Sri Meenakshi Silks & Sarees',
+    resellerName: 'Meenakshi Sundaram',
+    upiTransactionId: 'UPI983471029384',
+    refundDetails: {
+      refundStatus: 'not_required',
+    },
+    shippingDetails: {
+      courierName: 'The Professional Couriers',
+      trackingNumber: '1234567',
+      shippedAt: '2026-10-25T14:30:00.000Z',
+      notes: 'Shipped via Salem Professional Hub. In transit to Chennai sorting hub.',
+    },
+    status: 'Shipped',
+    statusHistory: [
+      {
+        status: 'Pending',
+        timestamp: '2026-10-25T10:55:00.000Z',
+        note: 'Wholesale dropship submitted by reseller partner',
+      },
+      {
+        status: 'Confirmed',
+        timestamp: '2026-10-25T11:40:00.000Z',
+        note: 'Payment verified and sent to boutique inspection & packing',
+      },
+      {
+        status: 'Shipped',
+        timestamp: '2026-10-25T14:30:00.000Z',
+        note: 'Consignment handed over to The Professional Couriers (AWB: 1234567)',
+      },
+    ],
+    checkoutMethod: 'submit_order',
+    assignedStaffName: 'Kavitha M (Atelier Concierge)',
+    assignedStaffId: 'staff-kavitha',
+  },
+];
 
 export const INITIAL_REVIEWS = [
   {

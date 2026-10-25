@@ -900,12 +900,24 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               {/* Order Header Summary Card */}
               <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <span className="text-[10px] text-neutral-400 uppercase font-semibold">Customer & Destination</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-neutral-400 uppercase font-semibold">
+                      {selectedOrder.dropshipRecipient ? 'End-Customer Delivery Destination' : 'Customer & Destination'}
+                    </span>
+                    {selectedOrder.orderType === 'reseller' && (
+                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
+                        Wholesale Dropship
+                      </span>
+                    )}
+                  </div>
                   <h3 className="font-serif font-bold text-sm text-neutral-900 mt-0.5">
-                    {selectedOrder.customer.name} ({selectedOrder.customer.phone})
+                    {selectedOrder.dropshipRecipient?.name || selectedOrder.customer.name} ({selectedOrder.dropshipRecipient?.phone || selectedOrder.customer.phone})
                   </h3>
                   <p className="text-[11px] text-neutral-600 mt-0.5">
-                    {selectedOrder.customer.address}, {selectedOrder.customer.city}, {selectedOrder.customer.state} - {selectedOrder.customer.pincode}
+                    {selectedOrder.dropshipRecipient?.address || selectedOrder.customer.address},{' '}
+                    {selectedOrder.dropshipRecipient?.city || selectedOrder.customer.city},{' '}
+                    {selectedOrder.dropshipRecipient?.state || selectedOrder.customer.state} -{' '}
+                    <strong>{selectedOrder.dropshipRecipient?.pincode || selectedOrder.customer.pincode}</strong>
                   </p>
                 </div>
                 <div className="text-left sm:text-right shrink-0">

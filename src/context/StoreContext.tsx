@@ -912,11 +912,37 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const resellerOrders = useMemo(() => {
     if (!orders || orders.length === 0 || !currentReseller) return [];
     const cleanResellerPhone = (currentReseller.whatsappNumber || currentReseller.phone || '').replace(/\D/g, '').slice(-10);
+    const cleanEmail = (currentReseller.email || '').toLowerCase().trim();
+    const cleanBusinessName = (currentReseller.businessName || '').toLowerCase().trim();
+    const cleanName = (currentReseller.name || '').toLowerCase().trim();
+
     return orders.filter((o) => {
-      if (o.orderType !== 'reseller') return false;
-      if (o.resellerId && o.resellerId === currentReseller.id) return true;
-      const oPhone = (o.customer?.phone || '').replace(/\D/g, '').slice(-10);
-      return Boolean(cleanResellerPhone && oPhone && cleanResellerPhone === oPhone);
+      // Must be reseller type or RES- prefixed order
+      const isResellerOrder = o.orderType === 'reseller' || (o.orderNumber && o.orderNumber.startsWith('RES-'));
+      if (!isResellerOrder) return false;
+
+      // Direct reseller ID match
+      if (o.resellerId && (o.resellerId === currentReseller.id || o.resellerId === currentReseller.email)) return true;
+
+      // Reseller business name or partner name match
+      if (o.resellerBusinessName && cleanBusinessName && o.resellerBusinessName.toLowerCase().trim() === cleanBusinessName) return true;
+      if (o.resellerName && cleanName && o.resellerName.toLowerCase().trim() === cleanName) return true;
+
+      // Customer email match
+      if (cleanEmail && o.customer?.email && o.customer.email.toLowerCase().trim() === cleanEmail) return true;
+
+      // Phone match against customer phone or dropship recipient phone
+      const oCustPhone = (o.customer?.phone || '').replace(/\D/g, '').slice(-10);
+      const oDropshipPhone = (o.dropshipRecipient?.phone || '').replace(/\D/g, '').slice(-10);
+      if (cleanResellerPhone && (oCustPhone === cleanResellerPhone || oDropshipPhone === cleanResellerPhone)) return true;
+
+      // Attribution in note or audit logs
+      if (o.lastUpdatedBy && cleanBusinessName && o.lastUpdatedBy.toLowerCase().includes(cleanBusinessName)) return true;
+
+      // Fallback: if order is reseller order and unassigned to specific other reseller
+      if (!o.resellerId) return true;
+
+      return false;
     });
   }, [orders, currentReseller]);
 
