@@ -41,6 +41,7 @@ import {
   Bell,
   Volume2,
   Download,
+  ShieldCheck,
 } from 'lucide-react';
 import { downloadSingleImage } from '../../utils/imageDownload';
 
@@ -761,6 +762,20 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                               <span>{badge.label}</span>
                             </span>
 
+                            {/* Payment Verified Badge */}
+                            {order.paymentGateway === 'paytm' || order.paytmTxnId ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#002970]/10 text-[#002970] border border-[#00BAF2]/40 shadow-2xs">
+                                <ShieldCheck className="w-3 h-3 text-[#00BAF2]" />
+                                <span>Paytm Verified</span>
+                                <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
+                              </span>
+                            ) : order.upiTransactionId ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                                <span>Paid</span>
+                              </span>
+                            ) : null}
+
                             {/* Dispute Alert Badge */}
                             {hasActiveDispute && (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-200">
@@ -1268,17 +1283,17 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="p-3 rounded-xl bg-white border border-neutral-200">
                     <span className="text-[10px] font-semibold text-neutral-400 uppercase block">
-                      Payment Transaction ID (UTR)
+                      {selectedOrder.paymentGateway === 'paytm' ? 'Paytm Verified Transaction ID' : 'Payment Transaction ID (UTR)'}
                     </span>
                     <div className="flex items-center justify-between mt-1">
-                      <code className="font-mono font-bold text-neutral-900 text-xs">
-                        {selectedOrder.upiTransactionId}
+                      <code className="font-mono font-bold text-neutral-900 text-xs truncate">
+                        {selectedOrder.paytmTxnId || selectedOrder.upiTransactionId}
                       </code>
                       <button
                         type="button"
-                        onClick={() => copyText(selectedOrder.upiTransactionId, `utr-${selectedOrder.id}`)}
-                        className="p-1 text-neutral-500 hover:text-neutral-900 rounded cursor-pointer"
-                        title="Copy Payment UTR"
+                        onClick={() => copyText(selectedOrder.paytmTxnId || selectedOrder.upiTransactionId, `utr-${selectedOrder.id}`)}
+                        className="p-1 text-neutral-500 hover:text-neutral-900 rounded cursor-pointer shrink-0 ml-1"
+                        title="Copy Payment Transaction ID"
                       >
                         {copiedKey === `utr-${selectedOrder.id}` ? (
                           <Check className="w-3.5 h-3.5 text-emerald-600" />

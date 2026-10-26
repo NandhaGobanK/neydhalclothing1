@@ -26,6 +26,7 @@ import {
   ResellerUser,
   ResellerAccessRequest,
   AppNotification,
+  PaytmTransactionDetails,
 } from '../types/store';
 import { isProductRestocked } from '../utils/productValidation';
 import {
@@ -126,7 +127,10 @@ interface StoreContextType {
   placeOrder: (orderInput: {
     customer: Order['customer'];
     items: CartItem[];
-    upiTransactionId: string;
+    upiTransactionId?: string;
+    paymentGateway?: 'paytm' | 'upi_manual';
+    paytmTxnId?: string;
+    paytmDetails?: PaytmTransactionDetails;
     refundUpiId?: string;
     refundUpiPhone?: string;
     notes?: string;
@@ -360,7 +364,10 @@ interface StoreContextType {
     items: CartItem[];
     dropshipRecipient: Order['dropshipRecipient'];
     resellerMargin: number;
-    upiTransactionId: string;
+    upiTransactionId?: string;
+    paymentGateway?: 'paytm' | 'upi_manual';
+    paytmTxnId?: string;
+    paytmDetails?: PaytmTransactionDetails;
     notes?: string;
   }) => Promise<Order>;
   isResellerPortalOpen: boolean;
@@ -2126,7 +2133,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     items: CartItem[];
     dropshipRecipient: Order['dropshipRecipient'];
     resellerMargin: number;
-    upiTransactionId: string;
+    upiTransactionId?: string;
+    paymentGateway?: 'paytm' | 'upi_manual';
+    paytmTxnId?: string;
+    paytmDetails?: PaytmTransactionDetails;
     notes?: string;
   }): Promise<Order> => {
     if (!currentReseller) throw new Error('Reseller not authenticated');
@@ -2136,6 +2146,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const totalAmount = subtotal;
     const prefix = 'RES';
     const orderNumber = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const paytmTxnId = input.paytmDetails?.txnId || input.paytmTxnId || (input.paymentGateway === 'paytm' ? `PTM${Date.now()}` : undefined);
+    const upiTxnId = (input.upiTransactionId || paytmTxnId || '').trim();
 
     const newOrder: Order = {
       id: `order-${Date.now()}`,
@@ -2154,7 +2167,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       subtotal,
       shippingFee,
       totalAmount,
-      upiTransactionId: input.upiTransactionId.trim(),
+      upiTransactionId: upiTxnId,
+      paymentGateway: input.paymentGateway || (paytmTxnId ? 'paytm' : 'upi_manual'),
+      paytmTxnId,
+      paytmDetails: input.paytmDetails,
       refundDetails: {
         refundStatus: 'not_required',
       },
@@ -3400,11 +3416,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return list.length;
   };
 
-  // Order management
   const placeOrder = ({
     customer,
     items,
     upiTransactionId,
+    paymentGateway,
+    paytmTxnId,
+    paytmDetails,
     refundUpiId,
     refundUpiPhone,
     notes,
@@ -3412,7 +3430,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }: {
     customer: Order['customer'];
     items: CartItem[];
-    upiTransactionId: string;
+    upiTransactionId?: string;
+    paymentGateway?: 'paytm' | 'upi_manual';
+    paytmTxnId?: string;
+    paytmDetails?: PaytmTransactionDetails;
     refundUpiId?: string;
     refundUpiPhone?: string;
     notes?: string;
@@ -3426,6 +3447,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const prefix = getBoutiqueOrderPrefix(settings.boutiqueName);
     const orderNumber = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    const resolvedPaytmTxnId = paytmDetails?.txnId || paytmTxnId || (paymentGateway === 'paytm' ? `PTM${Date.now()}` : undefined);
+    const resolvedUpiTxnId = (upiTransactionId || resolvedPaytmTxnId || '').trim();
+
     // User request: when user places an order it should NOT assign to staff by default;
     // it must appear in the unassigned queue for staff to assign and close the deal.
     const newOrder: Order = {
@@ -3437,7 +3461,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       subtotal,
       shippingFee,
       totalAmount,
-      upiTransactionId: upiTransactionId.trim(),
+      upiTransactionId: resolvedUpiTxnId,
+      paymentGateway: paymentGateway || (resolvedPaytmTxnId ? 'paytm' : 'upi_manual'),
+      paytmTxnId: resolvedPaytmTxnId,
+      paytmDetails,
       refundDetails: {
         refundUpiId: refundUpiId ? refundUpiId.trim() : undefined,
         refundUpiPhone: refundUpiPhone ? refundUpiPhone.trim() : undefined,

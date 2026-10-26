@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan for integrating Paytm All-in-One Payment Gateway across customer storefront checkout and B2B reseller wholesale orders, completely replacing manual UPI UTR input with an official Paytm JS Checkout popup and dynamic QR modal, paired with an Admin Settings configuration suite for Test and Live credentials.",
+  "updatedAt":  "2026-10-25T15:35:07.667607233Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

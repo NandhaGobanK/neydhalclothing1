@@ -1018,6 +1018,20 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                         </span>
                       )}
 
+                      {/* Payment Verified Badge */}
+                      {order.paymentGateway === 'paytm' || order.paytmTxnId ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#002970]/10 text-[#002970] border border-[#00BAF2]/40 flex items-center gap-1 shadow-2xs">
+                          <ShieldCheck className="w-3 h-3 text-[#00BAF2]" />
+                          <span>Paytm Verified</span>
+                          <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
+                        </span>
+                      ) : order.upiTransactionId ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                          <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                          <span>Paid</span>
+                        </span>
+                      ) : null}
+
                       {/* Order Stage Badge */}
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                         order.status === 'Confirmed'
@@ -1087,8 +1101,9 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                             <p className="text-neutral-800 font-medium truncate max-w-[160px]">
                               {order.items.map((i) => `${i.quantity}x ${i.product.title}`).join(', ')}
                             </p>
-                            <p className="text-[10px] text-neutral-400">
-                              Payment: {formatPrice(order.totalAmount)}
+                            <p className="text-[10px] text-neutral-500 font-mono truncate">
+                              {order.paymentGateway === 'paytm' || order.paytmTxnId ? 'Paytm Txn: ' : 'Prepaid: '}
+                              <strong>{order.paytmTxnId || order.upiTransactionId || 'Verified'}</strong>
                             </p>
                           </div>
                         </div>
@@ -1465,6 +1480,34 @@ export const CustomerIssuesManager: React.FC<CustomerIssuesManagerProps> = ({
                             ? new Date(currentInvestigatingOrder.cancellationRequest.requestedAt).toLocaleString('en-IN')
                             : 'Recently'}
                         </p>
+                      </div>
+
+                      {/* Payment Verification & Gateway Settlement Card */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[#002970] uppercase tracking-wider flex items-center gap-1.5 text-[11px]">
+                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                            <span>{currentInvestigatingOrder.paymentGateway === 'paytm' || currentInvestigatingOrder.paytmTxnId ? 'Paytm Verified Gateway Payment' : 'Prepaid Payment Settlement'}</span>
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            PAID · CAPTURED
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                          <div className="bg-white p-2 rounded-lg border border-slate-200">
+                            <span className="text-[10px] text-slate-400 font-bold block uppercase">Gateway Transaction ID</span>
+                            <span className="font-mono font-bold text-slate-900 truncate block">
+                              {currentInvestigatingOrder.paytmTxnId || currentInvestigatingOrder.upiTransactionId || 'Payment on file'}
+                            </span>
+                          </div>
+                          <div className="bg-white p-2 rounded-lg border border-slate-200">
+                            <span className="text-[10px] text-slate-400 font-bold block uppercase">Payment Mode & Bank Ref</span>
+                            <span className="font-medium text-slate-700 block truncate">
+                              {currentInvestigatingOrder.paytmDetails?.paymentMode || 'Net Banking / UPI'}
+                              {currentInvestigatingOrder.paytmDetails?.bankTxnId ? ` (RRN: ${currentInvestigatingOrder.paytmDetails.bankTxnId})` : ''}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
                       {/* Purchased Saree & Auto-Restock details */}

@@ -119,14 +119,27 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
             </div>
           </div>
 
-          {/* Payment & Refund Safeguard info */}
+          {/* Payment & Safeguard info */}
           <div className={`grid gap-3 ${showRefundUpi ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
-              <span className="text-[11px] font-semibold text-neutral-500 uppercase">Payment Transaction UTR</span>
-              <p className="font-mono text-xs font-bold text-neutral-900 mt-0.5 truncate">
-                {lastPlacedOrder.upiTransactionId}
+            <div className="p-3 bg-[#002970]/5 rounded-xl border border-[#002970]/20">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-[#002970] uppercase flex items-center gap-1">
+                  <span>Paytm Gateway Payment</span>
+                </span>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                  Authorized & Verified
+                </span>
+              </div>
+              <p className="font-mono text-xs font-bold text-neutral-900 mt-1 truncate">
+                Txn Ref: {lastPlacedOrder.paytmTxnId || lastPlacedOrder.upiTransactionId}
               </p>
-              <p className="text-[10px] text-emerald-700 mt-1">Status: Recorded for Verification</p>
+              {lastPlacedOrder.paytmDetails?.bankTxnId ? (
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                  Bank Ref: {lastPlacedOrder.paytmDetails.bankTxnId} &bull; Mode: {lastPlacedOrder.paytmDetails.paymentMode}
+                </p>
+              ) : (
+                <p className="text-[10px] text-emerald-700 mt-0.5">Status: Authorized via Paytm</p>
+              )}
             </div>
 
             {showRefundUpi && (

@@ -337,6 +337,9 @@ export interface Order {
   shippingFee: number;
   totalAmount: number;
   upiTransactionId: string;
+  paymentGateway?: 'paytm' | 'upi_manual';
+  paytmTxnId?: string;
+  paytmDetails?: PaytmTransactionDetails;
   refundDetails: RefundDetails;
   shippingDetails?: ShippingDetails;
   status: OrderStatus;
@@ -499,11 +502,43 @@ export interface AnnouncementSettings {
   badgeLabel: string;
 }
 
+export interface PaytmSettings {
+  enabled: boolean;
+  environment: 'staging' | 'production';
+  merchantId: string; // Paytm MID
+  merchantKey?: string; // Merchant Secret Key
+  website: string; // 'WEBSTAGING' or 'DEFAULT'
+  channelId: string; // 'WEB'
+  industryTypeId: string; // 'Retail'
+  autoVerifyInTestMode: boolean; // Auto-verify transactions in sandbox / test mode
+  enableQr: boolean;
+  enableUpi: boolean;
+  enableCards: boolean;
+  enableNetBanking: boolean;
+  enableWallet: boolean;
+  customCallbackUrl?: string;
+}
+
+export interface PaytmTransactionDetails {
+  txnId: string;
+  orderId: string;
+  txnAmount: number;
+  paymentMode: string;
+  status: 'TXN_SUCCESS' | 'TXN_FAILURE' | 'PENDING';
+  gatewayName: 'PAYTM';
+  bankTxnId?: string;
+  respCode?: string;
+  respMsg?: string;
+  txnDate: string;
+  testMode?: boolean;
+}
+
 export interface PaymentSettings {
-  upiId: string;
-  payeeName: string;
-  qrCodeUrl: string;
-  instructions: string;
+  paytm?: PaytmSettings;
+  upiId?: string;
+  payeeName?: string;
+  qrCodeUrl?: string;
+  instructions?: string;
 }
 
 export interface StorefrontDisplaySettings {

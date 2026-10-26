@@ -19,6 +19,8 @@ import {
   areAllEligibleDisputesResolved,
 } from '../../utils/disputeRedressals';
 import { OrderLiveChat } from '../common/OrderLiveChat';
+import { PaytmCheckoutModal } from '../common/PaytmCheckoutModal';
+import { PaytmTransactionDetails } from '../../types/store';
 import {
   X,
   Store,
@@ -301,6 +303,8 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
   const [isNewAddressDefault, setIsNewAddressDefault] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
   const [orderUtr, setOrderUtr] = useState('');
+  const [isResellerPaytmOpen, setIsResellerPaytmOpen] = useState(false);
+  const [pendingResellerOrderNumber, setPendingResellerOrderNumber] = useState('');
   const [orderError, setOrderError] = useState('');
   const [orderSuccess, setOrderSuccess] = useState<Order | null>(null);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -947,7 +951,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
     setOrderError('');
   };
 
-  const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
+  const handlePlaceOrderSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (resellerCart.length === 0 || !currentReseller) {
       setOrderError('Your reseller cart is empty. Please add sarees from the catalog before checking out.');
@@ -971,13 +975,16 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       }
     }
 
-    const cleanUtr = orderUtr.replace(/\D/g, '');
-    if (!cleanUtr || cleanUtr.length !== 12) {
-      setOrderError('Please enter the 12-digit UPI Transaction ID (UTR) for reseller settlement.');
-      return;
-    }
+    const tempOrderNum = `RES-${Math.floor(1000 + Math.random() * 9000)}`;
+    setPendingResellerOrderNumber(tempOrderNum);
+    setIsResellerPaytmOpen(true);
+  };
 
+  const handleResellerPaytmSuccess = async (details: PaytmTransactionDetails) => {
+    if (!currentReseller) return;
+    setIsResellerPaytmOpen(false);
     setIsPlacingOrder(true);
+
     try {
       const cartItems: CartItem[] = resellerCart.map((item) => ({
         product: {
@@ -988,12 +995,12 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       }));
 
       const recipient = {
-        name: recipientName.trim(),
-        phone: recipientPhone.replace(/\D/g, '').slice(-10),
-        address: recipientAddress.trim(),
-        city: recipientCity.trim(),
-        state: recipientState.trim(),
-        pincode: recipientPincode.trim(),
+        name: recipientName.trim() || currentReseller.name,
+        phone: recipientPhone.replace(/\D/g, '').slice(-10) || currentReseller.whatsappNumber,
+        address: recipientAddress.trim() || currentReseller.businessName,
+        city: recipientCity.trim() || currentReseller.city || 'Salem',
+        state: recipientState.trim() || currentReseller.state || 'Tamil Nadu',
+        pincode: recipientPincode.trim() || '636001',
       };
 
       // Auto-save new address if entered or saveAddressForFuture is true
@@ -1031,7 +1038,10 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
         items: cartItems,
         dropshipRecipient: recipient,
         resellerMargin: totalEstimatedMargin,
-        upiTransactionId: cleanUtr,
+        paymentGateway: 'paytm',
+        paytmTxnId: details.txnId,
+        paytmDetails: details,
+        upiTransactionId: details.txnId,
         notes: `[Reseller: ${currentReseller.businessName}] ${orderNotes ? `Notes: ${orderNotes}` : ''}`,
       });
 
@@ -1046,7 +1056,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
       setOrderNotes('');
       setIsNewAddressDefault(false);
     } catch (err: any) {
-      setOrderError(err?.message || 'Failed to place reseller order.');
+      setOrderError(err?.message || 'Failed to place reseller order after payment.');
     } finally {
       setIsPlacingOrder(false);
     }
@@ -2764,6 +2774,20 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                     Reseller Dropship
                                   </span>
 
+                                  {/* Payment Verified Badge */}
+                                  {ord.paymentGateway === 'paytm' || ord.paytmTxnId ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#002970]/10 text-[#002970] border border-[#00BAF2]/40 shadow-2xs">
+                                      <ShieldCheck className="w-3 h-3 text-[#00BAF2]" />
+                                      <span>Paytm Verified</span>
+                                      <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
+                                    </span>
+                                  ) : ord.upiTransactionId ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                                      <span>Prepaid</span>
+                                    </span>
+                                  ) : null}
+
                                   {/* Status Pill */}
                                   <span
                                     className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${badge.bg}`}
@@ -2891,6 +2915,28 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                                   </span>
                                 </div>
                               )}
+
+                              {/* Wholesale Payment Gateway Verification Reference */}
+                              <div className="mt-2.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-slate-800 text-[11px] truncate flex items-center gap-1.5">
+                                      <span>{ord.paymentGateway === 'paytm' || ord.paytmTxnId ? 'Paytm Gateway Verified Settlement' : 'Prepaid Direct Transaction'}</span>
+                                      <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold">PAID</span>
+                                    </p>
+                                    <p className="font-mono text-[10px] text-slate-500 truncate">
+                                      Txn ID: <strong>{ord.paytmTxnId || ord.upiTransactionId || 'Payment on file'}</strong>
+                                      {ord.paytmDetails?.bankTxnId && ` · Bank Ref: ${ord.paytmDetails.bankTxnId}`}
+                                    </p>
+                                  </div>
+                                </div>
+                                {ord.paytmDetails?.paymentMode && (
+                                  <span className="text-[10px] font-medium text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
+                                    Mode: {ord.paytmDetails.paymentMode} {ord.paytmDetails.testMode ? '(Sandbox Test)' : ''}
+                                  </span>
+                                )}
+                              </div>
 
                               {/* Courier Snippet matching image (12).png */}
                               {ord.shippingDetails?.trackingNumber && (
@@ -4324,75 +4370,48 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                           </div>
                         </div>
 
-                        {/* Step 3: UPI Settlement & UTR */}
-                        <div className="space-y-2 pt-1">
+                        {/* Step 3: Paytm Payment Gateway */}
+                        <div className="space-y-3 pt-1">
                           <label className="block text-xs font-bold uppercase tracking-wider text-neutral-800">
-                            3. Pay via UPI & Enter 12-digit UTR
+                            3. Settle Wholesale Total via Paytm Gateway
                           </label>
 
-                          <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-xs space-y-2">
+                          <div className="p-3.5 rounded-xl bg-[#002970]/5 border border-[#002970]/20 text-xs space-y-2">
                             <div className="flex items-center justify-between flex-wrap gap-2">
-                              <div>
-                                <span className="text-[10px] text-neutral-500 font-bold uppercase block">
-                                  Boutique UPI ID
-                                </span>
-                                <span className="font-mono font-bold text-purple-900 text-sm">
-                                  {settings.payment.upiId}
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center font-bold text-sm tracking-tight">
+                                  <span className="text-[#002970]">Pay</span>
+                                  <span className="text-[#00BAF2]">tm</span>
+                                </div>
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[#00BAF2]/15 text-[#002970]">
+                                  Official Gateway
                                 </span>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(settings.payment.upiId);
-                                  setOrderError('UPI ID copied to clipboard!');
-                                  setTimeout(() => setOrderError(''), 2000);
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200 text-xs font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                              >
-                                <Copy className="w-3 h-3 text-neutral-500" />
-                                <span>Copy UPI</span>
-                              </button>
+                              <div className="flex items-center gap-1 text-[11px] text-emerald-700 font-medium">
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                <span>Instant Verification</span>
+                              </div>
                             </div>
-                            <p className="text-[11px] text-neutral-500">
-                              Payee: <strong>{settings.payment.payeeName}</strong> &bull; Settle amount of <strong>{formatPrice(totalResellerCost)}</strong> via Google Pay / PhonePe / Paytm / BHIM.
+                            <p className="text-[11px] text-neutral-600">
+                              Settle wholesale order of <strong>{formatPrice(totalResellerCost)}</strong> via Paytm Dynamic QR, UPI Apps, Cards, Net Banking, or Paytm Wallet.
                             </p>
-                          </div>
-
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="block text-[11px] font-bold text-neutral-800">
-                                12-digit UPI Transaction ID (UTR) *
-                              </label>
-                              <span className="text-[10px] font-mono text-neutral-400">
-                                {orderUtr.length}/12
-                              </span>
-                            </div>
-                            <input
-                              type="text"
-                              required
-                              maxLength={12}
-                              value={orderUtr}
-                              onChange={(e) => setOrderUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                              placeholder="e.g. 504128912345"
-                              className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-xs font-mono font-bold focus:ring-2 focus:ring-purple-700 focus:outline-none bg-white"
-                            />
                           </div>
 
                           {/* Submit Checkout Button */}
                           <button
                             type="submit"
                             disabled={isPlacingOrder || resellerCart.length === 0}
-                            className="w-full py-3.5 px-4 rounded-xl bg-purple-900 hover:bg-purple-800 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-50 active:scale-98 mt-2 flex items-center justify-center gap-2"
+                            className="w-full py-3.5 px-4 rounded-xl bg-[#002970] hover:bg-[#001f54] text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-50 active:scale-98 mt-2 flex items-center justify-center gap-2"
                           >
                             {isPlacingOrder ? (
                               <>
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                <span>Placing Reseller Order...</span>
+                                <span>Recording Wholesale Order...</span>
                               </>
                             ) : (
                               <>
-                                <ShoppingBag className="w-4 h-4" />
-                                <span>Complete Reseller Checkout ({formatPrice(totalResellerCost)})</span>
+                                <Lock className="w-4 h-4 text-[#00BAF2]" />
+                                <span>Proceed to Paytm Payment ({formatPrice(totalResellerCost)})</span>
                               </>
                             )}
                           </button>
@@ -5285,6 +5304,22 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Paytm Wholesale Gateway Modal */}
+            <PaytmCheckoutModal
+              isOpen={isResellerPaytmOpen}
+              onClose={() => setIsResellerPaytmOpen(false)}
+              orderNumber={pendingResellerOrderNumber}
+              amount={totalResellerCost}
+              customerName={currentReseller?.name || recipientName || 'Reseller Partner'}
+              customerPhone={currentReseller?.whatsappNumber || recipientPhone || '9876543210'}
+              customerEmail={currentReseller?.email}
+              onPaymentSuccess={handleResellerPaytmSuccess}
+              onPaymentFailure={(err) => {
+                setIsResellerPaytmOpen(false);
+                setOrderError(`Paytm Wholesale Gateway Error: ${err}`);
+              }}
+            />
           </div>
         </div>
   );

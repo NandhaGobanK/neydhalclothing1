@@ -19,6 +19,7 @@ import {
 } from '../../data/initialData';
 import { applyTemplateTokens } from '../../utils/upi';
 import { compressImageFile } from '../../utils/imageCompression';
+import { validatePaytmSettings } from '../../utils/paytm';
 import {
   Save,
   Palette,
@@ -186,11 +187,42 @@ export const SettingsManager: React.FC = () => {
   // Dedicated Order Deletion Admin Toggle & Operational Control (User Request)
   const [enableOrderDeletion, setEnableOrderDeletion] = useState<boolean>(settings.enableOrderDeletion ?? false);
 
-  // Payment Config
-  const [upiId, setUpiId] = useState(settings.payment.upiId);
-  const [payeeName, setPayeeName] = useState(settings.payment.payeeName);
+  // Payment Config - Paytm Gateway
+  const initialPaytm = settings.payment.paytm || {
+    enabled: true,
+    environment: 'staging' as const,
+    merchantId: 'MOCK_PAYTM_MID_STAGE',
+    merchantKey: 'MOCK_SECRET_KEY_123',
+    website: 'WEBSTAGING',
+    channelId: 'WEB',
+    industryTypeId: 'Retail',
+    autoVerifyInTestMode: true,
+    enableQr: true,
+    enableUpi: true,
+    enableCards: true,
+    enableNetBanking: true,
+    enableWallet: true,
+  };
+  const [paytmEnabled, setPaytmEnabled] = useState<boolean>(initialPaytm.enabled ?? true);
+  const [paytmEnvironment, setPaytmEnvironment] = useState<'staging' | 'production'>(initialPaytm.environment || 'staging');
+  const [paytmMid, setPaytmMid] = useState<string>(initialPaytm.merchantId || '');
+  const [paytmSecretKey, setPaytmSecretKey] = useState<string>(initialPaytm.merchantKey || '');
+  const [showPaytmSecretKey, setShowPaytmSecretKey] = useState<boolean>(false);
+  const [paytmWebsite, setPaytmWebsite] = useState<string>(initialPaytm.website || 'WEBSTAGING');
+  const [paytmChannelId, setPaytmChannelId] = useState<string>(initialPaytm.channelId || 'WEB');
+  const [paytmIndustryType, setPaytmIndustryType] = useState<string>(initialPaytm.industryTypeId || 'Retail');
+  const [paytmAutoVerify, setPaytmAutoVerify] = useState<boolean>(initialPaytm.autoVerifyInTestMode ?? true);
+  const [paytmEnableQr, setPaytmEnableQr] = useState<boolean>(initialPaytm.enableQr ?? true);
+  const [paytmEnableUpi, setPaytmEnableUpi] = useState<boolean>(initialPaytm.enableUpi ?? true);
+  const [paytmEnableCards, setPaytmEnableCards] = useState<boolean>(initialPaytm.enableCards ?? true);
+  const [paytmEnableNetBanking, setPaytmEnableNetBanking] = useState<boolean>(initialPaytm.enableNetBanking ?? true);
+  const [paytmEnableWallet, setPaytmEnableWallet] = useState<boolean>(initialPaytm.enableWallet ?? true);
+  const [paytmTestStatus, setPaytmTestStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' } | null>(null);
+
+  const [upiId, setUpiId] = useState(settings.payment.upiId || '');
+  const [payeeName, setPayeeName] = useState(settings.payment.payeeName || '');
   const [qrCodeUrl, setQrCodeUrl] = useState(settings.payment.qrCodeUrl || '');
-  const [paymentInstructions, setPaymentInstructions] = useState(settings.payment.instructions);
+  const [paymentInstructions, setPaymentInstructions] = useState(settings.payment.instructions || '');
 
   // Automated Chat Templates
   const [chatTemplates, setChatTemplates] = useState<OrderStatusChatTemplates>({
@@ -326,10 +358,25 @@ export const SettingsManager: React.FC = () => {
         setFreeDeliveryThreshold(settings.delivery.freeDeliveryThreshold);
       }
       if (settings.payment) {
-        setUpiId(settings.payment.upiId);
-        setPayeeName(settings.payment.payeeName);
+        if (settings.payment.paytm) {
+          setPaytmEnabled(settings.payment.paytm.enabled ?? true);
+          setPaytmEnvironment(settings.payment.paytm.environment || 'staging');
+          setPaytmMid(settings.payment.paytm.merchantId || '');
+          setPaytmSecretKey(settings.payment.paytm.merchantKey || '');
+          setPaytmWebsite(settings.payment.paytm.website || 'WEBSTAGING');
+          setPaytmChannelId(settings.payment.paytm.channelId || 'WEB');
+          setPaytmIndustryType(settings.payment.paytm.industryTypeId || 'Retail');
+          setPaytmAutoVerify(settings.payment.paytm.autoVerifyInTestMode ?? true);
+          setPaytmEnableQr(settings.payment.paytm.enableQr ?? true);
+          setPaytmEnableUpi(settings.payment.paytm.enableUpi ?? true);
+          setPaytmEnableCards(settings.payment.paytm.enableCards ?? true);
+          setPaytmEnableNetBanking(settings.payment.paytm.enableNetBanking ?? true);
+          setPaytmEnableWallet(settings.payment.paytm.enableWallet ?? true);
+        }
+        setUpiId(settings.payment.upiId || '');
+        setPayeeName(settings.payment.payeeName || '');
         setQrCodeUrl(settings.payment.qrCodeUrl || '');
-        setPaymentInstructions(settings.payment.instructions);
+        setPaymentInstructions(settings.payment.instructions || '');
       }
       if (settings.staffIdleAlert) {
         setStaffIdleAlertEnabled(settings.staffIdleAlert.enabled ?? true);
@@ -613,6 +660,21 @@ export const SettingsManager: React.FC = () => {
         badgeLabel: 'NOTICE',
       },
       payment: {
+        paytm: {
+          enabled: paytmEnabled,
+          environment: paytmEnvironment,
+          merchantId: paytmMid.trim(),
+          merchantKey: paytmSecretKey.trim(),
+          website: paytmWebsite.trim() || (paytmEnvironment === 'production' ? 'DEFAULT' : 'WEBSTAGING'),
+          channelId: paytmChannelId.trim() || 'WEB',
+          industryTypeId: paytmIndustryType.trim() || 'Retail',
+          autoVerifyInTestMode: paytmAutoVerify,
+          enableQr: paytmEnableQr,
+          enableUpi: paytmEnableUpi,
+          enableCards: paytmEnableCards,
+          enableNetBanking: paytmEnableNetBanking,
+          enableWallet: paytmEnableWallet,
+        },
         upiId: upiId.trim(),
         payeeName: payeeName.trim(),
         qrCodeUrl: qrCodeUrl.trim(),
@@ -2759,73 +2821,347 @@ export const SettingsManager: React.FC = () => {
           </div>
         )}
 
-        {/* Section 6: Payment Configuration (UPI ID & Downloadable QR Code) */}
+        {/* Section 6: Paytm All-in-One Payment Gateway Configuration */}
         {canViewPayment && (
-          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-neutral-900 font-serif font-bold text-base sm:text-lg">
-                <CreditCard className="w-5 h-5 text-amber-600" />
-                <h3>Payment Configuration (Prepaid UPI)</h3>
+          <div className="bg-white rounded-2xl border border-neutral-200 p-5 sm:p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-100">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center text-xl font-bold tracking-tight px-3 py-1 bg-[#002970]/5 rounded-xl border border-[#002970]/15">
+                  <span className="text-[#002970]">Pay</span>
+                  <span className="text-[#00BAF2]">tm</span>
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-base sm:text-lg text-neutral-900">
+                    Paytm Payment Gateway
+                  </h3>
+                  <p className="text-xs text-neutral-500">
+                    Official All-in-One JS checkout & dynamic QR gateway for customer & reseller checkout.
+                  </p>
+                </div>
               </div>
-              {!canEditPayment && (
-                <span className="text-[11px] text-neutral-500 font-medium bg-neutral-100 px-2.5 py-1 rounded-full">
-                  View-Only
-                </span>
+
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <span className="text-xs font-semibold text-neutral-700">
+                    {paytmEnabled ? 'Gateway Active' : 'Gateway Disabled'}
+                  </span>
+                  <input
+                    type="checkbox"
+                    disabled={!canEditPayment}
+                    checked={paytmEnabled}
+                    onChange={(e) => setPaytmEnabled(e.target.checked)}
+                    className="w-4 h-4 text-[#002970] rounded focus:ring-[#00BAF2]"
+                  />
+                </label>
+                {!canEditPayment && (
+                  <span className="text-[11px] text-neutral-500 font-medium bg-neutral-100 px-2.5 py-1 rounded-full">
+                    View-Only
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Environment Toggle (Test Sandbox vs Live Production) */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Gateway Environment Mode
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Switch between Paytm Sandbox (Staging) for zero-risk test orders and Live Production for real bank debits.
+                  </p>
+                </div>
+
+                <div className="inline-flex p-1 bg-slate-200/80 rounded-xl">
+                  <button
+                    type="button"
+                    disabled={!canEditPayment}
+                    onClick={() => {
+                      setPaytmEnvironment('staging');
+                      if (paytmWebsite === 'DEFAULT') setPaytmWebsite('WEBSTAGING');
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      paytmEnvironment === 'staging'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Test / Staging (Sandbox)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canEditPayment}
+                    onClick={() => {
+                      setPaytmEnvironment('production');
+                      if (paytmWebsite === 'WEBSTAGING') setPaytmWebsite('DEFAULT');
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      paytmEnvironment === 'production'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Live Production
+                  </button>
+                </div>
+              </div>
+
+              {paytmEnvironment === 'staging' ? (
+                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    <strong>Staging Sandbox is Active:</strong> You can test full customer and reseller orders without actual bank charges using the simulated authorization engine.
+                  </span>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    <strong>Live Production is Active:</strong> Transactions will route to Paytm production servers (`securegw.paytm.in`). Ensure your production Merchant Key is configured.
+                  </span>
+                </div>
               )}
             </div>
-            <p className="text-xs text-neutral-500 mb-4">
-              Customers will see these exact UPI payment coordinates and downloadable QR code during checkout before submitting their orders.
-            </p>
 
+            {/* Credentials Form */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div>
-                <label className="block font-bold text-neutral-800 mb-1">Business UPI ID *</label>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Paytm Merchant ID (MID) *
+                </label>
                 <input
                   type="text"
                   disabled={!canEditPayment}
-                  value={upiId}
-                  onChange={(e) => setUpiId(e.target.value)}
+                  value={paytmMid}
+                  onChange={(e) => setPaytmMid(e.target.value.trim())}
                   required
-                  placeholder="e.g. yourboutique@okhdfcbank"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                  placeholder={paytmEnvironment === 'staging' ? 'e.g. MOCK_PAYTM_MID_STAGE' : 'e.g. AaraHe12345678901234'}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-[#00BAF2]"
                 />
+                <span className="text-[10px] text-neutral-400 mt-1 block">
+                  Found on Paytm Dashboard &gt; Developer Settings &gt; API Keys
+                </span>
               </div>
 
               <div>
-                <label className="block font-bold text-neutral-800 mb-1">Payee Registered Name *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-neutral-800">
+                    Paytm Merchant Secret Key *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPaytmSecretKey(!showPaytmSecretKey)}
+                    className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium"
+                  >
+                    {showPaytmSecretKey ? (
+                      <>
+                        <EyeOff className="w-3 h-3" />
+                        <span>Hide</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3 h-3" />
+                        <span>Show</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <input
+                  type={showPaytmSecretKey ? 'text' : 'password'}
+                  disabled={!canEditPayment}
+                  value={paytmSecretKey}
+                  onChange={(e) => setPaytmSecretKey(e.target.value.trim())}
+                  required
+                  placeholder="Enter your Paytm Merchant Secret Key"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-[#00BAF2]"
+                />
+                <span className="text-[10px] text-neutral-400 mt-1 block">
+                  Encrypted key used to sign transaction tokens and verify callbacks
+                </span>
+              </div>
+
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Website Name *
+                </label>
                 <input
                   type="text"
                   disabled={!canEditPayment}
-                  value={payeeName}
-                  onChange={(e) => setPayeeName(e.target.value)}
-                  required
-                  placeholder="e.g. Aara Heritage Sarees LLP"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500/40"
+                  value={paytmWebsite}
+                  onChange={(e) => setPaytmWebsite(e.target.value.trim())}
+                  placeholder={paytmEnvironment === 'staging' ? 'WEBSTAGING' : 'DEFAULT'}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-[#00BAF2]"
                 />
+                <span className="text-[10px] text-neutral-400 mt-1 block">
+                  Typically `WEBSTAGING` in staging, `DEFAULT` in production
+                </span>
               </div>
 
-              <div className="sm:col-span-2 space-y-2">
-                <label className="block font-semibold text-neutral-800">
-                  Custom UPI QR Code Image (Optional URL or File Upload)
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">
+                  Channel & Industry
                 </label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
                     disabled={!canEditPayment}
-                    value={qrCodeUrl}
-                    onChange={(e) => setQrCodeUrl(e.target.value)}
-                    placeholder="Leave empty to use automatic live UPI QR generator, or paste image URL"
-                    className="flex-1 p-2 rounded-xl border border-neutral-300 text-neutral-900"
+                    value={paytmChannelId}
+                    onChange={(e) => setPaytmChannelId(e.target.value.trim())}
+                    placeholder="WEB"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-[#00BAF2]"
                   />
-                  {canEditPayment && (
-                    <label className="px-3 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-neutral-700 font-medium cursor-pointer flex items-center gap-1 shrink-0">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload QR</span>
-                      <input type="file" accept="image/*" onChange={handleQrUpload} className="hidden" />
-                    </label>
-                  )}
+                  <input
+                    type="text"
+                    disabled={!canEditPayment}
+                    value={paytmIndustryType}
+                    onChange={(e) => setPaytmIndustryType(e.target.value.trim())}
+                    placeholder="Retail"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-[#00BAF2]"
+                  />
                 </div>
               </div>
+            </div>
+
+            {/* Test Connection Button */}
+            <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const result = validatePaytmSettings({
+                    enabled: paytmEnabled,
+                    environment: paytmEnvironment,
+                    merchantId: paytmMid,
+                    merchantKey: paytmSecretKey,
+                    website: paytmWebsite,
+                    channelId: paytmChannelId,
+                    industryTypeId: paytmIndustryType,
+                    autoVerifyInTestMode: paytmAutoVerify,
+                    enableQr: paytmEnableQr,
+                    enableUpi: paytmEnableUpi,
+                    enableCards: paytmEnableCards,
+                    enableNetBanking: paytmEnableNetBanking,
+                    enableWallet: paytmEnableWallet,
+                  });
+
+                  if (result.isValid) {
+                    setPaytmTestStatus({
+                      message: `Paytm Configuration Valid (${paytmEnvironment.toUpperCase()} mode). Ready for checkout sessions!`,
+                      type: 'success',
+                    });
+                  } else {
+                    setPaytmTestStatus({
+                      message: result.issues.join(' '),
+                      type: 'error',
+                    });
+                  }
+                  setTimeout(() => setPaytmTestStatus(null), 5000);
+                }}
+                className="px-4 py-2 rounded-xl bg-[#002970] hover:bg-[#001f54] text-white font-semibold text-xs transition flex items-center gap-2 cursor-pointer shadow-xs"
+              >
+                <CheckCircle2 className="w-4 h-4 text-[#00BAF2]" />
+                <span>Validate & Test Gateway Credentials</span>
+              </button>
+
+              {paytmTestStatus && (
+                <div
+                  className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 ${
+                    paytmTestStatus.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}
+                >
+                  {paytmTestStatus.type === 'success' ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                  )}
+                  <span>{paytmTestStatus.message}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Payment Method Channels Toggles */}
+            <div className="pt-3 border-t border-neutral-100">
+              <h4 className="text-xs font-bold text-neutral-800 mb-2">
+                Supported Customer & Reseller Payment Channels
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={paytmEnableQr}
+                    onChange={(e) => setPaytmEnableQr(e.target.checked)}
+                    className="w-4 h-4 text-[#002970] rounded focus:ring-[#00BAF2]"
+                  />
+                  <span className="font-medium text-slate-700">Dynamic QR</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={paytmEnableUpi}
+                    onChange={(e) => setPaytmEnableUpi(e.target.checked)}
+                    className="w-4 h-4 text-[#002970] rounded focus:ring-[#00BAF2]"
+                  />
+                  <span className="font-medium text-slate-700">UPI Intent</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={paytmEnableCards}
+                    onChange={(e) => setPaytmEnableCards(e.target.checked)}
+                    className="w-4 h-4 text-[#002970] rounded focus:ring-[#00BAF2]"
+                  />
+                  <span className="font-medium text-slate-700">Cards (CC/DC)</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={paytmEnableNetBanking}
+                    onChange={(e) => setPaytmEnableNetBanking(e.target.checked)}
+                    className="w-4 h-4 text-[#002970] rounded focus:ring-[#00BAF2]"
+                  />
+                  <span className="font-medium text-slate-700">Net Banking</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={paytmEnableWallet}
+                    onChange={(e) => setPaytmEnableWallet(e.target.checked)}
+                    className="w-4 h-4 text-[#002970] rounded focus:ring-[#00BAF2]"
+                  />
+                  <span className="font-medium text-slate-700">Paytm Wallet</span>
+                </label>
+              </div>
+            </div>
+
+            {/* How to get credentials documentation guide */}
+            <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-neutral-800 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-[#00BAF2]" />
+                  How to obtain your Paytm Merchant Credentials:
+                </span>
+                <a
+                  href="https://dashboard.paytm.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#002970] hover:text-[#00BAF2] font-semibold flex items-center gap-1 text-[11px] underline"
+                >
+                  <span>Paytm Business Dashboard</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-600 pl-1 text-[11px]">
+                <li>Sign in to your Paytm for Business account at <strong>dashboard.paytm.com</strong>.</li>
+                <li>Navigate to <strong>Developer Settings</strong> in the left sidebar and select <strong>API Keys</strong>.</li>
+                <li>Copy the <strong>Merchant ID (MID)</strong> and generate your <strong>Merchant Key</strong>.</li>
+                <li>Paste the credentials above and click <strong>Save Settings</strong> to activate live gateway checkout.</li>
+              </ol>
             </div>
           </div>
         )}
