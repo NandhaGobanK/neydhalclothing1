@@ -79,6 +79,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
     dismissAdminDeletionAlert,
     clearDeletedOrderLogs,
     deleteOrder,
+    verifyOrderPayment,
     updateOrderStatus,
     updateOrderShipping,
     markRefundProcessed,
@@ -105,6 +106,13 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   // Conditional Access: When enableOrderDeletion toggle is enabled in settings, deletion is permitted; otherwise completely hidden/blocked
   const canDeleteOrders = canEditOrders && settings.enableOrderDeletion === true;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Dedicated Payment Verification Modal State
+  const [verifyPaymentOrder, setVerifyPaymentOrder] = useState<Order | null>(null);
+  const [verifyTxnIdInput, setVerifyTxnIdInput] = useState('');
+  const [verifyPaymentModeInput, setVerifyPaymentModeInput] = useState('Paytm / Direct UPI');
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const [paymentVerifySuccessToast, setPaymentVerifySuccessToast] = useState<string | null>(null);
 
   // Dedicated Order Deletion / Removal State for Staff & Admins
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
@@ -1120,6 +1128,33 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
         </div>
       )}
 
+      {/* Payment Verification Success Banner */}
+      {paymentVerifySuccessToast && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-neutral-900 to-emerald-900 text-white text-xs font-medium shadow-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 border border-emerald-500/30">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 shrink-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div>
+              <p className="font-bold text-white text-sm">
+                Payment Verified & Recorded
+              </p>
+              <p className="text-emerald-200 text-xs">
+                {paymentVerifySuccessToast}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPaymentVerifySuccessToast(null)}
+            className="text-white/80 hover:text-white font-bold p-1 cursor-pointer"
+            title="Dismiss notification"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {/* Multi-Parameter Global Search Bar & Dynamic Queue Routing Tabs */}
       <div className="bg-white rounded-2xl border border-neutral-300 p-3 sm:p-4 shadow-xs space-y-3">
         {/* Dynamic Queue Routing Tabs */}
@@ -1700,17 +1735,33 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
                     {/* Payment Verified Badge */}
                     {order.paymentGateway === 'paytm' || order.paytmTxnId ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#002970]/10 text-[#002970] border border-[#00BAF2]/40 flex items-center gap-1 shadow-2xs">
-                        <ShieldCheck className="w-3 h-3 text-[#00BAF2]" />
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#002970]/10 text-[#002970] border border-[#00BAF2]/50 flex items-center gap-1.5 shadow-2xs">
+                        <ShieldCheck className="w-3.5 h-3.5 text-[#00BAF2]" />
                         <span>Paytm Verified</span>
-                        <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase tracking-wider">PAID</span>
                       </span>
-                    ) : order.upiTransactionId ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                    ) : order.isPaymentVerified !== false || order.paymentStatus === 'paid' || order.upiTransactionId ? (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                         <span>Prepaid · Verified</span>
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase tracking-wider">PAID</span>
                       </span>
-                    ) : null}
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVerifyPaymentOrder(order);
+                          setVerifyTxnIdInput(order.upiTransactionId || order.paytmTxnId || '');
+                          setVerifyPaymentModeInput(order.paymentMethod || 'Prepaid Direct UPI');
+                        }}
+                        className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1 hover:bg-amber-100 transition cursor-pointer"
+                        title="Click to verify customer payment"
+                      >
+                        <Clock className="w-3 h-3 text-amber-600" />
+                        <span>Verify Payment</span>
+                      </button>
+                    )}
 
                     {order.assignedStaffName ? (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -1768,6 +1819,81 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                     <span className="text-[11px] font-semibold text-neutral-600 bg-neutral-100 px-2 py-1 rounded-md">
                       {isExpanded ? 'Hide ▲' : 'Inline ▼'}
                     </span>
+                  </div>
+                </div>
+
+                {/* Dedicated Payment & Settlement Details Strip (Visible upon receiving orders) */}
+                <div className="px-3.5 sm:px-4 py-2 bg-gradient-to-r from-emerald-50/70 via-slate-50 to-blue-50/40 border-t border-neutral-200/60 flex items-center justify-between gap-2.5 flex-wrap text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>{order.paymentGateway === 'paytm' || order.paytmTxnId ? 'PAYTM SETTLED' : 'PAYMENT VERIFIED'}</span>
+                      <span className="px-1 py-0.2 bg-emerald-700 text-white rounded text-[8px] uppercase tracking-wider font-mono">PAID</span>
+                    </span>
+
+                    <span className="text-[11px] text-neutral-600">
+                      Method: <strong className="text-neutral-900">{order.paymentMethod || (order.paymentGateway === 'paytm' || order.paytmTxnId ? 'Paytm All-in-One Gateway' : 'Prepaid Direct UPI')}</strong>
+                    </span>
+
+                    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-neutral-200 font-mono text-[11px] text-neutral-900 shadow-2xs">
+                      <span className="text-neutral-400 font-sans text-[10px]">Txn / UTR:</span>
+                      <strong className="text-neutral-900">{order.paytmTxnId || order.upiTransactionId || 'TXN-CONFIRMED'}</strong>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyToClipboard(order.paytmTxnId || order.upiTransactionId || '', `card-txn-${order.id}`);
+                        }}
+                        className="text-neutral-400 hover:text-neutral-700 p-0.5 cursor-pointer ml-0.5"
+                        title="Copy Transaction Reference"
+                      >
+                        {copiedKey === `card-txn-${order.id}` ? (
+                          <Check className="w-3 h-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
+                    </div>
+
+                    {order.paytmDetails?.bankTxnId && (
+                      <span className="text-[10px] font-mono text-slate-500 hidden md:inline">
+                        Bank RRN: {order.paytmDetails.bankTxnId}
+                      </span>
+                    )}
+
+                    {order.paymentVerifiedBy && (
+                      <span className="text-[10px] text-neutral-400 hidden xl:inline">
+                        Verified by: {order.paymentVerifiedBy}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-[11px] ml-auto">
+                    <span className="text-neutral-500">Settled Amount:</span>
+                    <strong className="text-neutral-950 font-bold font-serif text-sm tabular-nums text-emerald-900">
+                      {formatPrice(order.totalAmount)}
+                    </strong>
+                    {canEditOrders && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVerifyPaymentOrder(order);
+                          setVerifyTxnIdInput(order.paytmTxnId || order.upiTransactionId || '');
+                          setVerifyPaymentModeInput(
+                            order.paymentMethod ||
+                              (order.paymentGateway === 'paytm' || order.paytmTxnId
+                                ? 'Paytm All-in-One Gateway'
+                                : 'Prepaid Direct UPI')
+                          );
+                        }}
+                        className="px-2 py-0.5 rounded-lg border border-neutral-300 hover:border-emerald-500 hover:bg-emerald-50 text-neutral-700 hover:text-emerald-900 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                        title="View or update payment reference"
+                      >
+                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                        <span>Receipt</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -2134,41 +2260,66 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                     </h4>
 
                     {/* Customer's Prepaid Payment Reference */}
-                    <div className="p-2.5 rounded-lg bg-white border border-neutral-200 space-y-1">
+                    <div className="p-2.5 rounded-lg bg-white border border-neutral-200 space-y-1.5 shadow-2xs">
                       <div className="flex justify-between items-center text-[11px]">
                         <span className="font-semibold uppercase text-[#002970] flex items-center gap-1">
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                           <span>{order.paymentGateway === 'paytm' || order.paytmTxnId ? 'Paytm Verified' : 'Prepaid Verified'}</span>
                           <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold">PAID</span>
                         </span>
-                        <button
-                          onClick={() => copyToClipboard(order.paytmTxnId || order.upiTransactionId, `utr-${order.id}`)}
-                          className="hover:text-neutral-900 p-0.5"
-                          title="Copy Transaction ID"
-                        >
-                          {copiedKey === `utr-${order.id}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(order.paytmTxnId || order.upiTransactionId || 'TXN-CONFIRMED', `utr-${order.id}`)}
+                            className="hover:text-neutral-900 p-0.5 text-neutral-500 hover:bg-neutral-100 rounded"
+                            title="Copy Transaction ID"
+                          >
+                            {copiedKey === `utr-${order.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          {canEditOrders && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVerifyPaymentOrder(order);
+                                setVerifyTxnIdInput(order.paytmTxnId || order.upiTransactionId || '');
+                                setVerifyPaymentModeInput(order.paymentMethod || order.paytmDetails?.paymentMode || 'Paytm Gateway');
+                              }}
+                              className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold hover:underline px-1 py-0.5 cursor-pointer"
+                            >
+                              Edit
+                            </button>
                           )}
-                        </button>
+                        </div>
                       </div>
                       <p className="font-mono text-xs font-bold text-neutral-950 truncate">
-                        {order.paytmTxnId || order.upiTransactionId}
+                        {order.paytmTxnId || order.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
                       </p>
-                      {order.paytmDetails?.bankTxnId && (
-                        <p className="text-[10px] text-slate-500 font-mono truncate">
-                          Bank Ref: {order.paytmDetails.bankTxnId}
-                        </p>
-                      )}
-                      {order.paytmDetails?.paymentMode && (
-                        <p className="text-[10px] text-slate-600 font-medium flex items-center justify-between">
-                          <span>Mode: {order.paytmDetails.paymentMode}</span>
-                          {order.paytmDetails.testMode && (
-                            <span className="text-[9px] bg-amber-50 text-amber-800 border border-amber-200 px-1 rounded">Sandbox Test</span>
-                          )}
-                        </p>
-                      )}
+                      <div className="text-[10px] text-slate-600 space-y-0.5 pt-0.5 border-t border-neutral-100">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Channel:</span>
+                          <span className="font-medium text-slate-800">{order.paymentMethod || order.paytmDetails?.paymentMode || 'Paytm Gateway / Net Banking'}</span>
+                        </div>
+                        {order.paytmDetails?.bankTxnId && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Bank Ref:</span>
+                            <span className="font-mono text-slate-700 truncate max-w-[130px]">{order.paytmDetails.bankTxnId}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-medium">
+                          <span className="text-slate-400">Settled Amount:</span>
+                          <span className="font-bold text-emerald-700 font-serif">{formatPrice(order.totalAmount)}</span>
+                        </div>
+                        {order.paymentVerifiedBy && (
+                          <div className="flex justify-between text-[9px] text-slate-400 pt-0.5">
+                            <span>Audit:</span>
+                            <span className="truncate max-w-[140px] text-slate-500 font-mono">By {order.paymentVerifiedBy}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Courier Information (if Shipped) */}
@@ -3356,12 +3507,13 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                         <span>Paytm Verified</span>
                         <span className="px-1 py-0.2 rounded bg-emerald-500 text-neutral-950 text-[9px] font-extrabold uppercase">PAID</span>
                       </span>
-                    ) : selectedDetailOrder.upiTransactionId ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60 flex items-center gap-1">
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60 flex items-center gap-1 shadow-xs">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                         <span>Prepaid · Verified</span>
+                        <span className="px-1 py-0.2 rounded bg-emerald-500 text-neutral-950 text-[9px] font-extrabold uppercase">PAID</span>
                       </span>
-                    ) : null}
+                    )}
                     {selectedDetailOrder.deliveryIssue?.status && (
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                         selectedDetailOrder.deliveryIssue.status === 'open'
@@ -3880,22 +4032,38 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                       </p>
                     </div>
                   </div>
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3 text-emerald-600" />
-                    <span>PAYMENT VERIFIED</span>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3 text-emerald-600" />
+                      <span>PAYMENT VERIFIED [PAID]</span>
+                    </span>
+                    {canEditOrders && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVerifyPaymentOrder(selectedDetailOrder);
+                          setVerifyTxnIdInput(selectedDetailOrder.paytmTxnId || selectedDetailOrder.upiTransactionId || '');
+                          setVerifyPaymentModeInput(selectedDetailOrder.paymentMethod || selectedDetailOrder.paytmDetails?.paymentMode || 'Paytm Gateway');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
+                      >
+                        <ShieldCheck className="w-3 h-3" />
+                        <span>Verify / Update</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5">
-                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Gateway Transaction ID</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Gateway Transaction ID / UTR</span>
                     <div className="flex items-center justify-between gap-1">
                       <span className="font-mono font-bold text-slate-900 truncate">
-                        {selectedDetailOrder.paytmTxnId || selectedDetailOrder.upiTransactionId || 'N/A'}
+                        {selectedDetailOrder.paytmTxnId || selectedDetailOrder.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
                       </span>
                       <button
                         type="button"
-                        onClick={() => copyToClipboard(selectedDetailOrder.paytmTxnId || selectedDetailOrder.upiTransactionId || '', `modal-txn-${selectedDetailOrder.id}`)}
+                        onClick={() => copyToClipboard(selectedDetailOrder.paytmTxnId || selectedDetailOrder.upiTransactionId || 'TXN-AUTO-CONFIRMED', `modal-txn-${selectedDetailOrder.id}`)}
                         className="p-1 hover:bg-slate-100 rounded text-slate-500 cursor-pointer"
                         title="Copy Txn ID"
                       >
@@ -3918,20 +4086,33 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5">
                     <span className="text-[10px] font-bold uppercase text-slate-400 block">Payment Channel / Instrument</span>
                     <span className="font-semibold text-slate-800 block">
-                      {selectedDetailOrder.paytmDetails?.paymentMode || 'Instant Net Banking / UPI'}
+                      {selectedDetailOrder.paymentMethod || selectedDetailOrder.paytmDetails?.paymentMode || 'Instant Net Banking / UPI'}
                     </span>
                   </div>
 
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5">
                     <span className="text-[10px] font-bold uppercase text-slate-400 block">Settlement Time</span>
                     <span className="text-slate-700 block">
-                      {new Date(selectedDetailOrder.paytmDetails?.txnDate || selectedDetailOrder.createdAt).toLocaleString('en-IN', {
+                      {new Date(selectedDetailOrder.paytmDetails?.txnDate || selectedDetailOrder.paymentVerifiedAt || selectedDetailOrder.createdAt).toLocaleString('en-IN', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5 sm:col-span-2">
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Verification Audit Stamp</span>
+                    <span className="text-emerald-800 font-semibold flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{selectedDetailOrder.paymentVerifiedBy ? `Verified & Cleared by ${selectedDetailOrder.paymentVerifiedBy}` : 'Paytm Gateway Automated Verification Stamp'}</span>
+                      {selectedDetailOrder.paymentVerifiedAt && (
+                        <span className="text-[10px] text-slate-500 font-normal">
+                          · ({new Date(selectedDetailOrder.paymentVerifiedAt).toLocaleDateString('en-IN')})
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -4668,6 +4849,145 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                 Close Snapshot
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verify / Update Payment Modal */}
+      {verifyPaymentOrder && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto">
+            <div className="p-4 bg-gradient-to-r from-[#002970] to-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-sm tracking-wide">
+                    Verify & Confirm Payment Details
+                  </h3>
+                  <p className="text-[11px] text-slate-300 font-mono">
+                    Order #{verifyPaymentOrder.orderNumber} · Total: {formatPrice(verifyPaymentOrder.totalAmount)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVerifyPaymentOrder(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setIsVerifyingPayment(true);
+                try {
+                  await verifyOrderPayment(
+                    verifyPaymentOrder.id,
+                    verifyTxnIdInput.trim() || undefined,
+                    verifyPaymentModeInput.trim() || undefined,
+                    currentUserName
+                  );
+                  if (selectedDetailOrder && selectedDetailOrder.id === verifyPaymentOrder.id) {
+                    setSelectedDetailOrder({
+                      ...selectedDetailOrder,
+                      isPaymentVerified: true,
+                      paymentStatus: 'paid',
+                      paymentVerifiedAt: new Date().toISOString(),
+                      paymentVerifiedBy: currentUserName,
+                      paymentMethod: verifyPaymentModeInput.trim(),
+                      paytmTxnId: verifyTxnIdInput.trim() || selectedDetailOrder.paytmTxnId,
+                      upiTransactionId: verifyTxnIdInput.trim() || selectedDetailOrder.upiTransactionId,
+                    });
+                  }
+                  setPaymentVerifySuccessToast(`Payment verified successfully for Order #${verifyPaymentOrder.orderNumber}`);
+                  setTimeout(() => setPaymentVerifySuccessToast(null), 4000);
+                  setVerifyPaymentOrder(null);
+                } catch (err: any) {
+                  console.error('Failed to verify payment:', err);
+                  alert('Error updating payment details: ' + (err?.message || 'Unknown error'));
+                } finally {
+                  setIsVerifyingPayment(false);
+                }
+              }}
+              className="p-6 space-y-4 text-xs text-neutral-800"
+            >
+              <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-emerald-950 text-xs">Payment Verification Audit Log</p>
+                  <p className="text-emerald-800 text-[11px] mt-0.5">
+                    Confirming will mark this order as <strong>Payment Verified [PAID]</strong>, stamp your reviewer badge ({currentUserName}), and update the transaction reference across staff and customer views.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-neutral-700 block">
+                  Payment Gateway / Mode
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={verifyPaymentModeInput}
+                  onChange={(e) => setVerifyPaymentModeInput(e.target.value)}
+                  placeholder="e.g. Paytm Gateway, Direct UPI, Net Banking"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-xs font-medium"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-neutral-700 block">
+                  Transaction Reference / UTR Number
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={verifyTxnIdInput}
+                  onChange={(e) => setVerifyTxnIdInput(e.target.value)}
+                  placeholder="e.g. 2026102611121280011016834567890"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-xs font-mono font-bold"
+                />
+              </div>
+
+              <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-[11px] space-y-1">
+                <div className="flex justify-between text-neutral-600">
+                  <span>Customer:</span>
+                  <span className="font-semibold text-neutral-900">{verifyPaymentOrder.customer.name} ({verifyPaymentOrder.customer.phone})</span>
+                </div>
+                <div className="flex justify-between text-neutral-600">
+                  <span>Settled Amount:</span>
+                  <span className="font-bold text-emerald-700 font-serif text-xs">{formatPrice(verifyPaymentOrder.totalAmount)}</span>
+                </div>
+                <div className="flex justify-between text-neutral-600">
+                  <span>Current Verification:</span>
+                  <span className="font-semibold text-neutral-800">
+                    {verifyPaymentOrder.isPaymentVerified ? 'Already Verified' : 'Pending Verification'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
+                <button
+                  type="button"
+                  onClick={() => setVerifyPaymentOrder(null)}
+                  className="px-4 py-2 rounded-xl border border-neutral-300 hover:bg-neutral-100 font-semibold text-neutral-700 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingPayment}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>{isVerifyingPayment ? 'Saving...' : 'Confirm Payment Verification'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

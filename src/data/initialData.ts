@@ -759,6 +759,12 @@ export const INITIAL_ORDERS: Order[] = [
     resellerBusinessName: 'Sri Meenakshi Silks & Sarees',
     resellerName: 'Meenakshi Sundaram',
     upiTransactionId: 'UPI983471029384',
+    paymentGateway: 'upi_manual',
+    paymentStatus: 'paid',
+    isPaymentVerified: true,
+    paymentVerifiedAt: '2026-10-25T11:40:00.000Z',
+    paymentVerifiedBy: 'Kavitha M (Atelier Concierge)',
+    paymentMethod: 'Prepaid Direct UPI',
     refundDetails: {
       refundStatus: 'not_required',
     },

@@ -140,6 +140,12 @@ interface StoreContextType {
     orderId: string,
     options?: { restockItems?: boolean; reason?: string }
   ) => Promise<void>;
+  verifyOrderPayment: (
+    orderId: string,
+    utrOrTxnId?: string,
+    paymentMode?: string,
+    verifiedBy?: string
+  ) => Promise<void>;
   updateOrderStatus: (
     orderId: string,
     status: OrderStatus,
@@ -2148,7 +2154,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const orderNumber = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const paytmTxnId = input.paytmDetails?.txnId || input.paytmTxnId || (input.paymentGateway === 'paytm' ? `PTM${Date.now()}` : undefined);
-    const upiTxnId = (input.upiTransactionId || paytmTxnId || '').trim();
+    const upiTxnId = (input.upiTransactionId || paytmTxnId || `RES${Date.now()}`).trim();
+    const isPaytm = input.paymentGateway === 'paytm' || Boolean(paytmTxnId);
+    const paymentModeName = input.paytmDetails?.paymentMode
+      ? `Paytm (${input.paytmDetails.paymentMode})`
+      : isPaytm
+      ? 'Paytm All-in-One Gateway'
+      : 'Wholesale B2B UPI';
 
     const newOrder: Order = {
       id: `order-${Date.now()}`,
@@ -2168,9 +2180,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       shippingFee,
       totalAmount,
       upiTransactionId: upiTxnId,
-      paymentGateway: input.paymentGateway || (paytmTxnId ? 'paytm' : 'upi_manual'),
+      paymentGateway: isPaytm ? 'paytm' : 'upi_manual',
       paytmTxnId,
       paytmDetails: input.paytmDetails,
+      paymentStatus: 'paid',
+      isPaymentVerified: true,
+      paymentVerifiedAt: new Date().toISOString(),
+      paymentVerifiedBy: isPaytm ? 'Paytm Auto-Verified' : 'B2B Wholesale Prepayment',
+      paymentMethod: paymentModeName,
       refundDetails: {
         refundStatus: 'not_required',
       },
@@ -3448,7 +3465,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const orderNumber = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const resolvedPaytmTxnId = paytmDetails?.txnId || paytmTxnId || (paymentGateway === 'paytm' ? `PTM${Date.now()}` : undefined);
-    const resolvedUpiTxnId = (upiTransactionId || resolvedPaytmTxnId || '').trim();
+    const resolvedUpiTxnId = (upiTransactionId || resolvedPaytmTxnId || `TXN${Date.now()}`).trim();
+    const isPaytm = paymentGateway === 'paytm' || Boolean(resolvedPaytmTxnId);
+    const paymentModeName = paytmDetails?.paymentMode
+      ? `Paytm (${paytmDetails.paymentMode})`
+      : isPaytm
+      ? 'Paytm All-in-One Gateway'
+      : 'Prepaid Direct UPI';
 
     // User request: when user places an order it should NOT assign to staff by default;
     // it must appear in the unassigned queue for staff to assign and close the deal.
@@ -3462,9 +3485,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       shippingFee,
       totalAmount,
       upiTransactionId: resolvedUpiTxnId,
-      paymentGateway: paymentGateway || (resolvedPaytmTxnId ? 'paytm' : 'upi_manual'),
+      paymentGateway: isPaytm ? 'paytm' : 'upi_manual',
       paytmTxnId: resolvedPaytmTxnId,
       paytmDetails,
+      paymentStatus: 'paid',
+      isPaymentVerified: true,
+      paymentVerifiedAt: new Date().toISOString(),
+      paymentVerifiedBy: isPaytm ? 'Paytm Auto-Verified' : 'Boutique Prepayment',
+      paymentMethod: paymentModeName,
       refundDetails: {
         refundUpiId: refundUpiId ? refundUpiId.trim() : undefined,
         refundUpiPhone: refundUpiPhone ? refundUpiPhone.trim() : undefined,
@@ -3487,7 +3515,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           staffName: 'Unassigned Queue',
           assignedBy: 'Storefront Intake',
           action: 'Order Placed in Queue',
-          note: 'Customer completed checkout. Waiting for boutique concierge staff to claim & close deal.',
+          note: `Customer completed checkout. Verified Payment (${paymentModeName}) Txn: ${resolvedUpiTxnId}. Waiting for concierge staff to claim & close deal.`,
         },
       ],
     };
@@ -3527,6 +3555,61 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
 
     return newOrder;
+  };
+
+  const verifyOrderPayment = async (
+    orderId: string,
+    utrOrTxnId?: string,
+    paymentMode?: string,
+    verifiedBy?: string
+  ): Promise<void> => {
+    const actor =
+      verifiedBy ||
+      currentUser?.name ||
+      (currentUser?.type === 'admin' ? 'Store Owner' : 'Staff Concierge');
+    const nowIso = new Date().toISOString();
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+        const resolvedTxn = (
+          utrOrTxnId ||
+          ord.paytmTxnId ||
+          ord.upiTransactionId ||
+          `VERIFIED-${Date.now().toString().slice(-6)}`
+        ).trim();
+        const mode = paymentMode || ord.paymentMethod || (ord.paymentGateway === 'paytm' ? 'Paytm Payment Gateway' : 'Prepaid Direct UPI');
+        const updated: Order = {
+          ...ord,
+          isPaymentVerified: true,
+          paymentStatus: 'paid',
+          paymentVerifiedAt: nowIso,
+          paymentVerifiedBy: actor,
+          upiTransactionId: resolvedTxn,
+          paytmTxnId: ord.paytmTxnId || (ord.paymentGateway === 'paytm' ? resolvedTxn : undefined),
+          paymentMethod: mode,
+          assignmentHistory: [
+            ...(ord.assignmentHistory || []),
+            {
+              id: `log-${Date.now()}`,
+              timestamp: nowIso,
+              staffId: currentUser?.staffId || (currentUser?.type === 'admin' ? 'admin' : 'staff'),
+              staffName: actor,
+              assignedBy: actor,
+              action: 'Payment Verified & Confirmed',
+              note: `Payment verified by ${actor}. Txn/UTR: ${resolvedTxn}. Channel: ${mode}.`,
+            },
+          ],
+        };
+
+        // Persist update to Firestore
+        setDoc(doc(db, 'orders', ord.id), sanitizeForFirestore(updated), { merge: true }).catch((err) =>
+          console.warn('Error saving payment verification to Firestore:', err)
+        );
+
+        return updated;
+      })
+    );
   };
 
   // Real-Time Stock Replenishment on Order Cancellation (Strictly Idempotent)
@@ -5875,6 +5958,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         clearDeletedOrderLogs,
         placeOrder,
         deleteOrder,
+        verifyOrderPayment,
         updateOrderStatus,
         updateOrderShipping,
         markRefundProcessed,

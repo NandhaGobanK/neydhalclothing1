@@ -327,6 +327,8 @@ export interface OrderChatMessage {
   readByStaff?: boolean;
 }
 
+export type PaymentStatus = 'paid' | 'verified' | 'pending' | 'failed' | 'refunded';
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -340,6 +342,11 @@ export interface Order {
   paymentGateway?: 'paytm' | 'upi_manual';
   paytmTxnId?: string;
   paytmDetails?: PaytmTransactionDetails;
+  paymentStatus?: PaymentStatus; // 'paid' | 'verified' | 'pending' | 'failed' | 'refunded'
+  isPaymentVerified?: boolean; // Explicit verification flag
+  paymentVerifiedAt?: string; // Verification timestamp
+  paymentVerifiedBy?: string; // Staff name, "Store Owner", or "Paytm Gateway"
+  paymentMethod?: string; // Friendly payment method name e.g. "Paytm Gateway", "UPI"
   refundDetails: RefundDetails;
   shippingDetails?: ShippingDetails;
   status: OrderStatus;

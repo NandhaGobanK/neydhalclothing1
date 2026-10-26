@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
-import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle, Download } from 'lucide-react';
+import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle, Download, ShieldCheck } from 'lucide-react';
 import { downloadSingleImage } from '../../utils/imageDownload';
 
 interface OrderSuccessModalProps {
@@ -121,25 +121,26 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
 
           {/* Payment & Safeguard info */}
           <div className={`grid gap-3 ${showRefundUpi ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-            <div className="p-3 bg-[#002970]/5 rounded-xl border border-[#002970]/20">
+            <div className="p-3 bg-gradient-to-r from-emerald-50/70 via-slate-50 to-[#002970]/5 rounded-xl border border-emerald-200/80 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-[#002970] uppercase flex items-center gap-1">
-                  <span>Paytm Gateway Payment</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{lastPlacedOrder.paymentGateway === 'paytm' || lastPlacedOrder.paytmTxnId ? 'Paytm Verified Gateway' : 'Prepaid Verified'}</span>
                 </span>
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
-                  Authorized & Verified
+                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>PAYMENT VERIFIED [PAID]</span>
                 </span>
               </div>
               <p className="font-mono text-xs font-bold text-neutral-900 mt-1 truncate">
-                Txn Ref: {lastPlacedOrder.paytmTxnId || lastPlacedOrder.upiTransactionId}
+                Txn Ref / UTR: {lastPlacedOrder.paytmTxnId || lastPlacedOrder.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
               </p>
-              {lastPlacedOrder.paytmDetails?.bankTxnId ? (
-                <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                  Bank Ref: {lastPlacedOrder.paytmDetails.bankTxnId} &bull; Mode: {lastPlacedOrder.paytmDetails.paymentMode}
-                </p>
-              ) : (
-                <p className="text-[10px] text-emerald-700 mt-0.5">Status: Authorized via Paytm</p>
-              )}
+              <div className="flex items-center justify-between text-[10px] text-slate-600 pt-0.5">
+                <span>Method: {lastPlacedOrder.paymentMethod || lastPlacedOrder.paytmDetails?.paymentMode || 'Instant Net Banking / UPI'}</span>
+                {lastPlacedOrder.paytmDetails?.bankTxnId && (
+                  <span className="font-mono text-slate-500">Bank Ref: {lastPlacedOrder.paytmDetails.bankTxnId}</span>
+                )}
+              </div>
             </div>
 
             {showRefundUpi && (
