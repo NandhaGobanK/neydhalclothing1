@@ -17,6 +17,10 @@ export function formatPrice(amount: number): string {
 export function getPublicStoreUrl(settings?: StoreSettings): string {
   if (settings?.customStoreDomain && settings.customStoreDomain.trim()) {
     let domain = settings.customStoreDomain.trim();
+    // Upgrade legacy domain neydhal-smoky.vercel.app to official neydhalclothing.in
+    if (domain.includes('neydhal-smoky') || domain.includes('neydhal-smoky.vercel.app')) {
+      domain = 'https://neydhalclothing.in';
+    }
     if (!domain.startsWith('http://') && !domain.startsWith('https://')) {
       domain = `https://${domain}`;
     }
@@ -26,6 +30,9 @@ export function getPublicStoreUrl(settings?: StoreSettings): string {
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_PUBLIC_STORE_URL) {
     let envDomain = String(import.meta.env.VITE_PUBLIC_STORE_URL).trim();
     if (envDomain) {
+      if (envDomain.includes('neydhal-smoky')) {
+        envDomain = 'https://neydhalclothing.in';
+      }
       if (!envDomain.startsWith('http://') && !envDomain.startsWith('https://')) {
         envDomain = `https://${envDomain}`;
       }
@@ -33,11 +40,11 @@ export function getPublicStoreUrl(settings?: StoreSettings): string {
     }
   }
 
-  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+  if (typeof window !== 'undefined' && window.location && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('run.app')) {
     return window.location.origin;
   }
 
-  return '';
+  return 'https://neydhalclothing.in';
 }
 
 /**

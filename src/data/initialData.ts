@@ -291,9 +291,9 @@ export const INITIAL_SETTINGS: StoreSettings = {
   productAttributes: DEFAULT_PRODUCT_ATTRIBUTES,
   isFabricOptional: true,
   autoConfirmationMode: false,
-  tagline: 'Pure Handloom Silk & Heirloom Sarees',
-  contactPhone: '+91 98765 43210',
-  contactEmail: 'nandhagoban21@gmail.com',
+  tagline: "Women's Sarees, Kurtis, Blouses & Imitation Jewellery",
+  contactPhone: '+91 88073 92520',
+  contactEmail: 'neydhalclothing247@gmail.com',
   instagramHandle: '@neydhal',
   youtubeHandle: '@neydhal',
   storeAddress: '12 Temple Street, Kanchipuram & Salem Silk Bazaar, Tamil Nadu',
@@ -359,7 +359,7 @@ export const INITIAL_SETTINGS: StoreSettings = {
   resellerLoginDisplay: DEFAULT_RESELLER_LOGIN_DISPLAY,
   adminPin: '889988', // 6-digit access PIN
   adminGoogleEmail: 'nandhagoban21@gmail.com',
-  customStoreDomain: '', // Custom domain or Vercel URL
+  customStoreDomain: 'https://neydhalclothing.in', // Official custom domain
   courierServices: [
     {
       id: 'courier-dtdc-salem',

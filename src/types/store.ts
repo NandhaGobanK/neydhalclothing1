@@ -638,7 +638,7 @@ export interface StoreSettings {
   adminPin: string; // 6-digit access PIN
   adminGoogleEmail?: string; // Designated Google Account email for Owner/Admin
   adminOnlineStatus?: AdminOnlineStatus; // Live status of store admin / owner
-  customStoreDomain?: string; // Custom domain or Vercel URL (e.g. https://aara-heritage.vercel.app)
+  customStoreDomain?: string; // Custom domain (e.g. https://neydhalclothing.in)
   ordersSpreadsheetId?: string;
   ordersSpreadsheetUrl?: string;
   analyticsSpreadsheetId?: string;
@@ -657,3 +657,12 @@ export interface StoreSettings {
   isFreshBrandNew?: boolean; // True when reset to clean fresh state
   lastResetAt?: string; // Timestamp of latest fresh reset
 }
+
+export const PAYTM_TEST_CREDENTIALS = {
+  websiteUrl: 'https://neydhalclothing.in',
+  username: 'paytm_tester@neydhalclothing.in',
+  alternativeUsername: 'paytm_tester',
+  password: 'PaytmTest@2026',
+  phone: '9876500001',
+  customerName: 'Paytm Verification Tester',
+};

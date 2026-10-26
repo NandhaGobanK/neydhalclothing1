@@ -14,7 +14,25 @@ import {
   ArrowRight,
   UserPlus,
   LogIn,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  Key,
+  Globe,
+  FileText,
+  RotateCcw,
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp,
+  MessageCircle,
+  Mail,
+  ExternalLink,
+  X,
+  HelpCircle,
 } from 'lucide-react';
+import { PAYTM_TEST_CREDENTIALS } from '../../types/store';
+import { LEGAL_POLICIES, STORE_CONTACT_DETAILS, PolicySection } from '../../data/legalPolicies';
 
 interface CustomerLoginPageProps {
   onSuccess?: () => void;
@@ -24,6 +42,7 @@ interface CustomerLoginPageProps {
 export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess, onOpenAdmin }) => {
   const {
     settings,
+    customerLogin,
     customerLoginWithGoogle,
     setIsResellerPortalOpen,
   } = useStore();
@@ -33,6 +52,81 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
   const [unregisteredNotice, setUnregisteredNotice] = useState<{ email: string; displayName?: string } | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState<{ name: string; phone: string; email?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Inline Collapsible Legal Policy State
+  const [activePolicyTab, setActivePolicyTab] = useState<'terms' | 'refund' | 'privacy' | null>(null);
+  const [copiedPolicyText, setCopiedPolicyText] = useState(false);
+
+  const togglePolicy = (tab: 'terms' | 'refund' | 'privacy') => {
+    setActivePolicyTab((prev) => (prev === tab ? null : tab));
+  };
+
+  const handleCopyPolicy = (policy: PolicySection) => {
+    const fullText = `${policy.title} - ${STORE_CONTACT_DETAILS.businessName}\nLast Updated: ${policy.lastUpdated}\n\n${policy.highlightNote || ''}\n\n` +
+      policy.clauses.map((c) => `${c.heading}\n${c.content}\n${c.bullets ? c.bullets.map((b) => ` • ${b}`).join('\n') + '\n' : ''}`).join('\n') +
+      `\n\nContact Store Staff: Phone/WhatsApp: ${STORE_CONTACT_DETAILS.formattedPhone} | Email: ${STORE_CONTACT_DETAILS.email}`;
+    navigator.clipboard.writeText(fullText);
+    setCopiedPolicyText(true);
+    setTimeout(() => setCopiedPolicyText(false), 2500);
+  };
+
+  // Testing & Credentials State (Paytm Reviewer & Customer Login)
+  const [loginUsername, setLoginUsername] = useState(PAYTM_TEST_CREDENTIALS.username);
+  const [loginPassword, setLoginPassword] = useState(PAYTM_TEST_CREDENTIALS.password);
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedTestField, setCopiedTestField] = useState<string | null>(null);
+
+  const copyTestField = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedTestField(fieldName);
+    setTimeout(() => setCopiedTestField(null), 2000);
+  };
+
+  const handleCredentialsSignIn = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setErrorMsg('');
+    setUnregisteredNotice(null);
+    if (!loginUsername.trim()) {
+      setErrorMsg('Please enter your username or email address.');
+      return;
+    }
+    if (!loginPassword) {
+      setErrorMsg('Please enter your password.');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await customerLogin(loginUsername.trim(), loginPassword);
+      if (res.success) {
+        onSuccess?.();
+      } else {
+        setErrorMsg(res.error || 'Invalid credentials.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Login failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQuickPaytmTestLogin = async () => {
+    setLoginUsername(PAYTM_TEST_CREDENTIALS.username);
+    setLoginPassword(PAYTM_TEST_CREDENTIALS.password);
+    setErrorMsg('');
+    setIsLoading(true);
+    try {
+      const res = await customerLogin(PAYTM_TEST_CREDENTIALS.username, PAYTM_TEST_CREDENTIALS.password);
+      if (res.success) {
+        onSuccess?.();
+      } else {
+        setErrorMsg(res.error || 'Paytm test login could not be completed.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Paytm test login failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Mandatory registration inputs
   const [regName, setRegName] = useState('');
@@ -448,14 +542,174 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
               </div>
             ) : authMode === 'signin' ? (
               <div className="space-y-4 pt-1">
+                {/* Paytm Website Verification Test Credentials Card */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-950/80 via-purple-950/80 to-[#190325] border-2 border-[#00BAF2]/40 text-left space-y-3 shadow-md">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#00BAF2]/20 text-[#38d4ff] text-[10px] font-bold uppercase tracking-wider border border-[#00BAF2]/30">
+                      <Sparkles className="w-3 h-3 text-[#38d4ff]" />
+                      <span>Paytm Channel Verification</span>
+                    </span>
+                    <span className="text-[10px] text-amber-300 font-medium">
+                      Storefront Test Credentials
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-purple-200/90 leading-snug">
+                    Provide these test credentials to Paytm under <strong>Add Channels &gt; Website Verification</strong>:
+                  </p>
+
+                  <div className="space-y-2 text-xs">
+                    {/* Website Link */}
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-purple-500/20">
+                      <div className="min-w-0 pr-2">
+                        <span className="text-[9px] uppercase tracking-wider text-purple-300 block font-semibold">
+                          Website Link *
+                        </span>
+                        <span className="font-mono text-xs text-white truncate block">
+                          {PAYTM_TEST_CREDENTIALS.websiteUrl}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copyTestField(PAYTM_TEST_CREDENTIALS.websiteUrl, 'website')}
+                        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-white/10 hover:bg-white/20 text-purple-200 transition shrink-0 cursor-pointer"
+                      >
+                        {copiedTestField === 'website' ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+
+                    {/* Username */}
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-purple-500/20">
+                      <div className="min-w-0 pr-2">
+                        <span className="text-[9px] uppercase tracking-wider text-purple-300 block font-semibold">
+                          Username *
+                        </span>
+                        <span className="font-mono text-xs text-amber-300 truncate block">
+                          {PAYTM_TEST_CREDENTIALS.username}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copyTestField(PAYTM_TEST_CREDENTIALS.username, 'username')}
+                        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-white/10 hover:bg-white/20 text-purple-200 transition shrink-0 cursor-pointer"
+                      >
+                        {copiedTestField === 'username' ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+
+                    {/* Password */}
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-purple-500/20">
+                      <div className="min-w-0 pr-2">
+                        <span className="text-[9px] uppercase tracking-wider text-purple-300 block font-semibold">
+                          Password *
+                        </span>
+                        <span className="font-mono text-xs text-amber-300 truncate block">
+                          {PAYTM_TEST_CREDENTIALS.password}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copyTestField(PAYTM_TEST_CREDENTIALS.password, 'password')}
+                        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-white/10 hover:bg-white/20 text-purple-200 transition shrink-0 cursor-pointer"
+                      >
+                        {copiedTestField === 'password' ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleQuickPaytmTestLogin}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition cursor-pointer active:scale-98"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>{isLoading ? 'Signing In...' : '1-Click Sign In as Paytm Tester'}</span>
+                  </button>
+                </div>
+
+                {/* Form 1: Username & Password Sign In */}
+                <form onSubmit={handleCredentialsSignIn} className="space-y-3 pt-1 text-left">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1 flex items-center justify-between">
+                      <span>Username or Email</span>
+                      <span className="text-[10px] text-neutral-400 font-normal">Registered patron or test user</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
+                        <User className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={loginUsername}
+                        onChange={(e) => setLoginUsername(e.target.value)}
+                        placeholder="paytm_tester@neydhalclothing.in or Phone"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1 flex items-center justify-between">
+                      <span>Password</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="text-[10px] text-amber-300 hover:text-amber-200 font-medium lowercase"
+                      >
+                        {showPassword ? 'hide' : 'show'}
+                      </button>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
+                        <Lock className="w-4 h-4" />
+                      </span>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="Enter password"
+                        className="w-full pl-9 pr-10 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-200"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-60 active:scale-98"
+                  >
+                    <Key className="w-4 h-4" />
+                    <span>{isLoading ? 'Signing In...' : 'Sign In with Password'}</span>
+                  </button>
+                </form>
+
+                {/* Divider */}
+                <div className="relative flex py-1 items-center">
+                  <div className="grow border-t border-purple-400/20"></div>
+                  <span className="shrink mx-3 text-[10px] uppercase font-bold text-purple-300/60 tracking-wider">
+                    Or Continue With
+                  </span>
+                  <div className="grow border-t border-purple-400/20"></div>
+                </div>
+
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
                   disabled={isLoading}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-sm flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transition cursor-pointer disabled:opacity-60 active:scale-[0.99]"
+                  className="w-full py-3 px-4 rounded-xl bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-xs sm:text-sm flex items-center justify-center gap-3 shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-60 active:scale-[0.99]"
                 >
                   {/* Official Google G Logo */}
-                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
                     <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
                     <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
@@ -463,15 +717,6 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                   </svg>
                   <span>{isLoading ? 'Authenticating with Google...' : 'Sign In with Google'}</span>
                 </button>
-
-                <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-center space-y-1">
-                  <p className="text-[11px] text-amber-200/90 font-medium">
-                    Verified Google Patron Authentication
-                  </p>
-                  <p className="text-[10px] text-neutral-400">
-                    Verifies against our registered patrons database before granting catalog access.
-                  </p>
-                </div>
 
                 <div className="text-center pt-2">
                   <p className="text-xs text-neutral-400">
@@ -574,27 +819,328 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
         </div>
       </main>
 
-      {/* Footer info strictly for patrons with secret discreet B2B and Admin access */}
-      <footer className="relative z-10 max-w-7xl mx-auto w-full px-4 py-4 text-xs text-neutral-400 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-2">
-        <p className="text-[11px]">
-          <span
-            onClick={triggerSecretAdminLogin}
-            className="cursor-default select-none hover:text-neutral-300"
-            title="Atelier Protected System"
-          >
-            ©
-          </span>{' '}
-          {new Date().getFullYear()} {settings.boutiqueName}. Pure Handloom Heritage Atelier. All rights reserved.
-        </p>
-        <button
-          type="button"
-          onClick={openResellerPortal}
-          className="text-[11px] text-neutral-400 hover:text-neutral-200 inline-flex items-center gap-1.5 cursor-pointer transition select-none active:opacity-75"
-          title="B2B"
-        >
-          <Store className="w-3.5 h-3.5 text-neutral-400" />
-          <span>B2B</span>
-        </button>
+      {/* Footer with inline collapsible Terms & Conditions, Refund Policy, and Privacy Policy */}
+      <footer className="relative z-10 max-w-7xl mx-auto w-full px-4 pt-6 pb-8 text-xs text-neutral-300 border-t border-purple-500/20 space-y-4">
+        {/* Policy Trigger Navigation Buttons */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-[#170220]/80 p-3 sm:p-4 rounded-2xl border border-purple-400/20 backdrop-blur-md">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-purple-300/80 mr-1 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Policies:</span>
+            </span>
+
+            {/* 1. Terms of Service Button */}
+            <button
+              type="button"
+              onClick={() => togglePolicy('terms')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 border ${
+                activePolicyTab === 'terms'
+                  ? 'bg-amber-500 text-neutral-950 border-amber-400 shadow-md font-bold'
+                  : 'bg-white/5 hover:bg-white/10 text-white border-white/10 hover:border-purple-400/40'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Terms of Service</span>
+              {activePolicyTab === 'terms' ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+              )}
+            </button>
+
+            {/* 2. Refund Policy Button with Highlight Badge */}
+            <button
+              type="button"
+              onClick={() => togglePolicy('refund')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 border ${
+                activePolicyTab === 'refund'
+                  ? 'bg-rose-500 text-white border-rose-400 shadow-md font-bold'
+                  : 'bg-white/5 hover:bg-white/10 text-white border-white/10 hover:border-purple-400/40'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-300" />
+              <span>Refund & Return Policy</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-rose-500/30 text-rose-200 border border-rose-400/40 font-bold uppercase tracking-wider">
+                No Returns
+              </span>
+              {activePolicyTab === 'refund' ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+              )}
+            </button>
+
+            {/* 3. Privacy Policy Button */}
+            <button
+              type="button"
+              onClick={() => togglePolicy('privacy')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 border ${
+                activePolicyTab === 'privacy'
+                  ? 'bg-amber-500 text-neutral-950 border-amber-400 shadow-md font-bold'
+                  : 'bg-white/5 hover:bg-white/10 text-white border-white/10 hover:border-purple-400/40'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Privacy Policy</span>
+              {activePolicyTab === 'privacy' ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+              )}
+            </button>
+          </div>
+
+          {/* Quick Staff Concierge Contact Pill */}
+          <div className="flex items-center gap-2 text-[11px] text-purple-200">
+            <span className="hidden md:inline text-purple-300/70">Store Concierge:</span>
+            <a
+              href={`https://wa.me/91${STORE_CONTACT_DETAILS.phone}?text=${encodeURIComponent(
+                'Namaste! I am reaching out to Neydhal store staff regarding customer policies and order assistance.'
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/30 font-medium transition"
+              title="Message Store Staff on WhatsApp"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+              <span>WhatsApp: {STORE_CONTACT_DETAILS.phone}</span>
+            </a>
+            <a
+              href={`mailto:${STORE_CONTACT_DETAILS.email}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-600/20 hover:bg-sky-600/40 text-sky-300 border border-sky-500/30 font-medium transition"
+              title="Email Store Staff"
+            >
+              <Mail className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">{STORE_CONTACT_DETAILS.email}</span>
+            </a>
+          </div>
+        </div>
+
+        {/* INLINE EXPANDED COLLAPSIBLE POLICY CARD */}
+        {activePolicyTab && (
+          <div className="p-5 sm:p-7 rounded-3xl bg-[#1d0328]/95 border-2 border-purple-400/30 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-200 space-y-5 text-left">
+            {/* Expanded Policy Header with Switcher Tabs and Close Action */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-purple-500/20">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-[10px] font-bold uppercase tracking-wider">
+                    {LEGAL_POLICIES[activePolicyTab].badge || 'Customer Policy'}
+                  </span>
+                  <span className="text-[11px] text-purple-300">
+                    Last Updated: {LEGAL_POLICIES[activePolicyTab].lastUpdated}
+                  </span>
+                </div>
+                <h3 className="font-serif text-2xl sm:text-3xl font-bold text-white">
+                  {LEGAL_POLICIES[activePolicyTab].title}
+                </h3>
+                <p className="text-xs text-purple-200/80">
+                  {LEGAL_POLICIES[activePolicyTab].shortDescription}
+                </p>
+              </div>
+
+              {/* Policy Switcher Tabs & Close Button */}
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <div className="inline-flex p-1 bg-black/40 rounded-xl border border-purple-500/20">
+                  <button
+                    type="button"
+                    onClick={() => setActivePolicyTab('terms')}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition cursor-pointer ${
+                      activePolicyTab === 'terms'
+                        ? 'bg-amber-500 text-neutral-950 font-bold'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    Terms
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePolicyTab('refund')}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition cursor-pointer ${
+                      activePolicyTab === 'refund'
+                        ? 'bg-rose-500 text-white font-bold'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    Refunds
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePolicyTab('privacy')}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition cursor-pointer ${
+                      activePolicyTab === 'privacy'
+                        ? 'bg-amber-500 text-neutral-950 font-bold'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    Privacy
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleCopyPolicy(LEGAL_POLICIES[activePolicyTab])}
+                  className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
+                  title="Copy full policy text to clipboard"
+                >
+                  {copiedPolicyText ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-neutral-300" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActivePolicyTab(null)}
+                  className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition cursor-pointer"
+                  title="Close policy viewer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* High-Visibility Callout Box */}
+            {activePolicyTab === 'refund' ? (
+              <div className="p-4 rounded-2xl bg-rose-950/70 border-2 border-rose-500/50 text-rose-100 text-xs space-y-3 shadow-lg">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-sm text-white uppercase tracking-wider">
+                        Clear Declaration: Strict No Returns Policy
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-rose-500/30 text-rose-200 text-[10px] font-bold">
+                        Non-Returnable Once Received
+                      </span>
+                    </div>
+                    <p className="text-rose-200/90 leading-relaxed text-[11.5px]">
+                      Neydhal Clothing follows a strict <strong>NO RETURNS and NO REFUNDS policy on all products once the customer has received the parcel</strong> (including all sarees, kurtis, blouses, and imitation jewellery).
+                    </p>
+                    <p className="text-rose-200/90 leading-relaxed text-[11.5px]">
+                      <strong>Order Cancellations:</strong> Any order can be cancelled directly by the customer <strong>before shipping</strong> for an immediate 100% refund.
+                    </p>
+                    <p className="text-amber-200 leading-relaxed text-[11px] pt-1 border-t border-rose-800/60">
+                      <strong>Damaged in Transit or Defective:</strong> If an item arrives damaged from courier transit, patrons must contact store staff within 24–48 hours with an uncut <strong>WhatsApp video</strong> of the outer packaging opening.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Direct Store Staff Contact Action Row */}
+                <div className="pt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-[11px] text-rose-300 font-semibold">Contact Store Staff:</span>
+                  <a
+                    href={`https://wa.me/91${STORE_CONTACT_DETAILS.phone}?text=${encodeURIComponent(
+                      'Hello Neydhal Clothing staff, I need assistance regarding a delivered order damage / query. Here is my unboxing video:'
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-xs"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>Send WhatsApp Video to {STORE_CONTACT_DETAILS.phone}</span>
+                  </a>
+                  <a
+                    href={`mailto:${STORE_CONTACT_DETAILS.email}?subject=${encodeURIComponent(
+                      'Order Assistance / Transit Query'
+                    )}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-700 hover:bg-sky-600 text-white font-medium transition"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>{STORE_CONTACT_DETAILS.email}</span>
+                  </a>
+                  <a
+                    href={`tel:${STORE_CONTACT_DETAILS.phone}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium transition"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>Call {STORE_CONTACT_DETAILS.phone}</span>
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-400/30 text-amber-200 text-xs flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-[11.5px] leading-relaxed">
+                  {LEGAL_POLICIES[activePolicyTab].highlightNote}
+                </p>
+              </div>
+            )}
+
+            {/* Structured Clauses List */}
+            <div className="space-y-4 pt-1 divide-y divide-purple-500/15">
+              {LEGAL_POLICIES[activePolicyTab].clauses.map((clause, idx) => (
+                <div key={idx} className={idx > 0 ? 'pt-4 space-y-1.5' : 'space-y-1.5'}>
+                  <h4 className="font-serif text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                    <span className="text-amber-400 font-mono text-sm">{idx + 1}.</span>
+                    <span>{clause.heading.replace(/^\d+\.\s*/, '')}</span>
+                  </h4>
+                  <p className="text-xs text-purple-100/85 leading-relaxed">
+                    {clause.content}
+                  </p>
+                  {clause.bullets && clause.bullets.length > 0 && (
+                    <ul className="space-y-1 pt-1 pl-4 text-xs text-purple-200/80 list-disc">
+                      {clause.bullets.map((bullet, bIdx) => (
+                        <li key={bIdx} className="leading-relaxed">
+                          {bullet}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Policy Bottom Bar with Collapse Button */}
+            <div className="pt-3 border-t border-purple-500/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-purple-300">
+              <p className="text-[11px]">
+                Official policy for <strong>{STORE_CONTACT_DETAILS.businessName}</strong> ({STORE_CONTACT_DETAILS.website}).
+              </p>
+              <button
+                type="button"
+                onClick={() => setActivePolicyTab(null)}
+                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span>Collapse Policy View</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Copyright and B2B Access Row */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-[11px] text-neutral-400">
+          <p>
+            <span
+              onClick={triggerSecretAdminLogin}
+              className="cursor-default select-none hover:text-neutral-300"
+              title="Atelier Protected System"
+            >
+              ©
+            </span>{' '}
+            {new Date().getFullYear()} {settings.boutiqueName || 'Neydhal'}. Online Retail Boutique for Women's Sarees, Kurtis, Blouses & Imitation Jewellery. All rights reserved.
+          </p>
+          <div className="flex items-center gap-3">
+            <span className="text-neutral-500 text-[10px]">
+              Support: {STORE_CONTACT_DETAILS.phone} | {STORE_CONTACT_DETAILS.email}
+            </span>
+            <button
+              type="button"
+              onClick={openResellerPortal}
+              className="text-[11px] text-neutral-400 hover:text-neutral-200 inline-flex items-center gap-1.5 cursor-pointer transition select-none active:opacity-75"
+              title="B2B Wholesale Portal"
+            >
+              <Store className="w-3.5 h-3.5 text-neutral-400" />
+              <span>B2B</span>
+            </button>
+          </div>
+        </div>
       </footer>
     </div>
   );

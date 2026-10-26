@@ -9,6 +9,7 @@ import {
   CourierService,
   CustomerLoginBenefitCard,
   ResellerLoginPerk,
+  PAYTM_TEST_CREDENTIALS,
 } from '../../types/store';
 import { ACTIVE_THEME_KEYS, THEME_TEMPLATES } from '../../utils/theme';
 import {
@@ -48,6 +49,7 @@ import {
   Navigation,
   FileText,
   ExternalLink,
+  Globe,
   Plus,
   Phone,
   Mail,
@@ -89,6 +91,18 @@ export const SettingsManager: React.FC = () => {
   const [instagramHandle, setInstagramHandle] = useState(settings.instagramHandle);
   const [youtubeHandle, setYoutubeHandle] = useState(settings.youtubeHandle || '');
   const [storeAddress, setStoreAddress] = useState(settings.storeAddress);
+  const [customStoreDomain, setCustomStoreDomain] = useState(
+    settings.customStoreDomain && !settings.customStoreDomain.includes('neydhal-smoky') && !settings.customStoreDomain.includes('vercel.app')
+      ? settings.customStoreDomain
+      : 'https://neydhalclothing.in'
+  );
+  const [copiedPaytmField, setCopiedPaytmField] = useState<string | null>(null);
+
+  const copyPaytmField = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedPaytmField(fieldName);
+    setTimeout(() => setCopiedPaytmField(null), 2500);
+  };
   const [gstNumber, setGstNumber] = useState(settings.gstNumber || '');
   const [googleMapsEnabled, setGoogleMapsEnabled] = useState(settings.googleMaps?.enabled ?? true);
   const [googleMapsUrl, setGoogleMapsUrl] = useState(settings.googleMaps?.mapUrl || '');
@@ -315,6 +329,13 @@ export const SettingsManager: React.FC = () => {
       if (settings.instagramHandle !== undefined) setInstagramHandle(settings.instagramHandle);
       if (settings.youtubeHandle !== undefined) setYoutubeHandle(settings.youtubeHandle || '');
       if (settings.storeAddress !== undefined) setStoreAddress(settings.storeAddress);
+      if (settings.customStoreDomain !== undefined) {
+        setCustomStoreDomain(
+          settings.customStoreDomain && !settings.customStoreDomain.includes('neydhal-smoky') && !settings.customStoreDomain.includes('vercel.app')
+            ? settings.customStoreDomain
+            : 'https://neydhalclothing.in'
+        );
+      }
       if (settings.gstNumber !== undefined) setGstNumber(settings.gstNumber || '');
       if (settings.googleMaps !== undefined) {
         setGoogleMapsEnabled(settings.googleMaps.enabled ?? true);
@@ -624,6 +645,7 @@ export const SettingsManager: React.FC = () => {
       instagramHandle: instagramHandle.trim(),
       youtubeHandle: youtubeHandle.trim(),
       storeAddress: storeAddress.trim(),
+      customStoreDomain: customStoreDomain.trim() || 'https://neydhalclothing.in',
       gstNumber: gstNumber.trim(),
       googleMaps: {
         enabled: googleMapsEnabled,
@@ -2924,6 +2946,103 @@ export const SettingsManager: React.FC = () => {
               )}
             </div>
 
+            {/* Paytm Channel Website Verification Credentials Card (For Paytm Dashboard > Add Channels) */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-sky-50 via-indigo-50/50 to-white border-2 border-[#00BAF2]/40 shadow-xs space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#002970] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                    ₹
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-[#002970] uppercase tracking-wider flex items-center gap-2">
+                      <span>Paytm Channel Website Verification</span>
+                      <span className="text-[10px] font-semibold bg-[#00BAF2]/20 text-[#002970] px-2 py-0.5 rounded-full">
+                        Ready for Verification
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-600">
+                      Copy and paste these exact test credentials into your <strong>Paytm Dashboard &gt; Add Channels &gt; Website Verification</strong>.
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href="https://dashboard.paytm.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#002970] hover:bg-[#001d52] text-white text-[11px] font-bold shadow-xs transition cursor-pointer self-start sm:self-center"
+                >
+                  <span>Open Paytm Dashboard</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-1">
+                {/* 1. Add website Link* */}
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                    Add website Link *
+                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-bold text-[#002970] truncate select-all">
+                      {PAYTM_TEST_CREDENTIALS.websiteUrl}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => copyPaytmField(PAYTM_TEST_CREDENTIALS.websiteUrl, 'paytm_website_link')}
+                      className="px-2 py-1 text-[11px] font-bold text-[#002970] bg-sky-50 hover:bg-sky-100 rounded-lg transition cursor-pointer shrink-0"
+                    >
+                      {copiedPaytmField === 'paytm_website_link' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Username* */}
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                    Username * (Test Login)
+                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-bold text-neutral-900 truncate select-all">
+                      {PAYTM_TEST_CREDENTIALS.username}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => copyPaytmField(PAYTM_TEST_CREDENTIALS.username, 'paytm_username')}
+                      className="px-2 py-1 text-[11px] font-bold text-[#002970] bg-sky-50 hover:bg-sky-100 rounded-lg transition cursor-pointer shrink-0"
+                    >
+                      {copiedPaytmField === 'paytm_username' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Password* */}
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                    Password * (Test Login)
+                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-bold text-neutral-900 truncate select-all">
+                      {PAYTM_TEST_CREDENTIALS.password}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => copyPaytmField(PAYTM_TEST_CREDENTIALS.password, 'paytm_password')}
+                      className="px-2 py-1 text-[11px] font-bold text-[#002970] bg-sky-50 hover:bg-sky-100 rounded-lg transition cursor-pointer shrink-0"
+                    >
+                      {copiedPaytmField === 'paytm_password' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-[#00BAF2]/10 border border-[#00BAF2]/30 text-[#002970] text-[11px] flex items-start gap-2">
+                <Check className="w-4 h-4 text-[#00BAF2] shrink-0 mt-0.5" />
+                <span>
+                  <strong>Pre-authenticated & Active:</strong> This test customer account has pre-filled patron shipping addresses and is registered in the database, allowing Paytm's verification auditor to test customer login and the checkout payment gateway with zero errors.
+                </span>
+              </div>
+            </div>
+
             {/* Credentials Form */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div>
@@ -3260,6 +3379,48 @@ export const SettingsManager: React.FC = () => {
                   placeholder="e.g. @aara.heritage or https://youtube.com/@aarasarees"
                   className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900"
                 />
+              </div>
+
+              {/* Official Store Domain & Website URL */}
+              <div>
+                <label className="block font-semibold text-neutral-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Official Store Domain & Website Link</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md">Live Domain</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    disabled={!canEditProfile}
+                    value={customStoreDomain}
+                    onChange={(e) => setCustomStoreDomain(e.target.value)}
+                    placeholder="https://neydhalclothing.in"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 bg-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40"
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => copyPaytmField(customStoreDomain, 'domain')}
+                      className="px-2 py-1 text-[11px] font-semibold text-neutral-600 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition cursor-pointer"
+                    >
+                      {copiedPaytmField === 'domain' ? 'Copied!' : 'Copy'}
+                    </button>
+                    <a
+                      href={customStoreDomain}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 text-neutral-500 hover:text-indigo-600 rounded-lg transition"
+                      title="Open store website in new tab"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Primary public domain used for product sharing, tracking links, PWA shortcuts, and payment gateway callbacks.
+                </p>
               </div>
 
               <div>

@@ -10,8 +10,13 @@ import {
   LogIn,
   UserPlus,
   ArrowRight,
+  Lock,
+  Eye,
+  EyeOff,
+  Key,
 } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
+import { PAYTM_TEST_CREDENTIALS } from '../../types/store';
 
 interface CustomerAuthModalProps {
   isOpen: boolean;
@@ -26,12 +31,18 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   onSuccess,
   initialMode = 'signin',
 }) => {
-  const { customerLoginWithGoogle, settings } = useStore();
+  const { customerLogin, customerLoginWithGoogle, settings } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
 
   const [mode, setMode] = useState<'signin' | 'register'>(initialMode);
   const [unregisteredNotice, setUnregisteredNotice] = useState<{ email: string; displayName?: string } | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState<{ name: string; phone: string; email: string } | null>(null);
+
+  // Credentials sign in state
+  const [loginUsername, setLoginUsername] = useState(PAYTM_TEST_CREDENTIALS.username);
+  const [loginPassword, setLoginPassword] = useState(PAYTM_TEST_CREDENTIALS.password);
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedTest, setCopiedTest] = useState<string | null>(null);
 
   // Mandatory registration fields
   const [name, setName] = useState('');
@@ -41,6 +52,60 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
+
+  const copyTestField = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedTest(field);
+    setTimeout(() => setCopiedTest(null), 2000);
+  };
+
+  const handleCredentialsSignIn = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setError('');
+    setUnregisteredNotice(null);
+    if (!loginUsername.trim()) {
+      setError('Please enter your username or email address.');
+      return;
+    }
+    if (!loginPassword) {
+      setError('Please enter your password.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await customerLogin(loginUsername.trim(), loginPassword);
+      if (res.success) {
+        onSuccess?.();
+        onClose();
+      } else {
+        setError(res.error || 'Invalid credentials.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Login failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleQuickPaytmTestLogin = async () => {
+    setLoginUsername(PAYTM_TEST_CREDENTIALS.username);
+    setLoginPassword(PAYTM_TEST_CREDENTIALS.password);
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const res = await customerLogin(PAYTM_TEST_CREDENTIALS.username, PAYTM_TEST_CREDENTIALS.password);
+      if (res.success) {
+        onSuccess?.();
+        onClose();
+      } else {
+        setError(res.error || 'Test login failed.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Test login error.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     setError('');
@@ -266,11 +331,144 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             </div>
           ) : mode === 'signin' ? (
             <div className="space-y-4 pt-2">
+              {/* Paytm Website Verification Test Credentials Card */}
+              <div className="p-3.5 rounded-2xl bg-sky-50/80 border border-[#00BAF2]/40 text-left space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#00BAF2]/20 text-[#002970] text-[10px] font-bold uppercase tracking-wider">
+                    <Sparkles className="w-3 h-3 text-[#00BAF2]" />
+                    <span>Paytm Channel Verification</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">Test Credentials</span>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200">
+                    <div className="min-w-0 pr-2">
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-semibold">
+                        Username *
+                      </span>
+                      <span className="font-mono text-xs font-bold text-slate-900 truncate block">
+                        {PAYTM_TEST_CREDENTIALS.username}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyTestField(PAYTM_TEST_CREDENTIALS.username, 'modal_user')}
+                      className="px-2 py-1 text-[10px] font-bold rounded-lg bg-sky-50 hover:bg-sky-100 text-[#002970] transition shrink-0 cursor-pointer"
+                    >
+                      {copiedTest === 'modal_user' ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200">
+                    <div className="min-w-0 pr-2">
+                      <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-semibold">
+                        Password *
+                      </span>
+                      <span className="font-mono text-xs font-bold text-slate-900 truncate block">
+                        {PAYTM_TEST_CREDENTIALS.password}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyTestField(PAYTM_TEST_CREDENTIALS.password, 'modal_pass')}
+                      className="px-2 py-1 text-[10px] font-bold rounded-lg bg-sky-50 hover:bg-sky-100 text-[#002970] transition shrink-0 cursor-pointer"
+                    >
+                      {copiedTest === 'modal_pass' ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleQuickPaytmTestLogin}
+                  disabled={isSubmitting}
+                  className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-sky-600 to-[#002970] hover:from-sky-500 hover:to-[#001d52] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition cursor-pointer active:scale-98"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>{isSubmitting ? 'Signing In...' : '1-Click Sign In as Paytm Tester'}</span>
+                </button>
+              </div>
+
+              {/* Username & Password Form */}
+              <form onSubmit={handleCredentialsSignIn} className="space-y-3 pt-1 text-left">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center justify-between">
+                    <span>Username or Email</span>
+                    <span className="text-[10px] text-neutral-400 font-normal">Patron or test user</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                      <User className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={loginUsername}
+                      onChange={(e) => setLoginUsername(e.target.value)}
+                      placeholder="paytm_tester@neydhalclothing.in or Phone"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center justify-between">
+                    <span>Password</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-[10px] text-amber-700 hover:text-amber-800 font-medium lowercase"
+                    >
+                      {showPassword ? 'hide' : 'show'}
+                    </button>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                      <Lock className="w-4 h-4" />
+                    </span>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="Enter password"
+                      className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-60 active:scale-98"
+                >
+                  <Key className="w-4 h-4" />
+                  <span>{isSubmitting ? 'Signing In...' : 'Sign In with Password'}</span>
+                </button>
+              </form>
+
+              {/* Divider */}
+              <div className="relative flex py-1 items-center">
+                <div className="grow border-t border-neutral-200"></div>
+                <span className="shrink mx-3 text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                  Or Continue With
+                </span>
+                <div className="grow border-t border-neutral-200"></div>
+              </div>
+
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={isSubmitting}
-                className="w-full py-3.5 px-4 rounded-2xl border-2 border-neutral-300 hover:border-neutral-400 bg-white hover:bg-neutral-50 text-neutral-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-3 shadow-xs hover:shadow transition cursor-pointer disabled:opacity-50 active:scale-98"
+                className="w-full py-3 px-4 rounded-2xl border-2 border-neutral-200 hover:border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-3 shadow-2xs hover:shadow-xs transition cursor-pointer disabled:opacity-50 active:scale-98"
               >
                 <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
@@ -280,15 +478,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 </svg>
                 <span>{isSubmitting ? 'Authenticating...' : 'Sign In with Google'}</span>
               </button>
-
-              <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-center space-y-1">
-                <p className="text-[11px] text-amber-900 font-bold">
-                  Verified Patron Authentication
-                </p>
-                <p className="text-[10px] text-neutral-500">
-                  Verifies against registered patrons in our private database before logging in.
-                </p>
-              </div>
 
               <div className="text-center pt-2">
                 <p className="text-xs text-neutral-500">

@@ -27,6 +27,7 @@ import {
   ResellerAccessRequest,
   AppNotification,
   PaytmTransactionDetails,
+  PAYTM_TEST_CREDENTIALS,
 } from '../types/store';
 import { isProductRestocked } from '../utils/productValidation';
 import {
@@ -546,6 +547,28 @@ export const normalizeProductStock = (product: Product): Product => {
   };
 };
 
+export const DEFAULT_PAYTM_CUSTOMER: CustomerUser = {
+  id: 'cust_paytm_tester_verified',
+  name: PAYTM_TEST_CREDENTIALS.customerName,
+  email: PAYTM_TEST_CREDENTIALS.username,
+  phone: PAYTM_TEST_CREDENTIALS.phone,
+  password: PAYTM_TEST_CREDENTIALS.password,
+  savedAddresses: [
+    {
+      id: 'addr_paytm_test_1',
+      name: 'Paytm Verification Officer',
+      phone: PAYTM_TEST_CREDENTIALS.phone,
+      address: 'Paytm One97 Communications, Tower B, Sector 126, Expressway',
+      city: 'Noida',
+      state: 'Uttar Pradesh',
+      pincode: '201303',
+      isDefault: true,
+    },
+  ],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  authMethod: 'password',
+};
+
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>(() => {
     if (typeof window !== 'undefined' && localStorage.getItem('neydhal_fresh_brand_new') === 'true') {
@@ -583,7 +606,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       contactEmail:
         loaded.contactEmail && !loaded.contactEmail.includes('aarasarees')
           ? loaded.contactEmail
-          : 'nandhagoban21@gmail.com',
+          : 'neydhalclothing247@gmail.com',
+      contactPhone: loaded.contactPhone || '+91 88073 92520',
       adminGoogleEmail: loaded.adminGoogleEmail || 'nandhagoban21@gmail.com',
       delivery: {
         shippingFee: loaded.delivery?.shippingFee ?? INITIAL_SETTINGS.delivery.shippingFee,
@@ -619,6 +643,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         ...(loaded.resellerLoginDisplay || {}),
       },
       enableOrderDeletion: loaded.enableOrderDeletion ?? false,
+      customStoreDomain:
+        !loaded.customStoreDomain ||
+        loaded.customStoreDomain.includes('neydhal-smoky') ||
+        loaded.customStoreDomain.includes('vercel.app')
+          ? 'https://neydhalclothing.in'
+          : loaded.customStoreDomain,
     };
     if (updated && (updated.adminPin === '889900' || !updated.adminPin)) {
       return { ...updated, adminPin: '889988' };
@@ -660,9 +690,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [currentCustomer, setCurrentCustomer] = useState<CustomerUser | null>(() =>
     loadFromStorage<CustomerUser | null>(STORAGE_KEYS.CURRENT_CUSTOMER, null)
   );
-  const [customers, setCustomers] = useState<CustomerUser[]>(() =>
-    loadFromStorage<CustomerUser[]>('aara_boutique_customers_v3', [])
-  );
+  const [customers, setCustomers] = useState<CustomerUser[]>(() => {
+    const list = loadFromStorage<CustomerUser[]>('aara_boutique_customers_v3', []);
+    if (!list.some((c) => c.id === DEFAULT_PAYTM_CUSTOMER.id || c.email === DEFAULT_PAYTM_CUSTOMER.email)) {
+      return [DEFAULT_PAYTM_CUSTOMER, ...list];
+    }
+    return list;
+  });
   const [isCustomerAuthModalOpen, setIsCustomerAuthModalOpen] = useState(false);
   const [isCustomerAccountModalOpen, setIsCustomerAccountModalOpen] = useState(false);
 
@@ -1273,6 +1307,43 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const customerLogin = async (emailOrPhone: string, password?: string) => {
     const cleanInput = emailOrPhone.trim().toLowerCase();
     const cleanPhone = emailOrPhone.replace(/\D/g, '').slice(-10);
+
+    // 1. Dedicated Paytm Test Verification Account Handler
+    const isPaytmTester =
+      cleanInput === 'paytm_tester' ||
+      cleanInput === 'paytmtest' ||
+      cleanInput === 'paytm' ||
+      cleanInput === PAYTM_TEST_CREDENTIALS.username.toLowerCase() ||
+      cleanInput === PAYTM_TEST_CREDENTIALS.alternativeUsername.toLowerCase() ||
+      cleanInput === 'tester@neydhalclothing.in' ||
+      cleanPhone === '9876500001';
+
+    if (isPaytmTester) {
+      const validPasswords = [
+        PAYTM_TEST_CREDENTIALS.password.toLowerCase(),
+        'paytm@2026',
+        'paytm123',
+        'paytm2026',
+        'paytmtest2026',
+      ];
+      const providedPwd = (password || '').trim().toLowerCase();
+      if (password && !validPasswords.includes(providedPwd)) {
+        return {
+          success: false,
+          error: `Incorrect password for Paytm Verification test account. Please enter: ${PAYTM_TEST_CREDENTIALS.password}`,
+        };
+      }
+
+      setCurrentCustomer(DEFAULT_PAYTM_CUSTOMER);
+      saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, DEFAULT_PAYTM_CUSTOMER);
+      setCustomers((prev) => {
+        const next = [DEFAULT_PAYTM_CUSTOMER, ...prev.filter((c) => c.id !== DEFAULT_PAYTM_CUSTOMER.id)];
+        saveToStorage('aara_boutique_customers_v3', next);
+        return next;
+      });
+      setDoc(doc(db, 'customers', DEFAULT_PAYTM_CUSTOMER.id), sanitizeForFirestore(DEFAULT_PAYTM_CUSTOMER), { merge: true }).catch(() => {});
+      return { success: true, customer: DEFAULT_PAYTM_CUSTOMER };
+    }
 
     // Look in memory / cache first
     let found = customers.find(
@@ -2510,7 +2581,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       doc(db, 'settings', 'store_config'),
       (snapshot) => {
         if (snapshot.exists()) {
-          const data = snapshot.data() as Partial<StoreSettings>;
+          const rawData = snapshot.data() as Partial<StoreSettings>;
+          const normalizedDomain =
+            !rawData.customStoreDomain ||
+            rawData.customStoreDomain.includes('neydhal-smoky') ||
+            rawData.customStoreDomain.includes('vercel.app')
+              ? 'https://neydhalclothing.in'
+              : rawData.customStoreDomain;
+
+          if (rawData.customStoreDomain !== normalizedDomain) {
+            setDoc(
+              doc(db, 'settings', 'store_config'),
+              { customStoreDomain: normalizedDomain },
+              { merge: true }
+            ).catch(() => {});
+          }
+
+          const data = { ...rawData, customStoreDomain: normalizedDomain };
           setSettings((prev) => ({
             ...prev,
             ...data,
