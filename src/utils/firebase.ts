@@ -8,6 +8,13 @@ import {
   getDocFromServer,
   setLogLevel,
 } from 'firebase/firestore';
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  FirebaseStorage,
+} from 'firebase/storage';
 import defaultConfig from '../../firebase-applet-config.json';
 
 // Build-time / deployment environment variables (e.g. on Netlify / Vercel / Cloudflare)
@@ -27,6 +34,44 @@ export const isFirebaseConfigured = Boolean(
 
 export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth: Auth = getAuth(app);
+export const storage: FirebaseStorage = getStorage(app);
+
+/**
+ * Uploads compressed payment screenshot to Firebase Storage and returns public download URL.
+ * Includes graceful base64 fallback in case of transient storage network/CORS restrictions.
+ */
+export async function uploadPaymentScreenshot(
+  file: File | Blob,
+  orderNumber: string
+): Promise<string> {
+  const safeOrderNum = (orderNumber || 'order').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const timestamp = Date.now();
+  const ext = file.type.includes('webp') ? 'webp' : 'jpg';
+  const storagePath = `orders/${safeOrderNum}/screenshot_${timestamp}.${ext}`;
+
+  try {
+    const storageRef = ref(storage, storagePath);
+    const snapshot = await uploadBytes(storageRef, file, {
+      contentType: file.type || 'image/jpeg',
+    });
+    const downloadUrl = await getDownloadURL(snapshot.ref);
+    return downloadUrl;
+  } catch (storageError) {
+    console.warn('Firebase Storage upload notice, using compressed data URL fallback:', storageError);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to encode screenshot'));
+        }
+      };
+      reader.onerror = () => reject(reader.error || storageError);
+      reader.readAsDataURL(file);
+    });
+  }
+}
 
 // Configure Firestore log level to prevent unhandled connection warning in console
 try {

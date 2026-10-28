@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
-import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle, Download, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle, Download, ShieldCheck, Sparkles } from 'lucide-react';
 import { downloadSingleImage } from '../../utils/imageDownload';
 
 interface OrderSuccessModalProps {
@@ -30,10 +30,24 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
       <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-neutral-100 my-auto animate-in fade-in zoom-in-95 duration-200">
         {/* Top Celebration Banner */}
-        <div className="p-6 bg-gradient-to-br from-rose-950 via-rose-900 to-rose-950 text-white text-center">
-          <div className="w-14 h-14 rounded-full bg-amber-400 text-rose-950 flex items-center justify-center mx-auto mb-3 shadow-lg">
-            <CheckCircle2 className="w-8 h-8" />
+        <div className="p-6 bg-gradient-to-br from-rose-950 via-rose-900 to-emerald-950 text-white text-center">
+          {/* Store Logo with Vibrant Emerald Border */}
+          <div className="w-16 h-16 rounded-2xl bg-white p-1.5 border-2 border-emerald-400 shadow-xl mx-auto mb-3 flex items-center justify-center">
+            <img
+              src={settings.logoUrl || '/logo.png'}
+              alt="Neydhal Clothing Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
+
+          {/* Vibrant Green Neydhal Clothing Badge */}
+          <div className="mb-2">
+            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-green-600 text-white font-black text-xs sm:text-sm uppercase tracking-wider shadow-md border-2 border-emerald-300">
+              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+              <span>Neydhal Clothing</span>
+            </span>
+          </div>
+
           <h2 className="font-serif text-2xl sm:text-3xl font-bold">
             Handloom Order Placed!
           </h2>
@@ -41,14 +55,18 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
             Your boutique order has been recorded in our workshop ledger.
           </p>
 
-          <div className="mt-4 inline-flex items-center gap-2 bg-black/40 border border-amber-400/30 px-3.5 py-1.5 rounded-full text-xs font-mono">
-            <span>Reference: #{lastPlacedOrder.orderNumber}</span>
+          {/* Big Bold Order Number Badge */}
+          <div className="mt-4 inline-flex items-center gap-2.5 bg-emerald-950/90 border-2 border-emerald-400 px-4 py-2 rounded-2xl shadow-lg">
+            <span className="text-xs font-bold uppercase text-emerald-300 tracking-wider">Order No:</span>
+            <span className="font-mono text-base sm:text-xl font-black text-white tracking-widest">
+              #{lastPlacedOrder.orderNumber}
+            </span>
             <button
               onClick={handleCopyOrderId}
-              className="text-amber-300 hover:text-white transition cursor-pointer"
+              className="p-1 hover:bg-emerald-800 rounded-lg text-emerald-300 hover:text-white transition cursor-pointer ml-1"
               title="Copy Order ID"
             >
-              {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedId ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -121,26 +139,37 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
 
           {/* Payment & Safeguard info */}
           <div className={`grid gap-3 ${showRefundUpi ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-            <div className="p-3 bg-gradient-to-r from-emerald-50/70 via-slate-50 to-[#002970]/5 rounded-xl border border-emerald-200/80 space-y-1">
+            <div className={`p-3 rounded-xl border space-y-1.5 ${
+              lastPlacedOrder.status === 'pending_verification' || !lastPlacedOrder.isPaymentVerified
+                ? 'bg-amber-50/80 border-amber-300'
+                : 'bg-gradient-to-r from-emerald-50/70 via-slate-50 to-[#002970]/5 border-emerald-200/80'
+            }`}>
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-[#002970] uppercase flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{lastPlacedOrder.paymentGateway === 'paytm' || lastPlacedOrder.paytmTxnId ? 'Paytm Verified Gateway' : 'Prepaid Verified'}</span>
+                <span className="text-[11px] font-bold text-neutral-800 uppercase flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                  <span>{lastPlacedOrder.paymentMethod || 'Direct UPI Payment'}</span>
                 </span>
-                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1 shadow-2xs">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  <span>PAYMENT VERIFIED [PAID]</span>
-                </span>
-              </div>
-              <p className="font-mono text-xs font-bold text-neutral-900 mt-1 truncate">
-                Txn Ref / UTR: {lastPlacedOrder.paytmTxnId || lastPlacedOrder.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
-              </p>
-              <div className="flex items-center justify-between text-[10px] text-slate-600 pt-0.5">
-                <span>Method: {lastPlacedOrder.paymentMethod || lastPlacedOrder.paytmDetails?.paymentMode || 'Instant Net Banking / UPI'}</span>
-                {lastPlacedOrder.paytmDetails?.bankTxnId && (
-                  <span className="font-mono text-slate-500">Bank Ref: {lastPlacedOrder.paytmDetails.bankTxnId}</span>
+                {lastPlacedOrder.status === 'pending_verification' || !lastPlacedOrder.isPaymentVerified ? (
+                  <span className="text-[9px] bg-amber-100 text-amber-900 font-extrabold px-2 py-0.5 rounded-full border border-amber-300 flex items-center gap-1 shadow-2xs">
+                    <AlertCircle className="w-3 h-3 text-amber-700" />
+                    <span>PENDING VERIFICATION</span>
+                  </span>
+                ) : (
+                  <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>PAYMENT VERIFIED [PAID]</span>
+                  </span>
                 )}
               </div>
+              <p className="font-mono text-xs font-bold text-neutral-900 mt-1 truncate">
+                Txn Ref / UTR: {lastPlacedOrder.upiTransactionId || 'Awaiting Review'}
+              </p>
+              {lastPlacedOrder.paymentScreenshotUrl && (
+                <div className="flex items-center gap-2 pt-1 text-[11px] text-amber-900 font-medium">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Payment screenshot securely uploaded & queued for atelier staff verification.</span>
+                </div>
+              )}
             </div>
 
             {showRefundUpi && (

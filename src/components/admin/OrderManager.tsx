@@ -56,6 +56,13 @@ import {
   ShieldCheck,
   Lock,
   Eye,
+  Smartphone,
+  Tablet as TabletIcon,
+  Monitor,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { OrderLiveChat } from '../common/OrderLiveChat';
 import { CourierLogisticsPanel } from '../common/CourierLogisticsPanel';
@@ -110,7 +117,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   // Dedicated Payment Verification Modal State
   const [verifyPaymentOrder, setVerifyPaymentOrder] = useState<Order | null>(null);
   const [verifyTxnIdInput, setVerifyTxnIdInput] = useState('');
-  const [verifyPaymentModeInput, setVerifyPaymentModeInput] = useState('Paytm / Direct UPI');
+  const [verifyPaymentModeInput, setVerifyPaymentModeInput] = useState('Prepaid Direct UPI');
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [paymentVerifySuccessToast, setPaymentVerifySuccessToast] = useState<string | null>(null);
 
@@ -501,13 +508,18 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // Dynamic Queue Filter: Defaults to 'unassigned' so assigned orders clear from the Order Page and move to staff/admin buckets
-  const [activeQueueFilter, setActiveQueueFilter] = useState<'unassigned' | 'all' | 'mine' | 'deleted_logs' | 'reseller'>('unassigned');
+  // Dynamic Queue Filter: Supports unassigned, pending payment verification, my bucket, all orders, reseller, and deleted logs
+  const [activeQueueFilter, setActiveQueueFilter] = useState<'unassigned' | 'pending_verification' | 'all' | 'mine' | 'deleted_logs' | 'reseller'>('unassigned');
   const [assignmentToast, setAssignmentToast] = useState<{
     orderNumber: string;
     staffName: string;
     staffId: string;
   } | null>(null);
+
+  // Zoom lightbox state for customer payment screenshots
+  const [zoomScreenshotUrl, setZoomScreenshotUrl] = useState<string | null>(null);
+  const [screenshotZoomScale, setScreenshotZoomScale] = useState(1);
+  const [screenshotRotation, setScreenshotRotation] = useState(0);
 
   const filteredAuditLogs = useMemo(() => {
     if (!auditLogSearch.trim()) return deletedOrderLogs;
@@ -525,6 +537,12 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   const unassignedOrders = useMemo(() => {
     return orders.filter(
       (o) => (!o.assignedStaffId || o.assignedStaffId === 'unassigned') && !hasActiveCustomerIssue(o)
+    );
+  }, [orders]);
+
+  const pendingVerificationOrders = useMemo(() => {
+    return orders.filter(
+      (o) => o.status === 'pending_verification' || (Boolean(o.paymentScreenshotUrl) && o.isPaymentVerified === false)
     );
   }, [orders]);
 
@@ -608,6 +626,9 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
       });
     }
 
+    if (activeQueueFilter === 'pending_verification') {
+      return pendingVerificationOrders;
+    }
     if (activeQueueFilter === 'all') {
       return orders;
     }
@@ -619,7 +640,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
     }
     // Default is 'unassigned' queue: Once assigned, order clears from the order page and moves to assigned staff/admin bucket
     return unassignedOrders;
-  }, [orders, globalOrderSearch, activeQueueFilter, unassignedOrders, myBucketOrders, resellerOrdersList]);
+  }, [orders, globalOrderSearch, activeQueueFilter, unassignedOrders, pendingVerificationOrders, myBucketOrders, resellerOrdersList]);
 
   const handleStatusChange = (order: Order, newStatus: OrderStatus) => {
     // User Requirement 5: Order must be assigned before changing stages and working on it
@@ -1187,6 +1208,32 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
             <button
               type="button"
               onClick={() => {
+                setActiveQueueFilter('pending_verification');
+                setGlobalOrderSearch('');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                activeQueueFilter === 'pending_verification' && !globalOrderSearch
+                  ? 'bg-amber-600 text-white shadow-xs font-bold'
+                  : pendingVerificationOrders.length > 0
+                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold'
+                  : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-500" />
+              <span>Pending Verification</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                activeQueueFilter === 'pending_verification' && !globalOrderSearch
+                  ? 'bg-white text-amber-950'
+                  : pendingVerificationOrders.length > 0
+                  ? 'bg-amber-500 text-neutral-950 animate-pulse'
+                  : 'bg-neutral-200 text-neutral-800'
+              }`}>
+                {pendingVerificationOrders.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setActiveQueueFilter('mine');
                 setGlobalOrderSearch('');
               }}
@@ -1733,17 +1780,31 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    {/* Payment Verified Badge */}
-                    {order.paymentGateway === 'paytm' || order.paytmTxnId ? (
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#002970]/10 text-[#002970] border border-[#00BAF2]/50 flex items-center gap-1.5 shadow-2xs">
-                        <ShieldCheck className="w-3.5 h-3.5 text-[#00BAF2]" />
-                        <span>Paytm Verified</span>
-                        <span className="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase tracking-wider">PAID</span>
-                      </span>
-                    ) : order.isPaymentVerified !== false || order.paymentStatus === 'paid' || order.upiTransactionId ? (
+                    {/* Payment Status Badge */}
+                    {order.status === 'pending_verification' || (order.paymentScreenshotUrl && order.isPaymentVerified === false) ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVerifyPaymentOrder(order);
+                          setVerifyTxnIdInput(order.upiTransactionId || '');
+                          setVerifyPaymentModeInput(order.paymentMethod || 'Manual UPI Payment');
+                        }}
+                        className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-950 border border-amber-400 flex items-center gap-1.5 hover:bg-amber-200 transition cursor-pointer shadow-2xs animate-pulse"
+                        title="Customer uploaded payment receipt. Click to inspect & verify"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Awaiting Verification</span>
+                        {order.paymentScreenshotUrl && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500 text-neutral-950 text-[9px] font-extrabold uppercase">
+                            Receipt 📷
+                          </span>
+                        )}
+                      </button>
+                    ) : order.isPaymentVerified !== false || order.paymentStatus === 'paid' ? (
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Prepaid · Verified</span>
+                        <span>Prepaid UPI · Verified</span>
                         <span className="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase tracking-wider">PAID</span>
                       </span>
                     ) : (
@@ -1752,7 +1813,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           setVerifyPaymentOrder(order);
-                          setVerifyTxnIdInput(order.upiTransactionId || order.paytmTxnId || '');
+                          setVerifyTxnIdInput(order.upiTransactionId || '');
                           setVerifyPaymentModeInput(order.paymentMethod || 'Prepaid Direct UPI');
                         }}
                         className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1 hover:bg-amber-100 transition cursor-pointer"
@@ -1775,7 +1836,9 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
 
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                        order.status === 'Cancelled' || order.status === 'Rejected'
+                        order.status === 'pending_verification'
+                          ? 'bg-amber-100 text-amber-950 border border-amber-300'
+                          : order.status === 'Cancelled' || order.status === 'Rejected'
                           ? 'bg-rose-100 text-rose-800 border border-rose-200'
                           : order.status === 'Delivered'
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
@@ -1786,7 +1849,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                           : 'bg-amber-100 text-amber-800 border border-amber-200'
                       }`}
                     >
-                      {order.status}
+                      {order.status === 'pending_verification' ? 'Pending Verification' : order.status}
                     </span>
 
                     <button
@@ -1822,43 +1885,90 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   </div>
                 </div>
 
-                {/* Dedicated Payment & Settlement Details Strip (Visible upon receiving orders) */}
-                <div className="px-3.5 sm:px-4 py-2 bg-gradient-to-r from-emerald-50/70 via-slate-50 to-blue-50/40 border-t border-neutral-200/60 flex items-center justify-between gap-2.5 flex-wrap text-xs">
+                {/* Dedicated Payment & Settlement Details Strip */}
+                <div className={`px-3.5 sm:px-4 py-2 border-t flex items-center justify-between gap-2.5 flex-wrap text-xs ${
+                  order.status === 'pending_verification' || (order.paymentScreenshotUrl && !order.isPaymentVerified)
+                    ? 'bg-gradient-to-r from-amber-50/90 via-orange-50/60 to-amber-50/40 border-amber-200'
+                    : 'bg-gradient-to-r from-emerald-50/70 via-slate-50 to-blue-50/40 border-neutral-200/60'
+                }`}>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>{order.paymentGateway === 'paytm' || order.paytmTxnId ? 'PAYTM SETTLED' : 'PAYMENT VERIFIED'}</span>
-                      <span className="px-1 py-0.2 bg-emerald-700 text-white rounded text-[8px] uppercase tracking-wider font-mono">PAID</span>
-                    </span>
+                    {order.status === 'pending_verification' || (order.paymentScreenshotUrl && !order.isPaymentVerified) ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs">
+                        <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                        <span>AWAITING VERIFICATION</span>
+                        <span className="px-1 py-0.2 bg-amber-600 text-white rounded text-[8px] uppercase tracking-wider font-mono">NEEDS REVIEW</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>PAYMENT VERIFIED</span>
+                        <span className="px-1 py-0.2 bg-emerald-700 text-white rounded text-[8px] uppercase tracking-wider font-mono">PAID</span>
+                      </span>
+                    )}
 
                     <span className="text-[11px] text-neutral-600">
-                      Method: <strong className="text-neutral-900">{order.paymentMethod || (order.paymentGateway === 'paytm' || order.paytmTxnId ? 'Paytm All-in-One Gateway' : 'Prepaid Direct UPI')}</strong>
+                      Method: <strong className="text-neutral-900">{order.paymentMethod || 'Manual UPI Payment'}</strong>
                     </span>
+
+                    {order.deviceType && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-neutral-200 text-[10px] text-neutral-700 font-semibold shadow-2xs">
+                        {order.deviceType === 'mobile' ? (
+                          <>
+                            <Smartphone className="w-3 h-3 text-sky-600" />
+                            <span>Mobile UPI Intent</span>
+                          </>
+                        ) : order.deviceType === 'tablet' ? (
+                          <>
+                            <TabletIcon className="w-3 h-3 text-purple-600" />
+                            <span>Tablet</span>
+                          </>
+                        ) : (
+                          <>
+                            <Monitor className="w-3 h-3 text-emerald-600" />
+                            <span>Desktop QR Scan</span>
+                          </>
+                        )}
+                      </span>
+                    )}
 
                     <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-neutral-200 font-mono text-[11px] text-neutral-900 shadow-2xs">
                       <span className="text-neutral-400 font-sans text-[10px]">Txn / UTR:</span>
-                      <strong className="text-neutral-900">{order.paytmTxnId || order.upiTransactionId || 'TXN-CONFIRMED'}</strong>
+                      <strong className="text-neutral-900">{order.upiTransactionId || 'PENDING-VERIFY'}</strong>
+                      {order.upiTransactionId && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(order.upiTransactionId || '', `card-txn-${order.id}`);
+                          }}
+                          className="text-neutral-400 hover:text-neutral-700 p-0.5 cursor-pointer ml-0.5"
+                          title="Copy Transaction Reference"
+                        >
+                          {copiedKey === `card-txn-${order.id}` ? (
+                            <Check className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Screenshot Thumbnail Preview */}
+                    {order.paymentScreenshotUrl && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          copyToClipboard(order.paytmTxnId || order.upiTransactionId || '', `card-txn-${order.id}`);
+                          setScreenshotZoomScale(1);
+                          setScreenshotRotation(0);
+                          setZoomScreenshotUrl(order.paymentScreenshotUrl || null);
                         }}
-                        className="text-neutral-400 hover:text-neutral-700 p-0.5 cursor-pointer ml-0.5"
-                        title="Copy Transaction Reference"
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white hover:bg-neutral-100 border border-amber-300 text-[10px] text-amber-900 font-bold transition cursor-pointer shadow-2xs"
+                        title="Click to view full payment screenshot"
                       >
-                        {copiedKey === `card-txn-${order.id}` ? (
-                          <Check className="w-3 h-3 text-emerald-600" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
+                        <ImageIcon className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Inspect Receipt 🔍</span>
                       </button>
-                    </div>
-
-                    {order.paytmDetails?.bankTxnId && (
-                      <span className="text-[10px] font-mono text-slate-500 hidden md:inline">
-                        Bank RRN: {order.paytmDetails.bankTxnId}
-                      </span>
                     )}
 
                     {order.paymentVerifiedBy && (
@@ -1879,13 +1989,8 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           setVerifyPaymentOrder(order);
-                          setVerifyTxnIdInput(order.paytmTxnId || order.upiTransactionId || '');
-                          setVerifyPaymentModeInput(
-                            order.paymentMethod ||
-                              (order.paymentGateway === 'paytm' || order.paytmTxnId
-                                ? 'Paytm All-in-One Gateway'
-                                : 'Prepaid Direct UPI')
-                          );
+                          setVerifyTxnIdInput(order.upiTransactionId || '');
+                          setVerifyPaymentModeInput(order.paymentMethod || 'Prepaid Direct UPI');
                         }}
                         className="px-2 py-0.5 rounded-lg border border-neutral-300 hover:border-emerald-500 hover:bg-emerald-50 text-neutral-700 hover:text-emerald-900 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs"
                         title="View or update payment reference"
@@ -2262,15 +2367,15 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                     {/* Customer's Prepaid Payment Reference */}
                     <div className="p-2.5 rounded-lg bg-white border border-neutral-200 space-y-1.5 shadow-2xs">
                       <div className="flex justify-between items-center text-[11px]">
-                        <span className="font-semibold uppercase text-[#002970] flex items-center gap-1">
+                        <span className="font-semibold uppercase text-emerald-900 flex items-center gap-1">
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>{order.paymentGateway === 'paytm' || order.paytmTxnId ? 'Paytm Verified' : 'Prepaid Verified'}</span>
+                          <span>Prepaid UPI Verified</span>
                           <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold">PAID</span>
                         </span>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => copyToClipboard(order.paytmTxnId || order.upiTransactionId || 'TXN-CONFIRMED', `utr-${order.id}`)}
+                            onClick={() => copyToClipboard(order.upiTransactionId || 'TXN-CONFIRMED', `utr-${order.id}`)}
                             className="hover:text-neutral-900 p-0.5 text-neutral-500 hover:bg-neutral-100 rounded"
                             title="Copy Transaction ID"
                           >
@@ -2285,8 +2390,8 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                               type="button"
                               onClick={() => {
                                 setVerifyPaymentOrder(order);
-                                setVerifyTxnIdInput(order.paytmTxnId || order.upiTransactionId || '');
-                                setVerifyPaymentModeInput(order.paymentMethod || order.paytmDetails?.paymentMode || 'Paytm Gateway');
+                                setVerifyTxnIdInput(order.upiTransactionId || '');
+                                setVerifyPaymentModeInput(order.paymentMethod || 'Prepaid Direct UPI');
                               }}
                               className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold hover:underline px-1 py-0.5 cursor-pointer"
                             >
@@ -2296,19 +2401,13 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                         </div>
                       </div>
                       <p className="font-mono text-xs font-bold text-neutral-950 truncate">
-                        {order.paytmTxnId || order.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
+                        {order.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
                       </p>
                       <div className="text-[10px] text-slate-600 space-y-0.5 pt-0.5 border-t border-neutral-100">
                         <div className="flex justify-between">
                           <span className="text-slate-400">Channel:</span>
-                          <span className="font-medium text-slate-800">{order.paymentMethod || order.paytmDetails?.paymentMode || 'Paytm Gateway / Net Banking'}</span>
+                          <span className="font-medium text-slate-800">{order.paymentMethod || 'Direct Merchant UPI'}</span>
                         </div>
-                        {order.paytmDetails?.bankTxnId && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Bank Ref:</span>
-                            <span className="font-mono text-slate-700 truncate max-w-[130px]">{order.paytmDetails.bankTxnId}</span>
-                          </div>
-                        )}
                         <div className="flex justify-between font-medium">
                           <span className="text-slate-400">Settled Amount:</span>
                           <span className="font-bold text-emerald-700 font-serif">{formatPrice(order.totalAmount)}</span>
@@ -3501,19 +3600,11 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                       Stage: {selectedDetailOrder.status}
                     </span>
                     {/* Payment Verified Badge */}
-                    {selectedDetailOrder.paymentGateway === 'paytm' || selectedDetailOrder.paytmTxnId ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#002970] text-[#00BAF2] border border-[#00BAF2]/50 flex items-center gap-1 shadow-xs">
-                        <ShieldCheck className="w-3.5 h-3.5 text-[#00BAF2]" />
-                        <span>Paytm Verified</span>
-                        <span className="px-1 py-0.2 rounded bg-emerald-500 text-neutral-950 text-[9px] font-extrabold uppercase">PAID</span>
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60 flex items-center gap-1 shadow-xs">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Prepaid · Verified</span>
-                        <span className="px-1 py-0.2 rounded bg-emerald-500 text-neutral-950 text-[9px] font-extrabold uppercase">PAID</span>
-                      </span>
-                    )}
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60 flex items-center gap-1 shadow-xs">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Prepaid UPI · Verified</span>
+                      <span className="px-1 py-0.2 rounded bg-emerald-500 text-neutral-950 text-[9px] font-extrabold uppercase">PAID</span>
+                    </span>
                     {selectedDetailOrder.deliveryIssue?.status && (
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                         selectedDetailOrder.deliveryIssue.status === 'open'
@@ -4013,87 +4104,180 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                 </div>
               </div>
 
-              {/* Payment Verification & Gateway Settlement Details */}
-              <div className="p-4 bg-gradient-to-br from-slate-50 to-[#002970]/5 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              {/* Payment Verification & Manual UPI Proof Settlement Details */}
+              <div className={`p-4 rounded-2xl border space-y-3 ${
+                selectedDetailOrder.status === 'pending_verification' || (selectedDetailOrder.paymentScreenshotUrl && !selectedDetailOrder.isPaymentVerified)
+                  ? 'bg-gradient-to-br from-amber-50/80 via-white to-amber-50/40 border-amber-300'
+                  : 'bg-gradient-to-br from-slate-50 to-[#002970]/5 border-slate-200'
+              }`}>
+                <div className="flex items-center justify-between pb-2 border-b border-neutral-200 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-[#002970] text-[#00BAF2] flex items-center justify-center font-bold text-xs shadow-2xs">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500 text-neutral-950 flex items-center justify-center font-bold text-xs shadow-2xs">
                       ₹
                     </div>
                     <div>
-                      <h4 className="font-serif font-bold text-xs uppercase tracking-wider text-[#002970] flex items-center gap-1.5">
-                        <span>{selectedDetailOrder.paymentGateway === 'paytm' || selectedDetailOrder.paytmTxnId ? 'Paytm Payment Gateway Settlement' : 'Prepaid Payment Settlement'}</span>
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <h4 className="font-serif font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-1.5">
+                        <span>{selectedDetailOrder.paymentMethod || 'Manual UPI Payment'}</span>
+                        {selectedDetailOrder.isPaymentVerified ? (
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        )}
                       </h4>
-                      <p className="text-[10px] text-slate-500">
-                        {selectedDetailOrder.paymentGateway === 'paytm' || selectedDetailOrder.paytmTxnId
-                          ? `Paytm All-in-One Gateway ${selectedDetailOrder.paytmDetails?.testMode ? '(Sandbox Test Simulator)' : '(Production Direct Settlement)'}`
-                          : 'Prepaid Direct Transaction'}
+                      <p className="text-[10px] text-neutral-500">
+                        {selectedDetailOrder.status === 'pending_verification' || !selectedDetailOrder.isPaymentVerified
+                          ? 'Awaiting merchant payment verification against bank account'
+                          : 'Payment verified and confirmed by staff'}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3 text-emerald-600" />
-                      <span>PAYMENT VERIFIED [PAID]</span>
-                    </span>
+                    {selectedDetailOrder.status === 'pending_verification' || (selectedDetailOrder.paymentScreenshotUrl && !selectedDetailOrder.isPaymentVerified) ? (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-950 border border-amber-400 flex items-center gap-1 shadow-xs animate-pulse">
+                        <Clock className="w-3 h-3 text-amber-700" />
+                        <span>AWAITING VERIFICATION</span>
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3 text-emerald-600" />
+                        <span>PAYMENT VERIFIED [PAID]</span>
+                      </span>
+                    )}
+
                     {canEditOrders && (
                       <button
                         type="button"
                         onClick={() => {
                           setVerifyPaymentOrder(selectedDetailOrder);
-                          setVerifyTxnIdInput(selectedDetailOrder.paytmTxnId || selectedDetailOrder.upiTransactionId || '');
-                          setVerifyPaymentModeInput(selectedDetailOrder.paymentMethod || selectedDetailOrder.paytmDetails?.paymentMode || 'Paytm Gateway');
+                          setVerifyTxnIdInput(selectedDetailOrder.upiTransactionId || '');
+                          setVerifyPaymentModeInput(selectedDetailOrder.paymentMethod || 'Manual UPI Payment');
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
+                        className={`px-3 py-1.5 rounded-lg text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs ${
+                          selectedDetailOrder.status === 'pending_verification' || !selectedDetailOrder.isPaymentVerified
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                            : 'bg-emerald-700 hover:bg-emerald-800'
+                        }`}
                       >
-                        <ShieldCheck className="w-3 h-3" />
-                        <span>Verify / Update</span>
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>{selectedDetailOrder.status === 'pending_verification' || !selectedDetailOrder.isPaymentVerified ? 'Approve & Confirm Order' : 'Update Verification'}</span>
                       </button>
                     )}
                   </div>
                 </div>
 
+                {/* Uploaded Payment Proof Screenshot Card */}
+                {selectedDetailOrder.paymentScreenshotUrl && (
+                  <div className="p-3.5 rounded-xl bg-white border border-amber-200 shadow-xs space-y-2.5">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1 rounded-md bg-amber-100 text-amber-800">
+                          <ImageIcon className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <span className="font-bold text-xs text-neutral-900 block">Customer Payment Proof Screenshot</span>
+                          <span className="text-[10px] text-neutral-500 block">Client-compressed WebP/JPEG uploaded to Cloud Storage</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {selectedDetailOrder.deviceType && (
+                          <span className="px-2 py-0.5 rounded-md bg-neutral-100 border border-neutral-200 text-[10px] font-semibold text-neutral-700 flex items-center gap-1">
+                            {selectedDetailOrder.deviceType === 'mobile' ? (
+                              <>
+                                <Smartphone className="w-3 h-3 text-sky-600" />
+                                <span>Mobile Device</span>
+                              </>
+                            ) : selectedDetailOrder.deviceType === 'tablet' ? (
+                              <>
+                                <TabletIcon className="w-3 h-3 text-purple-600" />
+                                <span>Tablet Device</span>
+                              </>
+                            ) : (
+                              <>
+                                <Monitor className="w-3 h-3 text-emerald-600" />
+                                <span>Desktop Browser</span>
+                              </>
+                            )}
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScreenshotZoomScale(1);
+                            setScreenshotRotation(0);
+                            setZoomScreenshotUrl(selectedDetailOrder.paymentScreenshotUrl || null);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
+                        >
+                          <ZoomIn className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Inspect Full Resolution</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 bg-amber-50/50 p-2.5 rounded-xl border border-amber-200/80">
+                      <img
+                        src={selectedDetailOrder.paymentScreenshotUrl}
+                        alt="Customer Payment Receipt"
+                        onClick={() => {
+                          setScreenshotZoomScale(1);
+                          setScreenshotRotation(0);
+                          setZoomScreenshotUrl(selectedDetailOrder.paymentScreenshotUrl || null);
+                        }}
+                        className="w-24 h-24 object-cover rounded-lg border-2 border-white shadow-md cursor-pointer hover:opacity-90 transition shrink-0"
+                        title="Click to zoom in"
+                      />
+                      <div className="space-y-1 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-neutral-500 font-medium text-[11px]">Reported UTR:</span>
+                          <span className="font-mono font-bold text-neutral-950 bg-white px-2 py-0.5 rounded border border-neutral-200 text-xs">
+                            {selectedDetailOrder.upiTransactionId || 'Provided in screenshot'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-600 leading-snug">
+                          Check the 12-digit UPI Reference Number / Transaction ID and exact amount of <strong>{formatPrice(selectedDetailOrder.totalAmount)}</strong> against your merchant UPI statement.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5">
-                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Gateway Transaction ID / UTR</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Transaction Reference / UTR</span>
                     <div className="flex items-center justify-between gap-1">
                       <span className="font-mono font-bold text-slate-900 truncate">
-                        {selectedDetailOrder.paytmTxnId || selectedDetailOrder.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
+                        {selectedDetailOrder.upiTransactionId || 'TXN-AWAITING-VERIFICATION'}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(selectedDetailOrder.paytmTxnId || selectedDetailOrder.upiTransactionId || 'TXN-AUTO-CONFIRMED', `modal-txn-${selectedDetailOrder.id}`)}
-                        className="p-1 hover:bg-slate-100 rounded text-slate-500 cursor-pointer"
-                        title="Copy Txn ID"
-                      >
-                        {copiedKey === `modal-txn-${selectedDetailOrder.id}` ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
+                      {selectedDetailOrder.upiTransactionId && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(selectedDetailOrder.upiTransactionId || '', `modal-txn-${selectedDetailOrder.id}`)}
+                          className="p-1 hover:bg-slate-100 rounded text-slate-500 cursor-pointer"
+                          title="Copy Txn ID"
+                        >
+                          {copiedKey === `modal-txn-${selectedDetailOrder.id}` ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
 
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5">
-                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Bank Settlement Ref (RRN)</span>
-                    <span className="font-mono font-semibold text-slate-800 block truncate">
-                      {selectedDetailOrder.paytmDetails?.bankTxnId || 'Direct Merchant Settlement'}
-                    </span>
-                  </div>
-
-                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5">
-                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Payment Channel / Instrument</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Payment Instrument / Mode</span>
                     <span className="font-semibold text-slate-800 block">
-                      {selectedDetailOrder.paymentMethod || selectedDetailOrder.paytmDetails?.paymentMode || 'Instant Net Banking / UPI'}
+                      {selectedDetailOrder.paymentMethod || 'Manual UPI Payment'}
                     </span>
                   </div>
 
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5">
-                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Settlement Time</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Order Placement Timestamp</span>
                     <span className="text-slate-700 block">
-                      {new Date(selectedDetailOrder.paytmDetails?.txnDate || selectedDetailOrder.paymentVerifiedAt || selectedDetailOrder.createdAt).toLocaleString('en-IN', {
+                      {new Date(selectedDetailOrder.createdAt).toLocaleString('en-IN', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
@@ -4103,15 +4287,21 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                     </span>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5 sm:col-span-2">
-                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Verification Audit Stamp</span>
-                    <span className="text-emerald-800 font-semibold flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{selectedDetailOrder.paymentVerifiedBy ? `Verified & Cleared by ${selectedDetailOrder.paymentVerifiedBy}` : 'Paytm Gateway Automated Verification Stamp'}</span>
-                      {selectedDetailOrder.paymentVerifiedAt && (
-                        <span className="text-[10px] text-slate-500 font-normal">
-                          · ({new Date(selectedDetailOrder.paymentVerifiedAt).toLocaleDateString('en-IN')})
-                        </span>
+                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-0.5">
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">Verification Status</span>
+                    <span className={`font-semibold flex items-center gap-1.5 ${
+                      selectedDetailOrder.isPaymentVerified ? 'text-emerald-800' : 'text-amber-800'
+                    }`}>
+                      {selectedDetailOrder.isPaymentVerified ? (
+                        <>
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{selectedDetailOrder.paymentVerifiedBy ? `Verified by ${selectedDetailOrder.paymentVerifiedBy}` : 'Payment Verified'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Pending Staff Inspection</span>
+                        </>
                       )}
                     </span>
                   </div>
@@ -4899,7 +5089,6 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                       paymentVerifiedAt: new Date().toISOString(),
                       paymentVerifiedBy: currentUserName,
                       paymentMethod: verifyPaymentModeInput.trim(),
-                      paytmTxnId: verifyTxnIdInput.trim() || selectedDetailOrder.paytmTxnId,
                       upiTransactionId: verifyTxnIdInput.trim() || selectedDetailOrder.upiTransactionId,
                     });
                   }
@@ -4915,12 +5104,60 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
               }}
               className="p-6 space-y-4 text-xs text-neutral-800"
             >
+              {/* Uploaded Payment Proof Receipt preview in verification modal */}
+              {verifyPaymentOrder.paymentScreenshotUrl && (
+                <div className="p-3 bg-amber-50 rounded-2xl border border-amber-300 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-950 flex items-center gap-1.5 text-xs">
+                      <ImageIcon className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Customer Uploaded Proof Screenshot</span>
+                    </span>
+                    {verifyPaymentOrder.deviceType && (
+                      <span className="px-2 py-0.5 rounded-full bg-white border border-amber-300 text-[10px] text-amber-900 font-semibold">
+                        Device: {verifyPaymentOrder.deviceType.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={verifyPaymentOrder.paymentScreenshotUrl}
+                      alt="Uploaded Screenshot"
+                      onClick={() => {
+                        setScreenshotZoomScale(1);
+                        setScreenshotRotation(0);
+                        setZoomScreenshotUrl(verifyPaymentOrder.paymentScreenshotUrl || null);
+                      }}
+                      className="w-16 h-16 object-cover rounded-lg border border-amber-300 shadow-xs cursor-pointer hover:opacity-90 transition shrink-0"
+                      title="Click to zoom receipt"
+                    />
+                    <div className="space-y-1">
+                      <p className="text-[11px] text-amber-900 leading-snug">
+                        Inspect the customer receipt image to compare UTR reference and amount before confirming.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScreenshotZoomScale(1);
+                          setScreenshotRotation(0);
+                          setZoomScreenshotUrl(verifyPaymentOrder.paymentScreenshotUrl || null);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                      >
+                        <ZoomIn className="w-3 h-3" />
+                        <span>Inspect Receipt Fullscreen</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-bold text-emerald-950 text-xs">Payment Verification Audit Log</p>
                   <p className="text-emerald-800 text-[11px] mt-0.5">
-                    Confirming will mark this order as <strong>Payment Verified [PAID]</strong>, stamp your reviewer badge ({currentUserName}), and update the transaction reference across staff and customer views.
+                    Confirming will mark this order as <strong>Payment Verified [PAID]</strong>, update status to <strong>Confirmed</strong>, stamp your reviewer badge ({currentUserName}), and notify the customer.
                   </p>
                 </div>
               </div>
@@ -4934,21 +5171,22 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   required
                   value={verifyPaymentModeInput}
                   onChange={(e) => setVerifyPaymentModeInput(e.target.value)}
-                  placeholder="e.g. Paytm Gateway, Direct UPI, Net Banking"
+                  placeholder="e.g. Manual UPI Payment, PhonePe, Google Pay, BHIM"
                   className="w-full p-2.5 rounded-xl border border-neutral-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-xs font-medium"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold text-neutral-700 block">
-                  Transaction Reference / UTR Number
+                <label className="font-semibold text-neutral-700 block flex items-center justify-between">
+                  <span>12-Digit Bank UTR / UPI Reference Number *</span>
+                  <span className="text-[10px] text-neutral-400 font-normal">Found on receipt</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={verifyTxnIdInput}
                   onChange={(e) => setVerifyTxnIdInput(e.target.value)}
-                  placeholder="e.g. 2026102611121280011016834567890"
+                  placeholder="e.g. 402819283741 or UPI Txn Ref"
                   className="w-full p-2.5 rounded-xl border border-neutral-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-xs font-mono font-bold"
                 />
               </div>
@@ -4959,7 +5197,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   <span className="font-semibold text-neutral-900">{verifyPaymentOrder.customer.name} ({verifyPaymentOrder.customer.phone})</span>
                 </div>
                 <div className="flex justify-between text-neutral-600">
-                  <span>Settled Amount:</span>
+                  <span>Total Due:</span>
                   <span className="font-bold text-emerald-700 font-serif text-xs">{formatPrice(verifyPaymentOrder.totalAmount)}</span>
                 </div>
                 <div className="flex justify-between text-neutral-600">
@@ -4984,10 +5222,100 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>{isVerifyingPayment ? 'Saving...' : 'Confirm Payment Verification'}</span>
+                  <span>{isVerifyingPayment ? 'Saving...' : 'Approve & Verify Payment'}</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* High-Resolution Screenshot Zoom / Inspection Lightbox Modal */}
+      {zoomScreenshotUrl && (
+        <div
+          className="fixed inset-0 z-80 bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-4 animate-in fade-in select-none"
+          onClick={() => setZoomScreenshotUrl(null)}
+        >
+          {/* Header Controls */}
+          <div
+            className="w-full max-w-4xl flex items-center justify-between text-white py-2 px-4 bg-neutral-900/80 rounded-2xl border border-neutral-700/80 backdrop-blur-md shrink-0 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-amber-400" />
+              <span className="font-bold text-xs">Customer Payment Proof Receipt</span>
+              <span className="text-[10px] text-neutral-400 hidden sm:inline">· Zoom & Rotate to verify UTR number</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setScreenshotZoomScale((s) => Math.max(0.5, Number((s - 0.25).toFixed(2))))}
+                className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white transition cursor-pointer"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-mono font-bold w-12 text-center">
+                {Math.round(screenshotZoomScale * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setScreenshotZoomScale((s) => Math.min(3, Number((s + 0.25).toFixed(2))))}
+                className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white transition cursor-pointer"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setScreenshotRotation((r) => (r + 90) % 360)}
+                className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white transition cursor-pointer"
+                title="Rotate 90°"
+              >
+                <RotateCw className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScreenshotZoomScale(1);
+                  setScreenshotRotation(0);
+                }}
+                className="px-2 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs transition cursor-pointer"
+                title="Reset View"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoomScreenshotUrl(null)}
+                className="p-1.5 rounded-lg bg-rose-900/60 hover:bg-rose-800 text-white transition cursor-pointer ml-2"
+                title="Close Lightbox"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Centered Image with Transform */}
+          <div
+            className="flex-1 w-full max-w-4xl flex items-center justify-center overflow-auto p-4 my-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={zoomScreenshotUrl}
+              alt="Payment Proof Receipt"
+              style={{
+                transform: `scale(${screenshotZoomScale}) rotate(${screenshotRotation}deg)`,
+                transition: 'transform 0.15s ease-out',
+                maxHeight: '75vh',
+                maxWidth: '90vw',
+              }}
+              className="object-contain rounded-xl shadow-2xl border border-neutral-700"
+            />
+          </div>
+
+          <div className="text-center text-xs text-neutral-400 py-1">
+            <span>Verify the 12-digit UTR against your merchant statement before confirming verification. Click anywhere outside to close.</span>
           </div>
         </div>
       )}

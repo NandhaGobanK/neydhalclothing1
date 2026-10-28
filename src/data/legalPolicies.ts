@@ -50,7 +50,7 @@ export const LEGAL_POLICIES: Record<string, PolicySection> = {
       {
         heading: '3. Pricing, Orders & Digital Payments',
         content:
-          'All prices are listed in Indian Rupees (₹). Orders are confirmed upon receipt of authorized payment processed securely via our Paytm Payment Gateway (supporting UPI, Credit/Debit Cards, Net Banking, and Paytm Wallet).',
+          'All prices are listed in Indian Rupees (₹). Orders are confirmed upon receipt of authorized payment processed securely via our direct Merchant UPI (supporting Google Pay, PhonePe, BHIM, and banking UPI apps).',
         bullets: [
           'Prices are subject to revision without prior notice prior to order confirmation.',
           'Neydhal Clothing reserves the right to decline or cancel any order in case of stock unavailability, in which case full payment will be refunded immediately.',
@@ -101,7 +101,7 @@ export const LEGAL_POLICIES: Record<string, PolicySection> = {
       {
         heading: '4. Refund Processing Timeline',
         content:
-          'For eligible pre-shipping cancellations or staff-authorized damage claims, refunds are credited back to the original bank account, UPI ID, or card used during checkout via the Paytm Payment Gateway. Standard bank crediting takes 5 to 7 business days depending on your issuing bank.',
+          'For eligible pre-shipping cancellations or staff-authorized damage claims, refunds are credited back to the original bank account or UPI ID used during checkout. Standard bank crediting takes 5 to 7 business days depending on your issuing bank.',
       },
     ],
   },
@@ -113,7 +113,7 @@ export const LEGAL_POLICIES: Record<string, PolicySection> = {
     lastUpdated: 'October 2026',
     badge: '100% Data Protection',
     highlightNote:
-      'We treat your personal and order data with strict confidentiality. Payment card and UPI details are never stored on our servers and are processed directly through Paytm\'s RBI-licensed gateway.',
+      'We treat your personal and order data with strict confidentiality. Payment card and UPI details are never stored on our servers and are processed securely through direct verified UPI settlement channels.',
     clauses: [
       {
         heading: '1. Information We Collect',
@@ -123,7 +123,7 @@ export const LEGAL_POLICIES: Record<string, PolicySection> = {
       {
         heading: '2. Payment Security & Zero Card Storage',
         content:
-          'Neydhal Clothing does not capture, store, or process any card numbers, CVVs, net banking credentials, or UPI PINs. All payment transactions are executed via 256-bit encrypted, PCI-DSS compliant channels provided by the official Paytm Payment Gateway.',
+          'Neydhal Clothing does not capture, store, or process any card numbers, CVVs, net banking credentials, or UPI PINs. All payment transactions are executed via 256-bit encrypted direct UPI protocols.',
       },
       {
         heading: '3. Data Privacy & No Third-Party Resale',

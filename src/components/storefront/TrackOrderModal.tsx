@@ -42,6 +42,7 @@ import {
   Volume2,
   Download,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { downloadSingleImage } from '../../utils/imageDownload';
 
@@ -763,19 +764,11 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                             </span>
 
                             {/* Payment Verified Badge */}
-                            {order.paymentGateway === 'paytm' || order.paytmTxnId ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#002970]/10 text-[#002970] border border-[#00BAF2]/40 shadow-2xs">
-                                <ShieldCheck className="w-3 h-3 text-[#00BAF2]" />
-                                <span>Paytm Verified</span>
-                                <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
-                                <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                                <span>Prepaid Verified</span>
-                                <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
-                              </span>
-                            )}
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              <span>Prepaid UPI Verified</span>
+                              <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
+                            </span>
 
                             {/* Dispute Alert Badge */}
                             {hasActiveDispute && (
@@ -851,19 +844,19 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                         </div>
 
                         {/* Payment Settlement Strip */}
-                        <div className="mt-2.5 p-2 rounded-xl bg-gradient-to-r from-emerald-50/70 via-slate-50 to-[#002970]/5 border border-emerald-200/80 text-[11px] flex items-center justify-between flex-wrap gap-1 shadow-2xs">
-                          <div className="flex items-center gap-1.5 font-bold text-[#002970]">
+                        <div className="mt-2.5 p-2 rounded-xl bg-gradient-to-r from-emerald-50/70 via-slate-50 to-emerald-50/40 border border-emerald-200/80 text-[11px] flex items-center justify-between flex-wrap gap-1 shadow-2xs">
+                          <div className="flex items-center gap-1.5 font-bold text-emerald-900">
                             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                             <span className="text-[10px] uppercase">
-                              {order.paymentGateway === 'paytm' || order.paytmTxnId ? 'Paytm Verified' : 'Prepaid Verified'}
+                              Prepaid UPI Verified
                             </span>
                             <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
                             <span className="font-mono text-slate-600 font-normal ml-1 truncate max-w-[170px]">
-                              Txn: {order.paytmTxnId || order.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
+                              UTR: {order.upiTransactionId || 'TXN-CONFIRMED'}
                             </span>
                           </div>
                           <span className="text-[10px] text-slate-500 font-medium">
-                            {order.paymentMethod || order.paytmDetails?.paymentMode || 'Instant Net Banking / UPI'}
+                            {order.paymentMethod || 'Direct Merchant UPI'}
                           </span>
                         </div>
 
@@ -915,7 +908,20 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               </button>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono font-bold text-xs text-rose-950 bg-white px-2.5 py-1 rounded-md border border-amber-300">
+                <div className="w-8 h-8 rounded-xl bg-white p-0.5 border border-emerald-400 shadow-2xs flex items-center justify-center shrink-0">
+                  <img
+                    src={settings.logoUrl || '/logo.png'}
+                    alt="Logo"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                {/* Vibrant Green Neydhal Clothing Badge */}
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-green-600 text-white font-black text-xs uppercase tracking-wide border border-emerald-300 shadow-sm">
+                  <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
+                  <span>Neydhal Clothing</span>
+                </span>
+                {/* Big Bold Order Number */}
+                <span className="font-mono font-black text-sm sm:text-base text-emerald-950 bg-white px-3 py-1 rounded-xl border-2 border-emerald-500 shadow-2xs tracking-wider">
                   #{selectedOrder.orderNumber}
                 </span>
                 <span
@@ -925,19 +931,11 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                 >
                   {getStatusBadge(selectedOrder.status).label}
                 </span>
-                {selectedOrder.paymentGateway === 'paytm' || selectedOrder.paytmTxnId ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#002970]/10 text-[#002970] border border-[#00BAF2]/40 shadow-2xs">
-                    <ShieldCheck className="w-3 h-3 text-[#00BAF2]" />
-                    <span>Paytm Verified</span>
-                    <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                    <span>Prepaid Verified</span>
-                    <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                  <span>Prepaid UPI Verified</span>
+                  <span className="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold uppercase">PAID</span>
+                </span>
               </div>
             </div>
 
@@ -1307,11 +1305,11 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
               </div>
 
               {/* Payment & Refund Details */}
-              <div className="p-4 rounded-2xl border border-neutral-200 bg-gradient-to-br from-slate-50 to-[#002970]/5 space-y-3">
+              <div className="p-4 rounded-2xl border border-neutral-200 bg-gradient-to-br from-slate-50 to-emerald-50/20 space-y-3">
                 <div className="flex items-center justify-between pb-1 border-b border-neutral-200/70">
-                  <span className="text-[10px] font-bold text-[#002970] uppercase tracking-wide flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-emerald-900 uppercase tracking-wide flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>{selectedOrder.paymentGateway === 'paytm' || selectedOrder.paytmTxnId ? 'Paytm Payment Gateway Verification' : 'Prepaid Payment Settlement'}</span>
+                    <span>Prepaid Direct UPI Settlement</span>
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-2xs">
                     <CheckCircle className="w-3 h-3 text-emerald-600" />
@@ -1322,15 +1320,15 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="p-3 rounded-xl bg-white border border-neutral-200">
                     <span className="text-[10px] font-semibold text-neutral-400 uppercase block">
-                      {selectedOrder.paymentGateway === 'paytm' ? 'Paytm Verified Transaction ID / UTR' : 'Payment Transaction ID (UTR)'}
+                      Payment Reference / UTR
                     </span>
                     <div className="flex items-center justify-between mt-1">
                       <code className="font-mono font-bold text-neutral-900 text-xs truncate">
-                        {selectedOrder.paytmTxnId || selectedOrder.upiTransactionId || 'TXN-AUTO-CONFIRMED'}
+                        {selectedOrder.upiTransactionId || 'TXN-CONFIRMED'}
                       </code>
                       <button
                         type="button"
-                        onClick={() => copyText(selectedOrder.paytmTxnId || selectedOrder.upiTransactionId || 'TXN-AUTO-CONFIRMED', `utr-${selectedOrder.id}`)}
+                        onClick={() => copyText(selectedOrder.upiTransactionId || 'TXN-CONFIRMED', `utr-${selectedOrder.id}`)}
                         className="p-1 text-neutral-500 hover:text-neutral-900 rounded cursor-pointer shrink-0 ml-1"
                         title="Copy Payment Transaction ID"
                       >
@@ -1348,11 +1346,11 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                       Payment Mode & Channel
                     </span>
                     <p className="font-bold text-neutral-900 text-xs mt-1 truncate">
-                      {selectedOrder.paymentMethod || selectedOrder.paytmDetails?.paymentMode || 'Instant Net Banking / UPI'}
+                      {selectedOrder.paymentMethod || 'Direct Merchant UPI (8807392520@okbizaxis)'}
                     </p>
-                    {selectedOrder.paytmDetails?.bankTxnId && (
-                      <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">
-                        Bank Ref: {selectedOrder.paytmDetails.bankTxnId}
+                    {selectedOrder.paymentScreenshotUrl && (
+                      <p className="text-[10px] text-emerald-600 font-medium mt-0.5 truncate">
+                        ✓ Payment Screenshot Verified
                       </p>
                     )}
                   </div>
@@ -1365,7 +1363,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                       {formatPrice(selectedOrder.totalAmount)} Paid in Full
                     </p>
                     <span className="text-[10px] text-neutral-500">
-                      Settled on {new Date(selectedOrder.paytmDetails?.txnDate || selectedOrder.paymentVerifiedAt || selectedOrder.createdAt).toLocaleDateString('en-IN')}
+                      Settled on {new Date(selectedOrder.paymentVerifiedAt || selectedOrder.createdAt).toLocaleDateString('en-IN')}
                     </span>
                   </div>
 
@@ -1375,7 +1373,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                     </span>
                     <p className="font-bold text-neutral-800 text-xs mt-0.5 flex items-center gap-1">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{selectedOrder.paymentVerifiedBy ? `Verified by ${selectedOrder.paymentVerifiedBy}` : 'Paytm Gateway Auto-Verified'}</span>
+                      <span>{selectedOrder.paymentVerifiedBy ? `Verified by ${selectedOrder.paymentVerifiedBy}` : 'Direct UPI Settlement Verified'}</span>
                     </p>
                     <span className="text-[10px] text-neutral-500">
                       Boutique Order Ledger Recorded

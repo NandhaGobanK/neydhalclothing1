@@ -1,8 +1,109 @@
+import imageCompression from 'browser-image-compression';
+
 /**
- * Client-side image compression and resizing utility using HTML5 Canvas.
- * Ensures uploaded images strictly fit within Firestore document limits (1MB limit)
- * and load blazingly fast across mobile PWA and desktop clients.
+ * Client-side image compression and resizing utility using HTML5 Canvas & browser-image-compression.
+ * Ensures uploaded images strictly fit within Firestore and Firebase Storage limits
+ * while preserving critical text readability (UTR numbers, dates, amounts).
  */
+
+export interface CompressedScreenshotResult {
+  file: File;
+  previewUrl: string;
+  originalSizeKB: number;
+  compressedSizeKB: number;
+  reductionPercentage: number;
+  width: number;
+  height: number;
+  mimeType: string;
+}
+
+/**
+ * Compresses customer payment receipt screenshots using browser-image-compression.
+ * Targets: 150KB - 200KB (Max 0.2MB), 800px-1000px dimensions, WebP or JPEG,
+ * with high clarity preservation for 12-digit UTR numbers, amounts, and timestamps.
+ */
+export async function compressPaymentScreenshot(
+  file: File
+): Promise<CompressedScreenshotResult> {
+  const originalSizeKB = Math.round(file.size / 1024);
+  const isWebp = file.type.includes('webp');
+  const targetMime = isWebp ? 'image/webp' : 'image/jpeg';
+
+  const options = {
+    maxSizeMB: 0.19, // ~190 KB (strictly within 150 KB to 200 KB target)
+    maxWidthOrHeight: 1000, // 800px to 1000px max dimensions
+    useWebWorker: true,
+    fileType: targetMime,
+    initialQuality: 0.85, // Sharp high-contrast text preservation
+  };
+
+  let compressedFile: File;
+  try {
+    compressedFile = await imageCompression(file, options);
+  } catch (workerErr) {
+    console.warn('Worker image compression failed, falling back to main thread:', workerErr);
+    try {
+      compressedFile = await imageCompression(file, { ...options, useWebWorker: false });
+    } catch (fallbackErr) {
+      console.warn('browser-image-compression fallback to canvas:', fallbackErr);
+      const dataUrl = await compressImageFile(file, {
+        maxWidth: 1000,
+        maxHeight: 1000,
+        quality: 0.8,
+        mimeType: 'image/jpeg',
+      });
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, '') + '.jpg', {
+        type: 'image/jpeg',
+      });
+    }
+  }
+
+  // Ensure file does not exceed 200 KB
+  if (compressedFile.size > 200 * 1024) {
+    try {
+      compressedFile = await imageCompression(compressedFile, {
+        maxSizeMB: 0.17,
+        maxWidthOrHeight: 900,
+        useWebWorker: false,
+        fileType: targetMime,
+        initialQuality: 0.78,
+      });
+    } catch {}
+  }
+
+  const compressedSizeKB = Math.round(compressedFile.size / 1024);
+  const reductionPercentage =
+    originalSizeKB > 0
+      ? Math.max(0, Math.round(((originalSizeKB - compressedSizeKB) / originalSizeKB) * 100))
+      : 0;
+
+  // Generate data URL preview and extract dimensions
+  const previewUrl = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(compressedFile);
+  });
+
+  const { width, height } = await new Promise<{ width: number; height: number }>((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.width, height: img.height });
+    img.onerror = () => resolve({ width: 0, height: 0 });
+    img.src = previewUrl;
+  });
+
+  return {
+    file: compressedFile,
+    previewUrl,
+    originalSizeKB,
+    compressedSizeKB,
+    reductionPercentage,
+    width,
+    height,
+    mimeType: compressedFile.type || targetMime,
+  };
+}
 
 export interface CompressOptions {
   maxWidth?: number;

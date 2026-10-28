@@ -31,7 +31,6 @@ import {
   X,
   HelpCircle,
 } from 'lucide-react';
-import { PAYTM_TEST_CREDENTIALS } from '../../types/store';
 import { LEGAL_POLICIES, STORE_CONTACT_DETAILS, PolicySection } from '../../data/legalPolicies';
 
 interface CustomerLoginPageProps {
@@ -70,9 +69,9 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
     setTimeout(() => setCopiedPolicyText(false), 2500);
   };
 
-  // Testing & Credentials State (Paytm Reviewer & Customer Login)
-  const [loginUsername, setLoginUsername] = useState(PAYTM_TEST_CREDENTIALS.username);
-  const [loginPassword, setLoginPassword] = useState(PAYTM_TEST_CREDENTIALS.password);
+  // Customer Login State
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [copiedTestField, setCopiedTestField] = useState<string | null>(null);
 
@@ -104,25 +103,6 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
       }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Login failed.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickPaytmTestLogin = async () => {
-    setLoginUsername(PAYTM_TEST_CREDENTIALS.username);
-    setLoginPassword(PAYTM_TEST_CREDENTIALS.password);
-    setErrorMsg('');
-    setIsLoading(true);
-    try {
-      const res = await customerLogin(PAYTM_TEST_CREDENTIALS.username, PAYTM_TEST_CREDENTIALS.password);
-      if (res.success) {
-        onSuccess?.();
-      } else {
-        setErrorMsg(res.error || 'Paytm test login could not be completed.');
-      }
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Paytm test login failed.');
     } finally {
       setIsLoading(false);
     }
@@ -542,98 +522,13 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
               </div>
             ) : authMode === 'signin' ? (
               <div className="space-y-4 pt-1">
-                {/* Paytm Website Verification Test Credentials Card */}
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-950/80 via-purple-950/80 to-[#190325] border-2 border-[#00BAF2]/40 text-left space-y-3 shadow-md">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#00BAF2]/20 text-[#38d4ff] text-[10px] font-bold uppercase tracking-wider border border-[#00BAF2]/30">
-                      <Sparkles className="w-3 h-3 text-[#38d4ff]" />
-                      <span>Paytm Channel Verification</span>
-                    </span>
-                    <span className="text-[10px] text-amber-300 font-medium">
-                      Storefront Test Credentials
-                    </span>
-                  </div>
-
-                  <p className="text-[11px] text-purple-200/90 leading-snug">
-                    Provide these test credentials to Paytm under <strong>Add Channels &gt; Website Verification</strong>:
-                  </p>
-
-                  <div className="space-y-2 text-xs">
-                    {/* Website Link */}
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-purple-500/20">
-                      <div className="min-w-0 pr-2">
-                        <span className="text-[9px] uppercase tracking-wider text-purple-300 block font-semibold">
-                          Website Link *
-                        </span>
-                        <span className="font-mono text-xs text-white truncate block">
-                          {PAYTM_TEST_CREDENTIALS.websiteUrl}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyTestField(PAYTM_TEST_CREDENTIALS.websiteUrl, 'website')}
-                        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-white/10 hover:bg-white/20 text-purple-200 transition shrink-0 cursor-pointer"
-                      >
-                        {copiedTestField === 'website' ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-
-                    {/* Username */}
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-purple-500/20">
-                      <div className="min-w-0 pr-2">
-                        <span className="text-[9px] uppercase tracking-wider text-purple-300 block font-semibold">
-                          Username *
-                        </span>
-                        <span className="font-mono text-xs text-amber-300 truncate block">
-                          {PAYTM_TEST_CREDENTIALS.username}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyTestField(PAYTM_TEST_CREDENTIALS.username, 'username')}
-                        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-white/10 hover:bg-white/20 text-purple-200 transition shrink-0 cursor-pointer"
-                      >
-                        {copiedTestField === 'username' ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-
-                    {/* Password */}
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-purple-500/20">
-                      <div className="min-w-0 pr-2">
-                        <span className="text-[9px] uppercase tracking-wider text-purple-300 block font-semibold">
-                          Password *
-                        </span>
-                        <span className="font-mono text-xs text-amber-300 truncate block">
-                          {PAYTM_TEST_CREDENTIALS.password}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyTestField(PAYTM_TEST_CREDENTIALS.password, 'password')}
-                        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-white/10 hover:bg-white/20 text-purple-200 transition shrink-0 cursor-pointer"
-                      >
-                        {copiedTestField === 'password' ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleQuickPaytmTestLogin}
-                    disabled={isLoading}
-                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition cursor-pointer active:scale-98"
-                  >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>{isLoading ? 'Signing In...' : '1-Click Sign In as Paytm Tester'}</span>
-                  </button>
-                </div>
 
                 {/* Form 1: Username & Password Sign In */}
                 <form onSubmit={handleCredentialsSignIn} className="space-y-3 pt-1 text-left">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1 flex items-center justify-between">
                       <span>Username or Email</span>
-                      <span className="text-[10px] text-neutral-400 font-normal">Registered patron or test user</span>
+                      <span className="text-[10px] text-neutral-400 font-normal">Registered patron account</span>
                     </label>
                     <div className="relative">
                       <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
@@ -644,7 +539,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                         required
                         value={loginUsername}
                         onChange={(e) => setLoginUsername(e.target.value)}
-                        placeholder="paytm_tester@neydhalclothing.in or Phone"
+                        placeholder="e.g. 9876543210 or your email"
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
                       />
                     </div>

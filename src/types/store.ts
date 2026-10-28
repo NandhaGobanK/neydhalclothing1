@@ -155,6 +155,7 @@ export interface DeletedOrderAuditLog {
 
 export type OrderStatus =
   | 'Pending'
+  | 'pending_verification'
   | 'Confirmed'
   | 'Shipped'
   | 'Delivered'
@@ -339,14 +340,15 @@ export interface Order {
   shippingFee: number;
   totalAmount: number;
   upiTransactionId: string;
-  paymentGateway?: 'paytm' | 'upi_manual';
-  paytmTxnId?: string;
-  paytmDetails?: PaytmTransactionDetails;
+  paymentScreenshotUrl?: string; // Firebase Storage URL of payment proof screenshot
+  paymentScreenshotStoragePath?: string;
+  deviceType?: 'mobile' | 'tablet' | 'desktop';
+  paymentGateway?: 'upi_manual' | 'direct_upi';
   paymentStatus?: PaymentStatus; // 'paid' | 'verified' | 'pending' | 'failed' | 'refunded'
   isPaymentVerified?: boolean; // Explicit verification flag
   paymentVerifiedAt?: string; // Verification timestamp
-  paymentVerifiedBy?: string; // Staff name, "Store Owner", or "Paytm Gateway"
-  paymentMethod?: string; // Friendly payment method name e.g. "Paytm Gateway", "UPI"
+  paymentVerifiedBy?: string; // Staff name or "Store Owner"
+  paymentMethod?: string; // Friendly payment method name e.g. "Direct UPI Intent", "UPI QR Scanner"
   refundDetails: RefundDetails;
   shippingDetails?: ShippingDetails;
   status: OrderStatus;
@@ -509,41 +511,11 @@ export interface AnnouncementSettings {
   badgeLabel: string;
 }
 
-export interface PaytmSettings {
-  enabled: boolean;
-  environment: 'staging' | 'production';
-  merchantId: string; // Paytm MID
-  merchantKey?: string; // Merchant Secret Key
-  website: string; // 'WEBSTAGING' or 'DEFAULT'
-  channelId: string; // 'WEB'
-  industryTypeId: string; // 'Retail'
-  autoVerifyInTestMode: boolean; // Auto-verify transactions in sandbox / test mode
-  enableQr: boolean;
-  enableUpi: boolean;
-  enableCards: boolean;
-  enableNetBanking: boolean;
-  enableWallet: boolean;
-  customCallbackUrl?: string;
-}
-
-export interface PaytmTransactionDetails {
-  txnId: string;
-  orderId: string;
-  txnAmount: number;
-  paymentMode: string;
-  status: 'TXN_SUCCESS' | 'TXN_FAILURE' | 'PENDING';
-  gatewayName: 'PAYTM';
-  bankTxnId?: string;
-  respCode?: string;
-  respMsg?: string;
-  txnDate: string;
-  testMode?: boolean;
-}
-
 export interface PaymentSettings {
-  paytm?: PaytmSettings;
-  upiId?: string;
-  payeeName?: string;
+  upiId: string;
+  upiNumber?: string;
+  merchantName: string;
+  payeeName?: string; // backwards compatibility alias for merchantName
   qrCodeUrl?: string;
   instructions?: string;
 }
@@ -657,12 +629,3 @@ export interface StoreSettings {
   isFreshBrandNew?: boolean; // True when reset to clean fresh state
   lastResetAt?: string; // Timestamp of latest fresh reset
 }
-
-export const PAYTM_TEST_CREDENTIALS = {
-  websiteUrl: 'https://neydhalclothing.in',
-  username: 'paytm_tester@neydhalclothing.in',
-  alternativeUsername: 'paytm_tester',
-  password: 'PaytmTest@2026',
-  phone: '9876500001',
-  customerName: 'Paytm Verification Tester',
-};
