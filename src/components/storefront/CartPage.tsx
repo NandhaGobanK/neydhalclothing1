@@ -216,7 +216,7 @@ export const CartPage: React.FC<CartPageProps> = ({
             <div>
               <h2 className="font-serif font-bold text-lg text-neutral-900">Your bag is currently empty</h2>
               <p className="text-xs text-neutral-500 mt-1">
-                Explore our authentic Salem handloom silk weaves and add exquisite drapes to your bag.
+                Explore our curated collections and add your favorite styles to your bag.
               </p>
             </div>
             <button
@@ -224,7 +224,7 @@ export const CartPage: React.FC<CartPageProps> = ({
               onClick={handleBack}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition cursor-pointer shadow-sm"
             >
-              <span>Explore Saree Collections</span>
+              <span>Explore Collections</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -384,7 +384,7 @@ export const CartPage: React.FC<CartPageProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setIsCheckoutOpen(true)}
+                  onClick={() => setCustomerActiveTab('checkout')}
                   className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-rose-950 via-rose-900 to-rose-950 hover:from-rose-900 hover:to-rose-800 text-amber-200 hover:text-white font-bold text-xs uppercase tracking-wider transition shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                 >
                   <span>Proceed to Prepaid Checkout</span>
@@ -393,7 +393,7 @@ export const CartPage: React.FC<CartPageProps> = ({
 
                 <div className="pt-2 border-t border-neutral-100 flex items-center gap-2 text-[11px] text-neutral-500 justify-center">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>100% Secure Instant UPI Payment & Handloom Guarantee</span>
+                  <span>100% Secure Instant UPI Payment & Quality Guarantee</span>
                 </div>
               </div>
             </div>

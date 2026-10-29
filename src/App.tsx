@@ -32,6 +32,7 @@ import { CustomerOrdersPage } from './components/customer/CustomerOrdersPage';
 import { CustomerOrderDetailPage } from './components/customer/CustomerOrderDetailPage';
 import { CustomerAccountPage } from './components/customer/CustomerAccountPage';
 import { ProductDetailPage } from './components/storefront/ProductDetailPage';
+import { PrepaidCheckoutPage } from './components/storefront/PrepaidCheckoutPage';
 
 function MainAppContent() {
   const {
@@ -88,6 +89,14 @@ function MainAppContent() {
       setActiveProductModal(null);
     }
   }, [activeProductModal, openProductPage, setActiveProductModal]);
+
+  // Seamlessly route any checkout requests to the dedicated Prepaid Checkout Page
+  useEffect(() => {
+    if (isCheckoutOpen) {
+      setCustomerActiveTab('checkout');
+      setIsCheckoutOpen(false);
+    }
+  }, [isCheckoutOpen, setCustomerActiveTab, setIsCheckoutOpen]);
 
   // Keep device activity & 15-minute idle detection active across the app
   useStaffIdleTracker();
@@ -428,6 +437,13 @@ function MainAppContent() {
                 onContinueShopping={() => setCustomerActiveTab('categories')}
                 onOpenProductDetails={(product) => openProductPage(product)}
               />
+            ) : customerActiveTab === 'checkout' ? (
+              <PrepaidCheckoutPage
+                onBack={() => setCustomerActiveTab('cart')}
+                onSuccess={() => {
+                  setCustomerActiveTab('orders');
+                }}
+              />
             ) : (
               /* Fallback to Categories (No Home Page!) */
               <CategoryBrowser
@@ -461,16 +477,6 @@ function MainAppContent() {
               }
             }}
           />
-
-          {/* Prepaid Checkout Flow Modal */}
-          {isCheckoutOpen && (
-            <CheckoutModal
-              onClose={() => setIsCheckoutOpen(false)}
-              onSuccess={() => {
-                setIsCheckoutOpen(false);
-              }}
-            />
-          )}
 
           {/* Track Order Modal (Public lookup with Phone or Order Number) */}
           {isTrackOrderOpen && (

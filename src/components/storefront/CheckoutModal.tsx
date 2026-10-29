@@ -342,7 +342,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                   </span>
                 </div>
                 <p className="text-[11px] text-neutral-300 mt-0.5">
-                  Direct artisan handloom checkout & manual payment verification
+                  Direct retail store checkout & verified payment confirmation
                 </p>
               </div>
             </div>
@@ -539,9 +539,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                 {/* 1. MOBILE USER INTERFACE */}
                 {deviceType === 'mobile' && (
                   <div className="space-y-4 text-center">
-                    {/* Vibrant Green Store & Bold Order Pill above Mobile Payment Button */}
-                    <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-100/90 via-emerald-50 to-green-100/90 border-2 border-emerald-500 flex items-center justify-between gap-2 shadow-sm">
-                      <div className="flex items-center gap-2 min-w-0">
+                    {/* Fixed Neydhal Logo and Order Badge - Words never collide */}
+                    <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-emerald-100/90 via-emerald-50 to-green-100/90 border-2 border-emerald-500 flex flex-wrap items-center justify-between gap-2.5 shadow-sm">
+                      <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-xl bg-white p-0.5 border border-emerald-400 shadow-2xs shrink-0 flex items-center justify-center">
                           <img
                             src={settings.logoUrl || '/logo.png'}
@@ -549,14 +549,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                             className="w-full h-full object-contain"
                           />
                         </div>
-                        <span className="px-3 py-1 rounded-full bg-emerald-600 text-white font-black text-xs uppercase tracking-wide border border-emerald-400 shadow-2xs shrink-0 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-amber-300" />
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-600 text-white font-black text-[11px] sm:text-xs uppercase tracking-wide border border-emerald-400 shadow-2xs inline-flex items-center gap-1 whitespace-nowrap">
+                          <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
                           <span>Neydhal Clothing</span>
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border-2 border-emerald-500 shadow-2xs shrink-0">
                         <span className="text-[10px] uppercase font-bold text-emerald-800">Order:</span>
-                        <span className="font-mono font-black text-sm sm:text-base text-emerald-950 bg-white px-2.5 py-0.5 rounded-xl border-2 border-emerald-500 shadow-2xs tracking-wider">
+                        <span className="font-mono font-black text-xs sm:text-sm text-emerald-950 tracking-wider">
                           #{orderNumber}
                         </span>
                       </div>

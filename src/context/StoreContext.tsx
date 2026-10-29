@@ -101,7 +101,8 @@ export type CustomerActiveTab =
   | 'account'
   | 'cart'
   | 'home'
-  | 'product-detail';
+  | 'product-detail'
+  | 'checkout';
 
 interface StoreContextType {
   // Products
