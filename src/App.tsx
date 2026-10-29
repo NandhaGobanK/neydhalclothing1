@@ -72,6 +72,7 @@ function MainAppContent() {
     selectedProduct,
     setSelectedProduct,
     openProductPage,
+    closeCustomerAccount,
   } = useStore();
 
   // If anything opens the cart state, seamlessly route to the full-page Cart
@@ -430,7 +431,8 @@ function MainAppContent() {
               />
             ) : customerActiveTab === 'account' ? (
               <CustomerAccountPage
-                onBack={() => setCustomerActiveTab('categories')}
+                onClose={closeCustomerAccount}
+                onBack={closeCustomerAccount}
               />
             ) : customerActiveTab === 'cart' ? (
               <CartPage

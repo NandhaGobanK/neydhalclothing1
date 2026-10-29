@@ -162,12 +162,30 @@
         "name": { "type": "string", "maxLength": 200 },
         "email": { "type": "string", "maxLength": 100 },
         "phone": { "type": "string", "maxLength": 50 },
+        "whatsappNumber": { "type": "string", "maxLength": 50 },
+        "upiNumber": { "type": "string", "maxLength": 50 },
         "password": { "type": "string", "maxLength": 100 },
         "savedAddresses": { "type": "array" },
         "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
         "authMethod": { "type": "string" }
       },
       "required": ["id", "name", "phone", "createdAt"]
+    },
+    "AccountMapping": {
+      "title": "AccountMapping",
+      "description": "Reverse lookup index mapping WhatsApp and UPI numbers to registered Google account emails",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 100 },
+        "whatsappNumber": { "type": "string", "maxLength": 50 },
+        "upiNumber": { "type": "string", "maxLength": 50 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["email", "name"]
     },
     "ResellerUser": {
       "title": "ResellerUser",
@@ -216,6 +234,10 @@
     "/customers/{customerId}": {
       "schema": { "$ref": "CustomerUser" },
       "description": "Customer profiles and isolated private data"
+    },
+    "/account_mappings/{mappingId}": {
+      "schema": { "$ref": "AccountMapping" },
+      "description": "Reverse lookup index mapping WhatsApp and UPI numbers to registered Google account emails"
     },
     "/resellers/{resellerId}": {
       "schema": { "$ref": "ResellerUser" },

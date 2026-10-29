@@ -10,10 +10,11 @@ import {
   LogIn,
   UserPlus,
   ArrowRight,
-  Lock,
-  Eye,
-  EyeOff,
-  Key,
+  Search,
+  RefreshCw,
+  CheckCircle,
+  MessageCircle,
+  CreditCard,
 } from 'lucide-react';
 import { getThemeColors } from '../../utils/theme';
 
@@ -30,61 +31,28 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   onSuccess,
   initialMode = 'signin',
 }) => {
-  const { customerLogin, customerLoginWithGoogle, settings } = useStore();
+  const { customerLoginWithGoogle, settings } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
 
   const [mode, setMode] = useState<'signin' | 'register'>(initialMode);
   const [unregisteredNotice, setUnregisteredNotice] = useState<{ email: string; displayName?: string } | null>(null);
-  const [registrationSuccess, setRegistrationSuccess] = useState<{ name: string; phone: string; email: string } | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState<{
+    name: string;
+    whatsappNumber: string;
+    upiNumber: string;
+    email: string;
+  } | null>(null);
 
-  // Credentials sign in state
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [copiedTest, setCopiedTest] = useState<string | null>(null);
-
-  // Mandatory registration fields
+  // Mandatory registration fields: Full Name, WhatsApp Number (for product updates), UPI Mobile Number (for refunds)
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [upiNumber, setUpiNumber] = useState('');
+  const [sameAsWhatsapp, setSameAsWhatsapp] = useState(false);
 
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
-
-  const copyTestField = (text: string, field: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedTest(field);
-    setTimeout(() => setCopiedTest(null), 2000);
-  };
-
-  const handleCredentialsSignIn = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setError('');
-    setUnregisteredNotice(null);
-    if (!loginUsername.trim()) {
-      setError('Please enter your username or email address.');
-      return;
-    }
-    if (!loginPassword) {
-      setError('Please enter your password.');
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const res = await customerLogin(loginUsername.trim(), loginPassword);
-      if (res.success) {
-        onSuccess?.();
-        onClose();
-      } else {
-        setError(res.error || 'Invalid credentials.');
-      }
-    } catch (err: any) {
-      setError(err?.message || 'Login failed.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleGoogleSignIn = async () => {
     setError('');
@@ -123,9 +91,14 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       setError('Full Name is required for patron registration.');
       return;
     }
-    const cleanPhone = phone.replace(/\D/g, '').slice(-10);
-    if (!cleanPhone || cleanPhone.length !== 10) {
-      setError('A valid 10-digit mobile number is required.');
+    const cleanWhatsapp = whatsappNumber.replace(/\D/g, '').slice(-10);
+    if (!cleanWhatsapp || cleanWhatsapp.length !== 10) {
+      setError('A valid 10-digit WhatsApp number is required to receive product updates.');
+      return;
+    }
+    const cleanUpi = (sameAsWhatsapp ? cleanWhatsapp : upiNumber.replace(/\D/g, '')).slice(-10);
+    if (!cleanUpi || cleanUpi.length !== 10) {
+      setError('A valid 10-digit UPI mobile number is required to receive refunds.');
       return;
     }
 
@@ -133,15 +106,18 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     try {
       const res = await customerLoginWithGoogle({
         mode: 'register',
-        phone: cleanPhone,
         name: name.trim(),
+        whatsappNumber: cleanWhatsapp,
+        upiNumber: cleanUpi,
+        phone: cleanWhatsapp,
         autoSignIn: false, // Per requirements: display confirmation first, user then proceeds to sign in
       });
       if (res.success) {
         // Confirmation state
         setRegistrationSuccess({
           name: res.customer?.name || name.trim(),
-          phone: res.customer?.phone || cleanPhone,
+          whatsappNumber: res.customer?.whatsappNumber || cleanWhatsapp,
+          upiNumber: res.customer?.upiNumber || cleanUpi,
           email: res.customer?.email || '',
         });
         setError('');
@@ -275,22 +251,26 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   Account Created Successfully!
                 </h3>
                 <p className="text-xs text-neutral-600 mt-1 max-w-sm mx-auto">
-                  Your verified patron profile has been created for <strong>{registrationSuccess.name}</strong>. Please proceed to the sign-in page to log in.
+                  Your verified patron profile has been created and mapped in our database for <strong>{registrationSuccess.name}</strong>.
                 </p>
               </div>
-              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 text-left text-xs space-y-1.5 shadow-2xs">
+              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 text-left text-xs space-y-2 shadow-2xs">
                 <div className="flex justify-between text-neutral-600">
                   <span>Full Name:</span>
                   <span className="font-bold text-neutral-900">{registrationSuccess.name}</span>
                 </div>
                 <div className="flex justify-between text-neutral-600">
-                  <span>Mobile Number:</span>
-                  <span className="font-bold font-mono text-neutral-900">+91 {registrationSuccess.phone}</span>
+                  <span>WhatsApp (Product Updates):</span>
+                  <span className="font-bold font-mono text-neutral-900">+91 {registrationSuccess.whatsappNumber}</span>
+                </div>
+                <div className="flex justify-between text-neutral-600">
+                  <span>UPI Mobile (Refund Transfers):</span>
+                  <span className="font-bold font-mono text-neutral-900">+91 {registrationSuccess.upiNumber}</span>
                 </div>
                 {registrationSuccess.email && (
                   <div className="flex justify-between text-neutral-600">
                     <span>Google Account:</span>
-                    <span className="font-mono text-neutral-900 text-[11px]">{registrationSuccess.email}</span>
+                    <span className="font-mono text-amber-800 text-[11px] font-bold">{registrationSuccess.email}</span>
                   </div>
                 )}
               </div>
@@ -310,86 +290,12 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             </div>
           ) : mode === 'signin' ? (
             <div className="space-y-4 pt-2">
-
-              {/* Username & Password Form */}
-              <form onSubmit={handleCredentialsSignIn} className="space-y-3 pt-1 text-left">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center justify-between">
-                    <span>Username or Email</span>
-                    <span className="text-[10px] text-neutral-400 font-normal">Patron account</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                      <User className="w-4 h-4" />
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      value={loginUsername}
-                      onChange={(e) => setLoginUsername(e.target.value)}
-                      placeholder="e.g. 9876543210 or your email"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center justify-between">
-                    <span>Password</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="text-[10px] text-amber-700 hover:text-amber-800 font-medium lowercase"
-                    >
-                      {showPassword ? 'hide' : 'show'}
-                    </button>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                      <Lock className="w-4 h-4" />
-                    </span>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="Enter password"
-                      className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-60 active:scale-98"
-                >
-                  <Key className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Signing In...' : 'Sign In with Password'}</span>
-                </button>
-              </form>
-
-              {/* Divider */}
-              <div className="relative flex py-1 items-center">
-                <div className="grow border-t border-neutral-200"></div>
-                <span className="shrink mx-3 text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
-                  Or Continue With
-                </span>
-                <div className="grow border-t border-neutral-200"></div>
-              </div>
-
+              {/* Primary Google Sign In Button */}
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={isSubmitting}
-                className="w-full py-3 px-4 rounded-2xl border-2 border-neutral-200 hover:border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-3 shadow-2xs hover:shadow-xs transition cursor-pointer disabled:opacity-50 active:scale-98"
+                className="w-full py-3.5 px-4 rounded-2xl border-2 border-neutral-200 hover:border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-3 shadow-2xs hover:shadow-xs transition cursor-pointer disabled:opacity-50 active:scale-98"
               >
                 <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
@@ -399,26 +305,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 </svg>
                 <span>{isSubmitting ? 'Authenticating...' : 'Sign In with Google'}</span>
               </button>
-
-              <div className="text-center pt-2">
-                <p className="text-xs text-neutral-500">
-                  New patron to our boutique?{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('register');
-                      setError('');
-                      setUnregisteredNotice(null);
-                    }}
-                    className="text-rose-900 hover:text-rose-950 font-bold underline cursor-pointer"
-                  >
-                    Register with Google
-                  </button>
-                </p>
-              </div>
             </div>
           ) : (
             <form onSubmit={handleGoogleRegister} className="space-y-4 pt-1">
+              {/* 1. Full Name */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center justify-between">
                   <span>Full Name</span>
@@ -439,27 +329,79 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 </div>
               </div>
 
+              {/* 2. WhatsApp Number (to get product updates) */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center justify-between">
-                  <span>Mobile Number (10 digits)</span>
+                  <span>WhatsApp Number (to get product updates)</span>
                   <span className="text-[10px] text-rose-600 font-bold tracking-normal uppercase">Required</span>
                 </label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                    <Phone className="w-4 h-4" />
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-600">
+                    <MessageCircle className="w-4 h-4" />
                   </span>
                   <input
                     type="tel"
                     required
                     maxLength={10}
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    placeholder="10-digit number for order SMS/WhatsApp"
+                    value={whatsappNumber}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setWhatsappNumber(val);
+                      if (sameAsWhatsapp) {
+                        setUpiNumber(val);
+                      }
+                    }}
+                    placeholder="10-digit WhatsApp number"
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 font-mono focus:outline-none focus:ring-2 focus:ring-rose-900/30 focus:border-rose-900 transition"
                   />
                 </div>
                 <p className="text-[10px] text-neutral-500 mt-1">
-                  Mandatory field for order notifications, dispatch updates, and private tracking.
+                  Used to receive dispatch updates and new collection alerts directly on WhatsApp.
+                </p>
+              </div>
+
+              {/* 3. UPI Mobile Number (to get the refund) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-neutral-700">
+                    UPI Mobile Number (to get the refund)
+                  </label>
+                  <span className="text-[10px] text-rose-600 font-bold tracking-normal uppercase">Required</span>
+                </div>
+
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-amber-600">
+                    <CreditCard className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    value={sameAsWhatsapp ? whatsappNumber : upiNumber}
+                    disabled={sameAsWhatsapp}
+                    onChange={(e) => setUpiNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="10-digit UPI linked phone number"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 font-mono focus:outline-none focus:ring-2 focus:ring-rose-900/30 focus:border-rose-900 transition disabled:bg-neutral-100"
+                  />
+                </div>
+
+                <label className="inline-flex items-center gap-2 mt-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={sameAsWhatsapp}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSameAsWhatsapp(checked);
+                      if (checked) {
+                        setUpiNumber(whatsappNumber);
+                      }
+                    }}
+                    className="rounded border-neutral-300 text-amber-600 focus:ring-amber-500 h-3.5 w-3.5"
+                  />
+                  <span className="text-[11px] text-neutral-600">Same as WhatsApp number</span>
+                </label>
+                <p className="text-[10px] text-neutral-500 mt-0.5">
+                  Used to instantly credit refunds via UPI (GPay/PhonePe/Paytm) if an order is cancelled.
                 </p>
               </div>
 
@@ -476,23 +418,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 </svg>
                 <span>{isSubmitting ? 'Creating Account...' : 'Register Patron with Google'}</span>
               </button>
-
-              <div className="text-center pt-2">
-                <p className="text-xs text-neutral-500">
-                  Already registered?{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('signin');
-                      setError('');
-                      setUnregisteredNotice(null);
-                    }}
-                    className="text-rose-900 hover:text-rose-950 font-bold underline cursor-pointer"
-                  >
-                    Sign In with Google
-                  </button>
-                </p>
-              </div>
             </form>
           )}
 

@@ -412,11 +412,24 @@ export interface CustomerUser {
   name: string;
   email: string;
   phone: string;
+  whatsappNumber?: string; // To get product updates
+  upiNumber?: string; // To get the refund
   password?: string;
   avatarUrl?: string;
   savedAddresses: CustomerAddress[];
   createdAt: string;
+  updatedAt?: string;
   authMethod?: 'password' | 'google' | 'guest';
+}
+
+export interface AccountMappingRecord {
+  customerId: string;
+  name: string;
+  email: string;
+  whatsappNumber: string;
+  upiNumber: string;
+  phone: string;
+  updatedAt: string;
 }
 
 export interface ResellerUser {

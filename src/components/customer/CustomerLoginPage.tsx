@@ -4,25 +4,15 @@ import {
   Lock,
   ShieldCheck,
   Sparkles,
-  Package,
-  Heart,
-  MessageSquare,
   AlertCircle,
-  Store,
   User,
   Phone,
   ArrowRight,
   UserPlus,
   LogIn,
-  Eye,
-  EyeOff,
-  Copy,
   Check,
-  Key,
-  Globe,
+  CheckCircle,
   FileText,
-  RotateCcw,
-  ShieldAlert,
   ChevronDown,
   ChevronUp,
   MessageCircle,
@@ -30,6 +20,13 @@ import {
   ExternalLink,
   X,
   HelpCircle,
+  Search,
+  RefreshCw,
+  CreditCard,
+  RotateCcw,
+  Copy,
+  ShieldAlert,
+  Store,
 } from 'lucide-react';
 import { LEGAL_POLICIES, STORE_CONTACT_DETAILS, PolicySection } from '../../data/legalPolicies';
 
@@ -41,7 +38,6 @@ interface CustomerLoginPageProps {
 export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess, onOpenAdmin }) => {
   const {
     settings,
-    customerLogin,
     customerLoginWithGoogle,
     setIsResellerPortalOpen,
   } = useStore();
@@ -49,7 +45,12 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
   const [errorMsg, setErrorMsg] = useState('');
   const [unregisteredNotice, setUnregisteredNotice] = useState<{ email: string; displayName?: string } | null>(null);
-  const [registrationSuccess, setRegistrationSuccess] = useState<{ name: string; phone: string; email?: string } | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState<{
+    name: string;
+    whatsappNumber: string;
+    upiNumber: string;
+    email?: string;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Inline Collapsible Legal Policy State
@@ -69,48 +70,11 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
     setTimeout(() => setCopiedPolicyText(false), 2500);
   };
 
-  // Customer Login State
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [copiedTestField, setCopiedTestField] = useState<string | null>(null);
-
-  const copyTestField = (text: string, fieldName: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedTestField(fieldName);
-    setTimeout(() => setCopiedTestField(null), 2000);
-  };
-
-  const handleCredentialsSignIn = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setErrorMsg('');
-    setUnregisteredNotice(null);
-    if (!loginUsername.trim()) {
-      setErrorMsg('Please enter your username or email address.');
-      return;
-    }
-    if (!loginPassword) {
-      setErrorMsg('Please enter your password.');
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const res = await customerLogin(loginUsername.trim(), loginPassword);
-      if (res.success) {
-        onSuccess?.();
-      } else {
-        setErrorMsg(res.error || 'Invalid credentials.');
-      }
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Login failed.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Mandatory registration inputs
+  // Mandatory registration inputs: Full Name, WhatsApp Number (for product updates), UPI Mobile Number (for refunds)
   const [regName, setRegName] = useState('');
-  const [regPhone, setRegPhone] = useState('');
+  const [regWhatsapp, setRegWhatsapp] = useState('');
+  const [regUpi, setRegUpi] = useState('');
+  const [sameAsWhatsapp, setSameAsWhatsapp] = useState(false);
 
   // Secret B2B Reseller Portal Trigger
   const openResellerPortal = () => {
@@ -193,9 +157,14 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
       setErrorMsg('Full Name is required for patron registration.');
       return;
     }
-    const cleanPhone = regPhone.replace(/\D/g, '').slice(-10);
-    if (!cleanPhone || cleanPhone.length !== 10) {
-      setErrorMsg('A valid 10-digit mobile number is required.');
+    const cleanWhatsapp = regWhatsapp.replace(/\D/g, '').slice(-10);
+    if (!cleanWhatsapp || cleanWhatsapp.length !== 10) {
+      setErrorMsg('A valid 10-digit WhatsApp number is required to receive product updates.');
+      return;
+    }
+    const cleanUpi = (sameAsWhatsapp ? cleanWhatsapp : regUpi.replace(/\D/g, '')).slice(-10);
+    if (!cleanUpi || cleanUpi.length !== 10) {
+      setErrorMsg('A valid 10-digit UPI mobile number is required to receive refunds.');
       return;
     }
 
@@ -203,8 +172,10 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
     try {
       const res = await customerLoginWithGoogle({
         mode: 'register',
-        phone: cleanPhone,
         name: regName.trim(),
+        whatsappNumber: cleanWhatsapp,
+        upiNumber: cleanUpi,
+        phone: cleanWhatsapp,
         autoSignIn: false, // Per requirements: display confirmation first, user then proceeds to sign in
       });
       if (!res.success) {
@@ -212,7 +183,8 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
       } else {
         setRegistrationSuccess({
           name: res.customer?.name || regName.trim(),
-          phone: res.customer?.phone || cleanPhone,
+          whatsappNumber: res.customer?.whatsappNumber || cleanWhatsapp,
+          upiNumber: res.customer?.upiNumber || cleanUpi,
           email: res.customer?.email,
         });
         setErrorMsg('');
@@ -295,93 +267,13 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
           </div>
 
           <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight">
-            {settings.customerLoginDisplay?.headline || 'Customer Account & Order Hub'}
+            {settings.boutiqueName || 'Neydhal Handloom Atelier'}
           </h2>
 
           <p className="text-purple-100/90 text-xs sm:text-sm leading-relaxed max-w-lg mx-auto lg:mx-0">
-            {settings.customerLoginDisplay?.description ||
-              'Sign in to easily access your past orders, real-time courier tracking, exclusive store discounts, and instant customer support.'}
+            Exquisite handcrafted Kanjivaram, Banarasi, and pure silk sarees woven with authentic craftsmanship in Salem, Tamil Nadu.
+            Connect seamlessly with your Google account to access your orders, live dispatch updates, and direct boutique support.
           </p>
-
-          {/* Privacy & Member Privileges List */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left pt-2">
-            {(settings.customerLoginDisplay?.benefitCards && settings.customerLoginDisplay.benefitCards.length > 0
-              ? settings.customerLoginDisplay.benefitCards
-              : [
-                  {
-                    id: 'benefit-data',
-                    title: 'Strict Data Isolation',
-                    description:
-                      'Your orders, delivery addresses, and purchases are completely private and secure.',
-                    iconName: 'lock',
-                  },
-                  {
-                    id: 'benefit-wishlist',
-                    title: 'Private Wishlist',
-                    description:
-                      'Save your favorite sarees and products across all your devices.',
-                    iconName: 'heart',
-                  },
-                  {
-                    id: 'benefit-tracking',
-                    title: 'Order Tracking & Photos',
-                    description:
-                      'Track dispatch milestones and view high-resolution photos of your orders.',
-                    iconName: 'package',
-                  },
-                  {
-                    id: 'benefit-chat',
-                    title: 'Direct Concierge Chat',
-                    description:
-                      'Instant live chat directly with our store support and customer desk.',
-                    iconName: 'message',
-                  },
-                ]
-            ).map((card, idx) => {
-              const renderCardIcon = (iconName?: string) => {
-                switch (iconName) {
-                  case 'heart':
-                    return (
-                      <span className="p-2 rounded-xl bg-rose-500/20 text-rose-300 shrink-0 mt-0.5">
-                        <Heart className="w-4 h-4" />
-                      </span>
-                    );
-                  case 'package':
-                    return (
-                      <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 shrink-0 mt-0.5">
-                        <Package className="w-4 h-4" />
-                      </span>
-                    );
-                  case 'message':
-                    return (
-                      <span className="p-2 rounded-xl bg-sky-500/20 text-sky-300 shrink-0 mt-0.5">
-                        <MessageSquare className="w-4 h-4" />
-                      </span>
-                    );
-                  case 'lock':
-                  default:
-                    return (
-                      <span className="p-2 rounded-xl bg-amber-500/20 text-amber-300 shrink-0 mt-0.5">
-                        <Lock className="w-4 h-4" />
-                      </span>
-                    );
-                }
-              };
-
-              return (
-                <div
-                  key={card.id || idx}
-                  className="p-3.5 rounded-2xl bg-[#320645]/60 border border-purple-300/20 backdrop-blur-md flex items-start gap-3 shadow-sm"
-                >
-                  {renderCardIcon(card.iconName)}
-                  <div>
-                    <h4 className="font-semibold text-xs text-white">{card.title}</h4>
-                    <p className="text-[11px] text-purple-200/80 mt-0.5">{card.description}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </div>
 
         {/* Right Column: Customer Google Sign-In & Register Gate */}
@@ -430,8 +322,8 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
               </h3>
               <p className="text-xs text-neutral-400 leading-relaxed max-w-xs mx-auto">
                 {authMode === 'signin'
-                  ? 'Sign in with your registered Google account to access your private orders and boutique catalog.'
-                  : 'Register your patron account with Google. Your verified profile will be securely stored in our private database.'}
+                  ? 'Sign in with your registered Google account to access your orders, invoices, and boutique concierge.'
+                  : 'Register your patron account with Google. Your details are securely mapped in our database.'}
               </p>
             </div>
 
@@ -446,7 +338,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                       No patron account is registered for <strong className="text-white underline">{unregisteredNotice.email}</strong>.
                     </p>
                     <p className="text-[11px] text-amber-300/80 leading-relaxed">
-                      Please enter your 10-digit mobile number below and click <strong>Register Patron with Google</strong>. Once registered, you can sign in directly.
+                      Please enter your WhatsApp and UPI numbers below and click <strong>Register Patron with Google</strong>.
                     </p>
                   </div>
                 </div>
@@ -485,23 +377,27 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                     Account Created Successfully!
                   </h4>
                   <p className="text-xs text-purple-200/90 leading-relaxed max-w-xs mx-auto">
-                    Your verified patron account has been created for <strong>{registrationSuccess.name}</strong>. Please proceed to the sign-in page to log in.
+                    Your verified patron account has been created and mapped in our database for <strong>{registrationSuccess.name}</strong>.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-[#14021d]/90 border border-purple-400/30 text-left text-xs space-y-1.5">
+                <div className="p-4 rounded-2xl bg-[#14021d]/90 border border-purple-400/30 text-left text-xs space-y-2">
                   <div className="flex justify-between text-purple-300">
                     <span>Full Name:</span>
                     <span className="font-bold text-white">{registrationSuccess.name}</span>
                   </div>
                   <div className="flex justify-between text-purple-300">
-                    <span>Mobile Number:</span>
-                    <span className="font-bold font-mono text-white">+91 {registrationSuccess.phone}</span>
+                    <span>WhatsApp (Product Updates):</span>
+                    <span className="font-bold font-mono text-white">+91 {registrationSuccess.whatsappNumber}</span>
+                  </div>
+                  <div className="flex justify-between text-purple-300">
+                    <span>UPI Mobile (Refund Transfers):</span>
+                    <span className="font-bold font-mono text-white">+91 {registrationSuccess.upiNumber}</span>
                   </div>
                   {registrationSuccess.email && (
                     <div className="flex justify-between text-purple-300">
-                      <span>Google Account:</span>
-                      <span className="font-mono text-white text-[11px]">{registrationSuccess.email}</span>
+                      <span>Registered Google Account:</span>
+                      <span className="font-mono text-amber-300 text-[11px] font-bold">{registrationSuccess.email}</span>
                     </div>
                   )}
                 </div>
@@ -521,90 +417,16 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                 </button>
               </div>
             ) : authMode === 'signin' ? (
-              <div className="space-y-4 pt-1">
-
-                {/* Form 1: Username & Password Sign In */}
-                <form onSubmit={handleCredentialsSignIn} className="space-y-3 pt-1 text-left">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1 flex items-center justify-between">
-                      <span>Username or Email</span>
-                      <span className="text-[10px] text-neutral-400 font-normal">Registered patron account</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
-                        <User className="w-4 h-4" />
-                      </span>
-                      <input
-                        type="text"
-                        required
-                        value={loginUsername}
-                        onChange={(e) => setLoginUsername(e.target.value)}
-                        placeholder="e.g. 9876543210 or your email"
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1 flex items-center justify-between">
-                      <span>Password</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="text-[10px] text-amber-300 hover:text-amber-200 font-medium lowercase"
-                      >
-                        {showPassword ? 'hide' : 'show'}
-                      </button>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
-                        <Lock className="w-4 h-4" />
-                      </span>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="Enter password"
-                        className="w-full pl-9 pr-10 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-200"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-60 active:scale-98"
-                  >
-                    <Key className="w-4 h-4" />
-                    <span>{isLoading ? 'Signing In...' : 'Sign In with Password'}</span>
-                  </button>
-                </form>
-
-                {/* Divider */}
-                <div className="relative flex py-1 items-center">
-                  <div className="grow border-t border-purple-400/20"></div>
-                  <span className="shrink mx-3 text-[10px] uppercase font-bold text-purple-300/60 tracking-wider">
-                    Or Continue With
-                  </span>
-                  <div className="grow border-t border-purple-400/20"></div>
-                </div>
-
+              <div className="space-y-5 pt-1">
+                {/* Primary Google Sign-In Action */}
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
                   disabled={isLoading}
-                  className="w-full py-3 px-4 rounded-xl bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-xs sm:text-sm flex items-center justify-center gap-3 shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-60 active:scale-[0.99]"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-sm flex items-center justify-center gap-3 shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-60 active:scale-[0.99]"
                 >
                   {/* Official Google G Logo */}
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
                     <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
                     <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
@@ -612,27 +434,11 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                   </svg>
                   <span>{isLoading ? 'Authenticating with Google...' : 'Sign In with Google'}</span>
                 </button>
-
-                <div className="text-center pt-2">
-                  <p className="text-xs text-neutral-400">
-                    New patron to our boutique?{' '}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode('register');
-                        setErrorMsg('');
-                        setUnregisteredNotice(null);
-                      }}
-                      className="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
-                    >
-                      Register with Google
-                    </button>
-                  </p>
-                </div>
               </div>
             ) : (
               /* Mode 2: Patron Register with Google */
-              <form onSubmit={handleGoogleRegister} className="space-y-4 pt-1">
+              <form onSubmit={handleGoogleRegister} className="space-y-4 pt-1 text-left">
+                {/* 1. Full Name */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1.5 flex items-center justify-between">
                     <span>Full Name</span>
@@ -653,34 +459,86 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                   </div>
                 </div>
 
+                {/* 2. WhatsApp Number (to get product updates) */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-purple-200/90 mb-1.5 flex items-center justify-between">
-                    <span>Mobile Phone Number (10 digits)</span>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-purple-200/90 mb-1 flex items-center justify-between">
+                    <span>WhatsApp Number (to get product updates)</span>
                     <span className="text-[10px] text-rose-400 font-bold tracking-normal uppercase">Required</span>
                   </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-purple-400">
-                      <Phone className="w-4 h-4" />
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-400">
+                      <MessageCircle className="w-4 h-4" />
                     </span>
                     <input
                       type="tel"
                       required
                       maxLength={10}
-                      value={regPhone}
-                      onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                      placeholder="10-digit number for order SMS/WhatsApp"
+                      value={regWhatsapp}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setRegWhatsapp(val);
+                        if (sameAsWhatsapp) {
+                          setRegUpi(val);
+                        }
+                      }}
+                      placeholder="10-digit WhatsApp number"
                       className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 font-mono"
                     />
                   </div>
                   <p className="text-[10px] text-purple-300/70 mt-1">
-                    Mandatory field for order notifications, dispatch updates, and private tracking.
+                    Receive direct WhatsApp alerts for order dispatches, tracking numbers, and new handloom arrivals.
+                  </p>
+                </div>
+
+                {/* 3. UPI Mobile Number (to get the refund) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-purple-200/90">
+                      UPI Mobile Number (to get the refund)
+                    </label>
+                    <span className="text-[10px] text-rose-400 font-bold tracking-normal uppercase">Required</span>
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-amber-400">
+                      <CreditCard className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="tel"
+                      required
+                      maxLength={10}
+                      value={sameAsWhatsapp ? regWhatsapp : regUpi}
+                      disabled={sameAsWhatsapp}
+                      onChange={(e) => setRegUpi(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      placeholder="10-digit UPI linked phone number"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#14021d]/90 border border-purple-400/30 text-xs text-white placeholder-purple-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 font-mono disabled:opacity-75"
+                    />
+                  </div>
+
+                  <label className="inline-flex items-center gap-2 mt-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={sameAsWhatsapp}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setSameAsWhatsapp(checked);
+                        if (checked) {
+                          setRegUpi(regWhatsapp);
+                        }
+                      }}
+                      className="rounded border-purple-400 text-amber-500 focus:ring-amber-400 h-3.5 w-3.5"
+                    />
+                    <span className="text-[11px] text-purple-200/80">Same as WhatsApp number</span>
+                  </label>
+                  <p className="text-[10px] text-purple-300/70 mt-0.5">
+                    Used to instantly process refunds via UPI (PhonePe, GPay, Paytm) if an order is cancelled.
                   </p>
                 </div>
 
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-sm flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transition cursor-pointer disabled:opacity-60 active:scale-[0.99] mt-2"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-sm flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transition cursor-pointer disabled:opacity-60 active:scale-[0.99] mt-3"
                 >
                   {/* Google Icon */}
                   <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
@@ -691,23 +549,6 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                   </svg>
                   <span>{isLoading ? 'Creating Patron Account...' : 'Register Patron with Google'}</span>
                 </button>
-
-                <div className="text-center pt-2">
-                  <p className="text-xs text-neutral-400">
-                    Already registered?{' '}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode('signin');
-                        setErrorMsg('');
-                        setUnregisteredNotice(null);
-                      }}
-                      className="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
-                    >
-                      Sign In with Google
-                    </button>
-                  </p>
-                </div>
               </form>
             )}
           </div>

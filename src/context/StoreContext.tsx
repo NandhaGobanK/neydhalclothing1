@@ -290,6 +290,8 @@ interface StoreContextType {
   setSelectedCategory: (cat: string) => void;
   customerActiveTab: CustomerActiveTab;
   setCustomerActiveTab: (tab: CustomerActiveTab) => void;
+  previousCustomerTab: CustomerActiveTab;
+  closeCustomerAccount: () => void;
   selectedCustomerOrderId: string | null;
   setSelectedCustomerOrderId: (id: string | null) => void;
   selectedProduct: Product | null;
@@ -316,6 +318,8 @@ interface StoreContextType {
   customerLoginWithGoogle: (options?: {
     mode?: 'signin' | 'register';
     phone?: string;
+    whatsappNumber?: string;
+    upiNumber?: string;
     name?: string;
     autoSignIn?: boolean;
   }) => Promise<{
@@ -327,6 +331,18 @@ interface StoreContextType {
     registered?: boolean;
     email?: string;
     displayName?: string;
+  }>;
+  findPreviousAccount: (searchQuery: string) => Promise<{
+    success: boolean;
+    accounts?: Array<{
+      name: string;
+      email: string;
+      whatsappNumber: string;
+      upiNumber: string;
+      phone: string;
+      createdAt?: string;
+    }>;
+    error?: string;
   }>;
   customerRegister: (data: Omit<CustomerUser, 'id' | 'createdAt' | 'savedAddresses'>) => Promise<{ success: boolean; customer?: CustomerUser; error?: string }>;
   customerLogout: () => void;
@@ -721,7 +737,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [wishlist, setWishlist] = useState<string[]>(() =>
     loadFromStorage('aara_boutique_wishlist_v3', [])
   );
-  const [customerActiveTab, setCustomerActiveTab] = useState<CustomerActiveTab>('categories');
+  const [customerActiveTab, setCustomerActiveTabState] = useState<CustomerActiveTab>('categories');
+  const [previousCustomerTab, setPreviousCustomerTab] = useState<CustomerActiveTab>('categories');
+
+  const setCustomerActiveTab = useCallback((tab: CustomerActiveTab) => {
+    setCustomerActiveTabState((prev) => {
+      if (prev !== tab && prev !== 'account') {
+        setPreviousCustomerTab(prev);
+      }
+      return tab;
+    });
+  }, []);
+
+  const closeCustomerAccount = useCallback(() => {
+    setCustomerActiveTabState((curr) => {
+      return previousCustomerTab && previousCustomerTab !== 'account' ? previousCustomerTab : 'categories';
+    });
+  }, [previousCustomerTab]);
   const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -1383,6 +1415,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const customerLoginWithGoogle = async (options?: {
     mode?: 'signin' | 'register';
     phone?: string;
+    whatsappNumber?: string;
+    upiNumber?: string;
     name?: string;
     autoSignIn?: boolean;
   }) => {
@@ -1395,7 +1429,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const fbUser = authResult.user;
       const email = (fbUser.email || '').toLowerCase().trim();
       const name = (options?.name || fbUser.displayName || (email ? email.split('@')[0] : 'Valued Patron')).trim();
-      const phoneInput = (options?.phone || (fbUser.phoneNumber ? fbUser.phoneNumber.replace(/\D/g, '').slice(-10) : '')).trim();
+
+      const rawWhatsapp = options?.whatsappNumber || options?.phone || '';
+      const rawUpi = options?.upiNumber || '';
+      const cleanWhatsapp = rawWhatsapp.replace(/\D/g, '').slice(-10);
+      const cleanUpi = rawUpi.replace(/\D/g, '').slice(-10);
+      const phoneInput = cleanWhatsapp || (options?.phone ? options.phone.replace(/\D/g, '').slice(-10) : '') || (fbUser.phoneNumber ? fbUser.phoneNumber.replace(/\D/g, '').slice(-10) : '');
 
       // Check if customer profile exists in Firestore /customers collection or local cache
       let existingCustomer: CustomerUser | null = null;
@@ -1431,6 +1470,32 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (foundInCache) existingCustomer = foundInCache;
       }
 
+      // Helper function to reliably write mapping records into Firestore database (not in browser cache)
+      const saveAccountMappingToDatabase = async (cust: CustomerUser) => {
+        const waNum = (cust.whatsappNumber || cust.phone || '').replace(/\D/g, '').slice(-10);
+        const upiNum = (cust.upiNumber || cust.phone || '').replace(/\D/g, '').slice(-10);
+        const mappingRecord = {
+          customerId: cust.id,
+          name: cust.name,
+          email: cust.email,
+          whatsappNumber: waNum,
+          upiNumber: upiNum,
+          phone: cust.phone || waNum,
+          updatedAt: new Date().toISOString(),
+        };
+
+        try {
+          if (waNum && waNum.length === 10) {
+            await setDoc(doc(db, 'account_mappings', `wa_${waNum}`), sanitizeForFirestore(mappingRecord), { merge: true });
+          }
+          if (upiNum && upiNum.length === 10) {
+            await setDoc(doc(db, 'account_mappings', `upi_${upiNum}`), sanitizeForFirestore(mappingRecord), { merge: true });
+          }
+        } catch (mErr) {
+          console.warn('account_mappings sync notice:', mErr);
+        }
+      };
+
       if (mode === 'signin') {
         if (!existingCustomer) {
           // Unregistered Google user: do NOT sign in automatically.
@@ -1451,8 +1516,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           id: existingCustomer.id || fbUser.uid,
           name: existingCustomer.name || name,
           email: existingCustomer.email || email,
+          phone: existingCustomer.phone || phoneInput,
+          whatsappNumber: existingCustomer.whatsappNumber || cleanWhatsapp || existingCustomer.phone || phoneInput,
+          upiNumber: existingCustomer.upiNumber || cleanUpi || existingCustomer.phone || phoneInput,
           avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
           authMethod: 'google',
+          updatedAt: new Date().toISOString(),
         };
 
         setCurrentCustomer(updated);
@@ -1463,27 +1532,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           return next;
         });
 
-        // Persist to Firestore gracefully without failing the sign-in
+        // Persist to Firestore /customers and /account_mappings database
         try {
           await setDoc(doc(db, 'customers', updated.id), sanitizeForFirestore(updated), { merge: true });
         } catch (fsErr) {
           console.warn('Firestore customer document write notice (saved locally):', fsErr);
         }
+        await saveAccountMappingToDatabase(updated);
 
         return { success: true, customer: updated };
       }
 
       // mode === 'register'
       if (existingCustomer) {
-        // Account already exists in Google Auth / Firestore: update provided details so registration succeeds gracefully!
+        // Account already exists in Google Auth / Firestore: update provided details with WhatsApp & UPI
         const updatedCust: CustomerUser = {
           ...existingCustomer,
           id: existingCustomer.id || fbUser.uid,
           name: name || existingCustomer.name || fbUser.displayName || 'Valued Patron',
           phone: phoneInput || existingCustomer.phone || '',
+          whatsappNumber: cleanWhatsapp || existingCustomer.whatsappNumber || phoneInput,
+          upiNumber: cleanUpi || existingCustomer.upiNumber || phoneInput,
           email: email || existingCustomer.email,
           avatarUrl: fbUser.photoURL || existingCustomer.avatarUrl,
           authMethod: 'google',
+          updatedAt: new Date().toISOString(),
         };
 
         setCustomers((prev) => {
@@ -1497,6 +1570,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         } catch (fsErr) {
           console.warn('Firestore customer update notice:', fsErr);
         }
+        await saveAccountMappingToDatabase(updatedCust);
 
         const shouldAutoSignIn = options?.autoSignIn ?? false;
         if (shouldAutoSignIn) {
@@ -1514,15 +1588,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
       }
 
-      // Create new verified customer in Firestore /customers collection
+      // Create new verified customer in Firestore /customers collection with WhatsApp and UPI numbers
       const newCust: CustomerUser = {
         id: fbUser.uid,
         name,
         email,
         phone: phoneInput,
+        whatsappNumber: cleanWhatsapp || phoneInput,
+        upiNumber: cleanUpi || cleanWhatsapp || phoneInput,
         avatarUrl: fbUser.photoURL || undefined,
         savedAddresses: [],
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         authMethod: 'google',
       };
 
@@ -1532,12 +1609,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return next;
       });
 
-      // Write to Firestore with safe fallback so permission errors or network drops do not block registration
+      // Write to Firestore /customers with safe fallback so permission errors or network drops do not block registration
       try {
         await setDoc(doc(db, 'customers', newCust.id), sanitizeForFirestore(newCust));
       } catch (fsErr: any) {
         console.warn('Firestore customer create document notice (saved locally):', fsErr?.message || fsErr);
       }
+      // Write mapping to Firestore /account_mappings database
+      await saveAccountMappingToDatabase(newCust);
 
       const shouldAutoSignIn = options?.autoSignIn ?? false;
       if (shouldAutoSignIn) {
@@ -1556,6 +1635,123 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       console.warn('Google Sign-In notice (Customer):', err?.message || err);
       return { success: false, error: err?.message || 'Google authentication failed. Please try again.' };
+    }
+  };
+
+  /**
+   * Finds previously registered patron account by querying the Firestore database directly (not browser cache)
+   * Searches through /account_mappings and /customers by WhatsApp number or UPI mobile number.
+   */
+  const findPreviousAccount = async (searchQuery: string) => {
+    const rawQuery = (searchQuery || '').trim();
+    if (!rawQuery) {
+      return { success: false, error: 'Please enter your WhatsApp number or UPI mobile number.' };
+    }
+    const cleanNumber = rawQuery.replace(/\D/g, '').slice(-10);
+    const cleanEmail = rawQuery.toLowerCase();
+
+    try {
+      const resultsMap = new Map<string, {
+        name: string;
+        email: string;
+        whatsappNumber: string;
+        upiNumber: string;
+        phone: string;
+        createdAt?: string;
+      }>();
+
+      // 1. Direct lookup in Firestore /account_mappings collection
+      if (cleanNumber && cleanNumber.length >= 7) {
+        try {
+          const waDoc = await getDoc(doc(db, 'account_mappings', `wa_${cleanNumber}`));
+          if (waDoc.exists()) {
+            const data = waDoc.data();
+            if (data?.email) {
+              resultsMap.set(data.email.toLowerCase(), {
+                name: data.name || 'Valued Patron',
+                email: data.email,
+                whatsappNumber: data.whatsappNumber || cleanNumber,
+                upiNumber: data.upiNumber || '',
+                phone: data.phone || cleanNumber,
+                createdAt: data.updatedAt,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('account_mappings wa lookup notice:', e);
+        }
+
+        try {
+          const upiDoc = await getDoc(doc(db, 'account_mappings', `upi_${cleanNumber}`));
+          if (upiDoc.exists()) {
+            const data = upiDoc.data();
+            if (data?.email) {
+              const existing = resultsMap.get(data.email.toLowerCase());
+              resultsMap.set(data.email.toLowerCase(), {
+                name: data.name || existing?.name || 'Valued Patron',
+                email: data.email,
+                whatsappNumber: data.whatsappNumber || existing?.whatsappNumber || '',
+                upiNumber: data.upiNumber || cleanNumber,
+                phone: data.phone || cleanNumber,
+                createdAt: data.updatedAt || existing?.createdAt,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('account_mappings upi lookup notice:', e);
+        }
+      }
+
+      // 2. Query Firestore /customers collection directly from the live database
+      try {
+        const querySnapshot = await getDocs(collection(db, 'customers'));
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data() as CustomerUser;
+          if (!data || !data.email) return;
+
+          const dPhone = (data.phone || '').replace(/\D/g, '').slice(-10);
+          const dWa = (data.whatsappNumber || '').replace(/\D/g, '').slice(-10);
+          const dUpi = (data.upiNumber || '').replace(/\D/g, '').slice(-10);
+          const dEmail = (data.email || '').toLowerCase().trim();
+          const dName = (data.name || '').toLowerCase().trim();
+
+          const isMatch =
+            (cleanNumber && cleanNumber.length >= 7 && (dPhone === cleanNumber || dWa === cleanNumber || dUpi === cleanNumber)) ||
+            (cleanEmail.includes('@') && dEmail === cleanEmail) ||
+            (cleanEmail.length > 2 && !cleanNumber && (dName.includes(cleanEmail) || dEmail.includes(cleanEmail)));
+
+          if (isMatch) {
+            resultsMap.set(dEmail, {
+              name: data.name || 'Valued Patron',
+              email: data.email,
+              whatsappNumber: data.whatsappNumber || data.phone || '',
+              upiNumber: data.upiNumber || '',
+              phone: data.phone || '',
+              createdAt: data.createdAt,
+            });
+          }
+        });
+      } catch (err) {
+        console.warn('Firestore customers live lookup notice:', err);
+      }
+
+      const accounts = Array.from(resultsMap.values());
+      if (accounts.length === 0) {
+        return {
+          success: false,
+          error: `No registered patron account was found for "${rawQuery}" in the database.`,
+        };
+      }
+
+      return {
+        success: true,
+        accounts,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Database lookup failed. Please try again.',
+      };
     }
   };
 
@@ -1589,11 +1785,41 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const updateCustomerProfile = async (updates: Partial<CustomerUser>) => {
     if (!currentCustomer) return;
-    const updated = { ...currentCustomer, ...updates };
+    const updated = { ...currentCustomer, ...updates, updatedAt: new Date().toISOString() };
     setCurrentCustomer(updated);
     saveToStorage(STORAGE_KEYS.CURRENT_CUSTOMER, updated);
     setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
     setDoc(doc(db, 'customers', updated.id), sanitizeForFirestore(updated), { merge: true }).catch(() => {});
+
+    // Sync database mappings for account recovery
+    if (updated.whatsappNumber && updated.whatsappNumber.replace(/\D/g, '').length === 10) {
+      const cleanWa = updated.whatsappNumber.replace(/\D/g, '');
+      setDoc(doc(db, 'account_mappings', `wa_${cleanWa}`), {
+        id: `wa_${cleanWa}`,
+        type: 'whatsapp',
+        identifier: cleanWa,
+        customerId: updated.id,
+        email: updated.email || '',
+        name: updated.name || '',
+        whatsappNumber: cleanWa,
+        upiNumber: (updated.upiNumber || '').replace(/\D/g, ''),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true }).catch(() => {});
+    }
+    if (updated.upiNumber && updated.upiNumber.replace(/\D/g, '').length === 10) {
+      const cleanUpi = updated.upiNumber.replace(/\D/g, '');
+      setDoc(doc(db, 'account_mappings', `upi_${cleanUpi}`), {
+        id: `upi_${cleanUpi}`,
+        type: 'upi',
+        identifier: cleanUpi,
+        customerId: updated.id,
+        email: updated.email || '',
+        name: updated.name || '',
+        whatsappNumber: (updated.whatsappNumber || '').replace(/\D/g, ''),
+        upiNumber: cleanUpi,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true }).catch(() => {});
+    }
   };
 
   const addCustomerAddress = async (address: Omit<CustomerAddress, 'id'>) => {
@@ -6087,6 +6313,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setSelectedCategory,
         customerActiveTab,
         setCustomerActiveTab,
+        previousCustomerTab,
+        closeCustomerAccount,
         selectedCustomerOrderId,
         setSelectedCustomerOrderId,
         selectedProduct,
@@ -6105,6 +6333,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         currentCustomer,
         customerLogin,
         customerLoginWithGoogle,
+        findPreviousAccount,
         customerRegister,
         customerLogout,
         updateCustomerProfile,
