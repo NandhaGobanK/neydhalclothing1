@@ -205,6 +205,9 @@ export const SettingsManager: React.FC = () => {
   const [merchantName, setMerchantName] = useState(
     settings.payment?.merchantName || settings.payment?.payeeName || 'Neydhal Boutique'
   );
+  const [upiOwnerName, setUpiOwnerName] = useState(
+    settings.payment?.upiOwnerName || settings.payment?.payeeName || settings.payment?.merchantName || 'Neydhal Clothing'
+  );
   const [qrCodeUrl, setQrCodeUrl] = useState(settings.payment?.qrCodeUrl || '');
   const [paymentInstructions, setPaymentInstructions] = useState(
     settings.payment?.instructions ||
@@ -356,6 +359,7 @@ export const SettingsManager: React.FC = () => {
         setUpiId(settings.payment.upiId || '');
         setUpiNumber(settings.payment.upiNumber || '');
         setMerchantName(settings.payment.merchantName || settings.payment.payeeName || 'Neydhal Boutique');
+        setUpiOwnerName(settings.payment.upiOwnerName || settings.payment.payeeName || settings.payment.merchantName || 'Neydhal Clothing');
         setQrCodeUrl(settings.payment.qrCodeUrl || '');
         setPaymentInstructions(settings.payment.instructions || '');
       }
@@ -646,6 +650,7 @@ export const SettingsManager: React.FC = () => {
         upiNumber: upiNumber.trim(),
         merchantName: merchantName.trim(),
         payeeName: merchantName.trim(),
+        upiOwnerName: upiOwnerName.trim(),
         qrCodeUrl: qrCodeUrl.trim(),
         instructions: paymentInstructions.trim(),
       },
@@ -743,6 +748,7 @@ export const SettingsManager: React.FC = () => {
         upiNumber: upiNumber.trim(),
         merchantName: merchantName.trim(),
         payeeName: merchantName.trim(),
+        upiOwnerName: upiOwnerName.trim(),
         qrCodeUrl: qrCodeUrl.trim(),
         instructions: paymentInstructions.trim(),
       },
@@ -2920,8 +2926,8 @@ export const SettingsManager: React.FC = () => {
               {/* Merchant / Payee Business Name */}
               <div>
                 <label className="block text-xs font-bold text-neutral-800 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Merchant / Payee Name *</span>
-                  <span className="text-[11px] text-purple-800 font-medium">Display Name</span>
+                  <span>Merchant / Store Name *</span>
+                  <span className="text-[11px] text-purple-800 font-medium">Store Display Name</span>
                 </label>
                 <input
                   type="text"
@@ -2933,6 +2939,27 @@ export const SettingsManager: React.FC = () => {
                 />
                 <p className="text-[11px] text-neutral-500 mt-1">
                   The verified business name displayed on customer's banking screen when completing payment.
+                </p>
+              </div>
+
+              {/* UPI Owner Name (Account Holder Name) - Customer Trust */}
+              <div>
+                <label className="block text-xs font-bold text-neutral-800 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>UPI Owner Name (Account Holder Name) *</span>
+                  <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    Customer Trust
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  disabled={!canEditPayment}
+                  value={upiOwnerName}
+                  onChange={(e) => setUpiOwnerName(e.target.value)}
+                  placeholder="e.g. Neydhal Clothing"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 text-xs text-neutral-900 bg-white font-semibold placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-purple-800/30"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  Registered bank account holder name displayed to customer on the "Complete UPI Payment" screen to establish trust while paying.
                 </p>
               </div>
 
@@ -3021,6 +3048,10 @@ export const SettingsManager: React.FC = () => {
                   <div>
                     <span className="font-semibold text-neutral-900">Configured Payee:</span>{" "}
                     <span className="font-bold text-purple-900">{merchantName || "Neydhal Boutique"}</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-neutral-900">UPI Owner Name (Shown to Customers):</span>{" "}
+                    <span className="font-bold text-emerald-800">{upiOwnerName || merchantName || "Neydhal Clothing"}</span>
                   </div>
                   <div>
                     <span className="font-semibold text-neutral-900">Merchant VPA:</span>{" "}

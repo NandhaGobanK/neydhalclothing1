@@ -24,7 +24,6 @@ interface CategoryBrowserProps {
   onOpenDetails: (product: Product) => void;
   selectedCategoryName?: string;
   onSelectCategory?: (categoryName: string) => void;
-  onBackToHome?: () => void;
 }
 
 export type CategorySortOption =
@@ -48,7 +47,6 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
   onOpenDetails,
   selectedCategoryName,
   onSelectCategory,
-  onBackToHome,
 }) => {
   const {
     publicProducts,
@@ -637,16 +635,6 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
               </p>
             </div>
           </div>
-
-          {onBackToHome && (
-            <button
-              type="button"
-              onClick={onBackToHome}
-              className="text-xs font-semibold text-neutral-600 hover:text-neutral-900 px-3 py-1.5 rounded-xl border border-neutral-200 hover:bg-neutral-100 transition cursor-pointer"
-            >
-              Back to Home
-            </button>
-          )}
         </div>
       </div>
 

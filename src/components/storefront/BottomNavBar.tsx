@@ -1,12 +1,12 @@
 import React from 'react';
-import { useStore } from '../../context/StoreContext';
+import { useStore, CustomerActiveTab } from '../../context/StoreContext';
 import { Grid, Search, Heart, ShoppingBag, Package } from 'lucide-react';
 import { THEME_TEMPLATES, getThemeColors } from '../../utils/theme';
 
 interface BottomNavBarProps {
-  activeTab: 'categories' | 'search' | 'wishlist' | 'home';
-  onTabChange: (tab: 'categories' | 'search' | 'wishlist') => void;
-  onOpenCart: () => void;
+  activeTab: CustomerActiveTab;
+  onTabChange: (tab: CustomerActiveTab) => void;
+  onOpenCart?: () => void;
   onOpenAccount?: () => void;
   onOpenOrders?: () => void;
 }
@@ -14,9 +14,6 @@ interface BottomNavBarProps {
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeTab,
   onTabChange,
-  onOpenCart,
-  onOpenAccount,
-  onOpenOrders,
 }) => {
   const {
     cartCount,
@@ -24,11 +21,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     customerOrdersCount,
     customerUnreadChatCount,
     settings,
-    isTrackOrderOpen,
     currentCustomer,
     customerNotifications,
-    setIsCustomerAccountModalOpen,
-    setIsCustomerAuthModalOpen,
   } = useStore();
 
   const isDark = settings.themeMode === 'dark';
@@ -51,16 +45,6 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     boxShadow: isDark
       ? `0 -4px 28px ${primaryColor === '#171717' ? 'rgba(0,0,0,0.8)' : `${primaryColor}60`}`
       : `0 -4px 24px ${primaryColor}15`,
-  };
-
-  const handleOrdersClick = () => {
-    if (currentCustomer) {
-      setIsCustomerAccountModalOpen(true);
-    } else if (onOpenOrders) {
-      onOpenOrders();
-    } else if (onOpenAccount) {
-      onOpenAccount();
-    }
   };
 
   const unreadNotifsCount = (customerNotifications || []).filter(
@@ -90,10 +74,17 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     },
     {
       id: 'orders' as const,
-      label: currentCustomer ? 'My Account' : 'My Orders',
+      label: 'My Orders',
       icon: Package,
-      badge: totalAccountAlerts > 0 ? (totalAccountAlerts > 9 ? '9+' : totalAccountAlerts) : undefined,
-      action: handleOrdersClick,
+      badge: totalAccountAlerts > 0 ? (totalAccountAlerts > 9 ? '9+' : totalAccountAlerts) : (customerOrdersCount > 0 ? customerOrdersCount : undefined),
+      action: () => onTabChange('orders'),
+    },
+    {
+      id: 'cart' as const,
+      label: 'Cart',
+      icon: ShoppingBag,
+      badge: cartCount > 0 ? (cartCount > 99 ? '99+' : cartCount) : undefined,
+      action: () => onTabChange('cart'),
     },
   ];
 
@@ -106,13 +97,16 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
       <div className="max-w-md mx-auto flex items-center justify-around">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = item.id === 'orders' ? isTrackOrderOpen : activeTab === item.id;
+          const isActive =
+            item.id === 'orders'
+              ? activeTab === 'orders' || activeTab === 'order-detail'
+              : activeTab === item.id;
           return (
             <button
               key={item.id}
               type="button"
               onClick={item.action}
-              className={`relative flex flex-col items-center justify-center py-1 px-3 rounded-xl transition cursor-pointer ${
+              className={`relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition cursor-pointer ${
                 isActive
                   ? 'font-bold'
                   : isDark
@@ -137,7 +131,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
                 {item.badge !== undefined && (
                   <span
                     className="absolute -top-1.5 -right-2.5 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center shadow-xs bg-rose-600 leading-none pointer-events-none ring-2 ring-white dark:ring-neutral-900 z-10"
-                    title={`${item.label}: ${item.badge} notifications`}
+                    title={`${item.label}: ${item.badge}`}
                   >
                     {item.badge}
                   </span>
@@ -153,32 +147,6 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             </button>
           );
         })}
-
-        {/* Bag / Cart Item with Badge */}
-        <button
-          type="button"
-          onClick={onOpenCart}
-          className={`relative flex flex-col items-center justify-center py-1 px-3 rounded-xl font-medium transition cursor-pointer ${
-            isDark
-              ? 'text-neutral-300 hover:text-white'
-              : 'text-neutral-700 hover:text-neutral-950'
-          }`}
-        >
-          <div className="relative">
-            <ShoppingBag className="w-5 h-5 stroke-[1.8]" />
-            {cartCount > 0 && (
-              <span
-                className="absolute -top-1.5 -right-2 text-white text-[9px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center shadow-xs animate-in zoom-in-75 duration-150"
-                style={{
-                  backgroundColor: badgeColor,
-                }}
-              >
-                {cartCount}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] mt-1 tracking-tight">Cart</span>
-        </button>
       </div>
     </nav>
   );

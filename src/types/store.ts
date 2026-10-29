@@ -516,6 +516,7 @@ export interface PaymentSettings {
   upiNumber?: string;
   merchantName: string;
   payeeName?: string; // backwards compatibility alias for merchantName
+  upiOwnerName?: string; // Account holder / verified UPI owner name displayed to customers for trust
   qrCodeUrl?: string;
   instructions?: string;
 }

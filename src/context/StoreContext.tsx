@@ -92,6 +92,16 @@ export interface ActiveUser {
   staffId?: string;
 }
 
+export type CustomerActiveTab =
+  | 'categories'
+  | 'search'
+  | 'wishlist'
+  | 'orders'
+  | 'order-detail'
+  | 'account'
+  | 'cart'
+  | 'home';
+
 interface StoreContextType {
   // Products
   products: Product[];
@@ -276,8 +286,10 @@ interface StoreContextType {
   deleteCategory: (id: string) => Promise<void>;
   selectedCategory: string;
   setSelectedCategory: (cat: string) => void;
-  customerActiveTab: 'home' | 'categories' | 'search' | 'wishlist';
-  setCustomerActiveTab: (tab: 'home' | 'categories' | 'search' | 'wishlist') => void;
+  customerActiveTab: CustomerActiveTab;
+  setCustomerActiveTab: (tab: CustomerActiveTab) => void;
+  selectedCustomerOrderId: string | null;
+  setSelectedCustomerOrderId: (id: string | null) => void;
 
   // Wishlist
   wishlist: string[];
@@ -704,7 +716,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [wishlist, setWishlist] = useState<string[]>(() =>
     loadFromStorage('aara_boutique_wishlist_v3', [])
   );
-  const [customerActiveTab, setCustomerActiveTab] = useState<'home' | 'categories' | 'search' | 'wishlist'>('home');
+  const [customerActiveTab, setCustomerActiveTab] = useState<CustomerActiveTab>('categories');
+  const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Centralized SKU Registry State
@@ -6058,6 +6071,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setSelectedCategory,
         customerActiveTab,
         setCustomerActiveTab,
+        selectedCustomerOrderId,
+        setSelectedCustomerOrderId,
         wishlist: activeWishlist,
         toggleWishlist,
         isInWishlist,

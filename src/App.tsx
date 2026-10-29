@@ -27,6 +27,10 @@ import { ResellerPortal } from './components/reseller/ResellerPortal';
 import { CustomerAuthModal } from './components/customer/CustomerAuthModal';
 import { CustomerAccountModal } from './components/customer/CustomerAccountModal';
 import { CustomerLoginPage } from './components/customer/CustomerLoginPage';
+import { CartPage } from './components/storefront/CartPage';
+import { CustomerOrdersPage } from './components/customer/CustomerOrdersPage';
+import { CustomerOrderDetailPage } from './components/customer/CustomerOrderDetailPage';
+import { CustomerAccountPage } from './components/customer/CustomerAccountPage';
 
 function MainAppContent() {
   const {
@@ -43,6 +47,7 @@ function MainAppContent() {
     setIsCheckoutOpen,
     isTrackOrderOpen,
     setIsTrackOrderOpen,
+    isCartOpen,
     setIsCartOpen,
     lastPlacedOrder,
     setLastPlacedOrder,
@@ -50,6 +55,8 @@ function MainAppContent() {
     clearRemoteLogoutNotice,
     customerActiveTab,
     setCustomerActiveTab,
+    selectedCustomerOrderId,
+    setSelectedCustomerOrderId,
     incomingChatAlert,
     dismissChatAlert,
     setActiveCustomerChatOrderId,
@@ -61,6 +68,14 @@ function MainAppContent() {
     setIsResellerPortalOpen,
     currentCustomer,
   } = useStore();
+
+  // If anything opens the cart state, seamlessly route to the full-page Cart
+  useEffect(() => {
+    if (isCartOpen) {
+      setCustomerActiveTab('cart');
+      setIsCartOpen(false);
+    }
+  }, [isCartOpen, setCustomerActiveTab, setIsCartOpen]);
 
   // Keep device activity & 15-minute idle detection active across the app
   useStaffIdleTracker();
@@ -128,10 +143,20 @@ function MainAppContent() {
         search.includes('account')
       ) {
         if (currentCustomer) {
-          setIsCustomerAccountModalOpen(true);
+          setCustomerActiveTab('account');
         } else {
           setIsCustomerAuthModalOpen(true);
         }
+      }
+
+      // 6. Orders deep-link (#orders, ?orders)
+      if (hash.includes('orders') || search.includes('orders')) {
+        setCustomerActiveTab('orders');
+      }
+
+      // 7. Cart deep-link (#cart, ?cart)
+      if (hash.includes('cart') || search.includes('cart')) {
+        setCustomerActiveTab('cart');
       }
 
       // 3. Direct product link handling (?product=...)
@@ -330,19 +355,18 @@ function MainAppContent() {
             onSelectWishlist={() => setCustomerActiveTab('wishlist')}
           />
 
-          {/* Tabbed Storefront Views */}
+          {/* Tabbed Storefront Views (Home page completely removed) */}
           <div className="flex-1 pb-20 sm:pb-24">
             {customerActiveTab === 'categories' ? (
               <CategoryBrowser
                 onOpenDetails={(product) => setActiveProductModal(product)}
                 selectedCategoryName={selectedCategory}
                 onSelectCategory={(cat) => setSelectedCategory(cat)}
-                onBackToHome={() => setCustomerActiveTab('home')}
               />
             ) : customerActiveTab === 'wishlist' ? (
               <WishlistBrowser
                 onOpenDetails={(product) => setActiveProductModal(product)}
-                onExploreCatalog={() => setCustomerActiveTab('home')}
+                onExploreCatalog={() => setCustomerActiveTab('categories')}
               />
             ) : customerActiveTab === 'search' ? (
               <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
@@ -352,92 +376,38 @@ function MainAppContent() {
                   onOpenDetails={(product) => setActiveProductModal(product)}
                 />
               </main>
+            ) : customerActiveTab === 'orders' ? (
+              <CustomerOrdersPage
+                onSelectOrder={(orderId) => {
+                  setSelectedCustomerOrderId(orderId);
+                  setCustomerActiveTab('order-detail');
+                }}
+                onExploreCatalog={() => setCustomerActiveTab('categories')}
+              />
+            ) : customerActiveTab === 'order-detail' ? (
+              <CustomerOrderDetailPage
+                onBack={() => setCustomerActiveTab('orders')}
+                onOpenProductDetails={(prodId: string) => {
+                  const match = products.find((p) => p.id === prodId);
+                  if (match) setActiveProductModal(match);
+                }}
+              />
+            ) : customerActiveTab === 'account' ? (
+              <CustomerAccountPage
+                onBack={() => setCustomerActiveTab('categories')}
+              />
+            ) : customerActiveTab === 'cart' ? (
+              <CartPage
+                onContinueShopping={() => setCustomerActiveTab('categories')}
+                onOpenProductDetails={(product) => setActiveProductModal(product)}
+              />
             ) : (
-              /* Home View */
-              <main>
-                <HeroBanner onExploreCatalog={handleScrollToCatalog} />
-
-                {/* Prominent Saree Categories Showcase (User Request 7 - First Image) */}
-                <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 border-b border-neutral-200/80">
-                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-6">
-                    <div>
-                      <span className="text-[10px] sm:text-xs uppercase tracking-widest text-amber-700 font-bold flex items-center gap-1.5 mb-1">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{settings.storefrontDisplay?.categorySectionBadge || 'Featured Collections'}</span>
-                      </span>
-                      <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 tracking-tight">
-                        {settings.storefrontDisplay?.categorySectionTitle || 'Explore Categories'}
-                      </h2>
-                      <p className="text-xs text-neutral-500 mt-0.5">
-                        {settings.storefrontDisplay?.categorySectionSubtitle ||
-                          'Discover curated collections grouped by artisan craft, style & occasion'}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategory('all');
-                        setCustomerActiveTab('categories');
-                      }}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-rose-900 hover:text-rose-700 transition self-start sm:self-auto cursor-pointer"
-                    >
-                      <span>All Categories ({categories.length})</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {/* Category Cards Carousel / Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-                    {categories.map((cat) => {
-                      const count = publicProducts.filter(
-                        (p) =>
-                          p.category === cat.name ||
-                          p.category?.toLowerCase() === cat.name.toLowerCase() ||
-                          p.fabric?.toLowerCase() === cat.name.toLowerCase()
-                      ).length;
-
-                      return (
-                        <div
-                          key={cat.id}
-                          onClick={() => {
-                            setSelectedCategory(cat.name);
-                            setCustomerActiveTab('categories');
-                          }}
-                          className="group relative rounded-2xl overflow-hidden bg-neutral-950 aspect-3/4 border border-neutral-200/80 shadow-2xs hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col justify-end p-3 active:scale-98"
-                          title={`View ${cat.name} Collection`}
-                        >
-                          <img
-                            src={cat.imageUrl || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
-                            alt={cat.name}
-                            className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/95 via-black/40 to-transparent pointer-events-none" />
-
-                          <div className="relative z-30 space-y-1">
-                            <span className="inline-block text-[9px] font-bold bg-white/95 text-neutral-900 px-1.5 py-0.5 rounded-full backdrop-blur-xs shadow-xs">
-                              {count} {count === 1 ? getCategorySingularName(cat.name) : getCategoryPluralName(cat.name)}
-                            </span>
-                            <h3 className="font-serif font-bold text-xs sm:text-sm text-white leading-tight group-hover:text-amber-200 transition drop-shadow-md">
-                              {cat.name}
-                            </h3>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                {/* Products Collection Catalog */}
-                <section id="catalog-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-                  <ProductGrid
-                    selectedCategory={selectedCategory}
-                    onSelectCategory={(cat) => setSelectedCategory(cat)}
-                    onOpenDetails={(product) => setActiveProductModal(product)}
-                  />
-                </section>
-              </main>
+              /* Fallback to Categories (No Home Page!) */
+              <CategoryBrowser
+                onOpenDetails={(product) => setActiveProductModal(product)}
+                selectedCategoryName={selectedCategory}
+                onSelectCategory={(cat) => setSelectedCategory(cat)}
+              />
             )}
 
             {/* Storefront Footer */}
@@ -451,12 +421,9 @@ function MainAppContent() {
           <BottomNavBar
             activeTab={customerActiveTab}
             onTabChange={(tab) => setCustomerActiveTab(tab)}
-            onOpenCart={() => setIsCartOpen(true)}
-            onOpenAccount={() => setIsTrackOrderOpen(true)}
-            onOpenOrders={() => setIsTrackOrderOpen(true)}
           />
 
-          {/* Dedicated Instructions & Cross-Platform PWA Installation Modal (User Request) */}
+          {/* Dedicated Instructions & Cross-Platform PWA Installation Modal */}
           <InstructionsModal
             isOpen={isInstructionsOpen}
             onClose={() => {
@@ -476,9 +443,6 @@ function MainAppContent() {
               onSelectProduct={(p) => setActiveProductModal(p)}
             />
           )}
-
-          {/* Shopping Bag Drawer */}
-          <CartDrawer />
 
           {/* Prepaid Checkout Flow Modal */}
           {isCheckoutOpen && (
@@ -528,7 +492,7 @@ function MainAppContent() {
             onClose={() => setIsCustomerAuthModalOpen(false)}
             onSuccess={() => {
               setIsCustomerAuthModalOpen(false);
-              setIsCustomerAccountModalOpen(true);
+              setCustomerActiveTab('account');
             }}
           />
 

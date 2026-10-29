@@ -21,20 +21,12 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const {
     settings,
-    cartCount,
-    wishlist,
-    setIsCartOpen,
     isAdminLoggedIn,
-    setIsTrackOrderOpen,
     publicProducts,
     categories: boutiqueCategories,
-    customerUnreadChatCount,
     currentCustomer,
-    customerNotifications,
     setIsCustomerAuthModalOpen,
-    setIsCustomerAccountModalOpen,
-    currentReseller,
-    setIsResellerPortalOpen,
+    setCustomerActiveTab,
   } = useStore();
   const themeColors = getThemeColors(settings.theme, settings.themeMode);
   const [logoError, setLogoError] = React.useState(false);
@@ -125,9 +117,8 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="truncate max-w-[180px] sm:max-w-none">{settings.boutiqueName}</span>
         </a>
 
-        {/* Zone 2: Actions & Utilities (Instructions, Customer Account, Wishlist, Cart) */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-
+        {/* Zone 2: Actions & Utilities (Instructions, My Account Pill, Admin indicator) */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <button
             onClick={onOpenInstructions}
             className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-neutral-800/80 hover:bg-neutral-700 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
@@ -137,60 +128,26 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden md:inline">Instructions</span>
           </button>
 
-          {/* Customer Account / Sign In Button */}
-          {currentCustomer ? (
-            <button
-              onClick={() => setIsCustomerAccountModalOpen(true)}
-              className="relative px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
-              title={`My Account (${currentCustomer.name})`}
-            >
-              <User className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline max-w-[90px] truncate">{currentCustomer.name.split(' ')[0]}</span>
-              {customerNotifications.filter((n) => !n.isRead).length > 0 && (
-                <span className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-neutral-900 animate-pulse" />
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsCustomerAuthModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-              title="Customer Sign In / Register"
-            >
-              <User className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sign In</span>
-            </button>
-          )}
-
-          {/* Customer Wishlist Button */}
-          {onSelectWishlist && (
-            <button
-              onClick={onSelectWishlist}
-              className="relative p-2.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-amber-200 transition-colors flex items-center justify-center cursor-pointer"
-              aria-label="View Saved Wishlist"
-              title="Saved Wishlist"
-            >
-              <Heart className="w-4 h-4 sm:w-5 sm:h-5" />
-              {wishlist.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center shadow-md animate-in zoom-in-75 duration-150">
-                  {wishlist.length}
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* Cart Bag Button */}
+          {/* My Account Pill Button (Matches screenshot image_3af3307a.png) */}
           <button
-            onClick={() => setIsCartOpen(true)}
-            className="relative p-2.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-amber-200 transition-colors flex items-center justify-center cursor-pointer"
-            aria-label="View Shopping Bag"
-            title="Shopping Bag"
+            onClick={() => {
+              if (currentCustomer) {
+                setCustomerActiveTab('account');
+              } else {
+                setIsCustomerAuthModalOpen(true);
+              }
+            }}
+            className="group inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#591b07] hover:bg-[#6c2109] border border-[#a83a15]/90 text-amber-100 text-xs font-bold tracking-wide transition shadow-sm cursor-pointer select-none"
+            title={currentCustomer ? `My Account (${currentCustomer.name}) - View details & saved addresses` : 'Sign In / My Account'}
           >
-            <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-amber-500 text-neutral-950 text-[11px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md animate-in zoom-in-75 duration-150">
-                {cartCount}
-              </span>
-            )}
+            <User className="w-3.5 h-3.5 text-[#fbbf24] stroke-[2.3]" />
+            <span className="uppercase font-bold tracking-wider text-[11px] sm:text-xs text-[#fef08a]">
+              {currentCustomer ? currentCustomer.name.split(' ')[0].toUpperCase() : 'MY ACCOUNT'}
+            </span>
+            <span
+              className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#3b1103] shrink-0"
+              title="Online & Verified"
+            />
           </button>
 
           {/* Invisible Admin Portal indicator when logged in */}

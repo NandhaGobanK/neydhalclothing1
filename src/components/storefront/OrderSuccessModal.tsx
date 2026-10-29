@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { formatPrice } from '../../utils/upi';
-import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle, Download, ShieldCheck, Sparkles } from 'lucide-react';
+import { CheckCircle2, Copy, Check, ArrowRight, Truck, AlertCircle, Download, ShieldCheck, Sparkles, MessageCircle, ExternalLink } from 'lucide-react';
 import { downloadSingleImage } from '../../utils/imageDownload';
 
 interface OrderSuccessModalProps {
@@ -197,11 +197,66 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
             <p className="text-neutral-500 text-[11px] mt-0.5">Contact: {lastPlacedOrder.customer.phone}</p>
           </div>
 
-          {/* Storefront Order Cancellation Policy Notice (Mandatory Requirement) */}
-          <div className="p-3 bg-amber-50 rounded-xl border border-amber-300 text-amber-950 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
-            <p className="leading-tight font-medium">
-              <strong>Order Policy:</strong> No cancellation once the order is shipped
+          {/* Post-Order WhatsApp Notification (Optional Assurance) */}
+          <div className="p-4 rounded-2xl bg-emerald-50/80 border-2 border-emerald-300 text-emerald-950 space-y-2.5 shadow-xs">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                <MessageCircle className="w-4 h-4 fill-white" />
+              </div>
+              <h4 className="font-bold text-xs sm:text-sm text-emerald-950">
+                Post-Order WhatsApp Notification (Optional Assurance)
+              </h4>
+            </div>
+
+            <p className="text-xs text-neutral-700 leading-relaxed">
+              Order placed successfully! If you'd like to share your payment screenshot for double-assurance, you can send it to our WhatsApp instantly.
+            </p>
+
+            <div className="pt-1">
+              {(() => {
+                const rawPhone = (settings.contactPhone || '8807392520').replace(/\D/g, '');
+                const waPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+                const waMsg = `Hello Neydhal Team, I have placed Order #${lastPlacedOrder.orderNumber} for ${formatPrice(lastPlacedOrder.totalAmount)}. My 12-digit payment reference / UTR is ${lastPlacedOrder.upiTransactionId || 'N/A'}. Here is my payment screenshot for confirmation.`;
+                const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
+
+                return (
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs shadow-md transition-all active:scale-98 cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4 fill-white" />
+                    <span>Send Screenshot to WhatsApp for Double-Assurance</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                );
+              })()}
+            </div>
+
+            <p className="text-[10px] text-emerald-800 font-medium italic">
+              This makes it optional rather than a blocking requirement, keeping your checkout fast while letting cautious customers send proof if they want to.
+            </p>
+          </div>
+
+          {/* Store Staff & Owner Rejection Disclaimer (Mandatory Storefront Policy) */}
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="font-bold text-amber-900">
+                Order Verification Policy & Store Disclaimer:
+              </p>
+              <p className="text-[11px] text-amber-950 leading-snug">
+                Store staff and store owners reserve all rights to reject or cancel an order if the 12-digit UTR does not match bank records or payment is not confirmed.
+              </p>
+            </div>
+          </div>
+
+          {/* Storefront Order Cancellation Policy Notice */}
+          <div className="p-2.5 bg-neutral-100 rounded-xl border border-neutral-200 text-neutral-600 text-[11px] flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+            <p className="leading-tight">
+              <strong>Order Policy:</strong> No cancellation once the order is shipped.
             </p>
           </div>
         </div>

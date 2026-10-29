@@ -316,8 +316,9 @@ export const INITIAL_SETTINGS: StoreSettings = {
     upiNumber: '8807392520',
     merchantName: 'Neydhal Boutique',
     payeeName: 'Neydhal Boutique',
+    upiOwnerName: 'Neydhal Clothing',
     qrCodeUrl: '',
-    instructions: 'Pay via direct UPI app intent (Google Pay, PhonePe, BHIM) or scan the merchant QR code. Upload your payment screenshot showing 12-digit UTR for order verification.',
+    instructions: 'Pay via direct UPI app intent (Google Pay, PhonePe, BHIM) or scan the merchant QR code. Locate and enter your 12-digit UTR / Transaction ID for order verification.',
   },
   delivery: {
     shippingFee: 250,

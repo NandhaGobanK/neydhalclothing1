@@ -9,6 +9,15 @@ export function formatPrice(amount: number): string {
 }
 
 /**
+ * Validates whether a UPI transaction reference (UTR / Transaction ID) is exactly 12 numeric digits.
+ */
+export function isValid12DigitUtr(utr: string | undefined | null): boolean {
+  if (!utr) return false;
+  const clean = utr.replace(/\D/g, '').trim();
+  return clean.length === 12;
+}
+
+/**
  * Returns the effective public store URL based on:
  * 1. Admin configured custom domain in Store Settings (e.g. https://myboutique.vercel.app)
  * 2. Vercel / environment variable VITE_PUBLIC_STORE_URL

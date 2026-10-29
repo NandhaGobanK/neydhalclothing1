@@ -28,8 +28,10 @@ import {
   ExternalLink,
   HelpCircle,
   FileCheck2,
-  Trash2,
   Info,
+  ChevronDown,
+  ChevronUp,
+  User,
 } from 'lucide-react';
 
 interface CheckoutModalProps {
@@ -80,14 +82,23 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isGeneratingQr, setIsGeneratingQr] = useState<boolean>(true);
 
-  // Screenshot Upload & Compression state
+  // Screenshot Upload & Compression state (Now completely optional)
   const [screenshotResult, setScreenshotResult] =
     useState<CompressedScreenshotResult | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [compressionError, setCompressionError] = useState<string | null>(null);
   const [previewZoomModal, setPreviewZoomModal] = useState<string | null>(null);
+  const [showOptionalScreenshot, setShowOptionalScreenshot] = useState(false);
 
-  // Customer entered UTR / Reference No.
+  // Reference guide image zoom lightbox
+  const [previewGuideModal, setPreviewGuideModal] = useState<{
+    app: string;
+    image: string;
+    instruction: string;
+    sampleRef: string;
+  } | null>(null);
+
+  // Customer entered UTR / Reference No. (Strictly 12 numeric digits required)
   const [enteredUtr, setEnteredUtr] = useState('');
 
   // Submission / Loading states
@@ -98,18 +109,28 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
 
   // Active guidance tab for app receipt instructions
   const [activeAppGuide, setActiveAppGuide] = useState<
-    'gpay' | 'phonepe' | 'paytm' | 'bhim'
-  >('gpay');
+    'phonepe' | 'gpay' | 'paytm' | 'bhim'
+  >('phonepe');
+
+  // Collapsible step toggles (User request)
+  const [isHowToPayOpen, setIsHowToPayOpen] = useState(true);
+  const [isAppGuidesOpen, setIsAppGuidesOpen] = useState(true);
 
   // Merchant details
   const merchantUpiId = (settings.payment.upiId || '8807392520@okbizaxis').trim();
-  const merchantName = (settings.payment.payeeName || 'Neydhal Clothing').trim();
+  const merchantName = (settings.payment.payeeName || settings.payment.merchantName || 'Neydhal Boutique').trim();
+  const merchantUpiOwnerName = (
+    settings.payment.upiOwnerName ||
+    settings.payment.payeeName ||
+    settings.payment.merchantName ||
+    'Neydhal Clothing'
+  ).trim();
   const formattedAmount = cartGrandTotal.toFixed(2);
   const transactionNote = `ORDER #${orderNumber} • NEYDHAL CLOTHING`;
 
   // Direct UPI Intent URI pre-filled with merchant details, total amount, and order reference
   const upiIntentUri = `upi://pay?pa=${encodeURIComponent(merchantUpiId)}&pn=${encodeURIComponent(
-    merchantName
+    merchantUpiOwnerName || merchantName
   )}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(transactionNote)}&tr=${encodeURIComponent(
     orderNumber
   )}`;
@@ -214,10 +235,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
       setErrorMsg('Please enter a valid 6-digit Indian postal pincode.');
       return false;
     }
-    if (!screenshotResult) {
-      setErrorMsg('Payment screenshot is mandatory. Please upload your payment receipt below.');
+
+    // UTR / Transaction ID 12-digit validation (Mandatory)
+    const cleanUtr = enteredUtr.replace(/\D/g, '').trim();
+    if (!cleanUtr) {
+      setErrorMsg('Please enter your 12-digit reference number / UTR from your payment app.');
       return false;
     }
+    if (cleanUtr.length !== 12) {
+      setErrorMsg(
+        `Please enter exactly 12 numeric digits for your UTR / Transaction ID (currently ${cleanUtr.length}/12 digits entered).`
+      );
+      return false;
+    }
+
     setErrorMsg('');
     return true;
   };
@@ -234,17 +265,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
       let downloadUrl = '';
 
       if (screenshotResult?.file) {
-        setUploadProgressText('Uploading compressed payment receipt to Firebase Storage...');
-        downloadUrl = await uploadPaymentScreenshot(screenshotResult.file, orderNumber);
+        setUploadProgressText('Uploading optional payment receipt to Firebase Storage...');
+        try {
+          downloadUrl = await uploadPaymentScreenshot(screenshotResult.file, orderNumber);
+        } catch (uploadErr) {
+          console.warn('Screenshot upload notice, proceeding with order submission:', uploadErr);
+        }
       }
 
       setUploadProgressText('Recording order into Firestore database...');
 
-      const resolvedUpiTxn = (
-        enteredUtr.trim() ||
-        screenshotResult?.file?.name ||
-        `UPI-${orderNumber}`
-      ).trim();
+      const cleanUtr = enteredUtr.replace(/\D/g, '').trim();
+      const resolvedUpiTxn = cleanUtr || `UPI-${orderNumber}`;
 
       // Place order with initial status: 'pending_verification'
       placeOrder({
@@ -259,7 +291,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
         },
         items: cart,
         upiTransactionId: resolvedUpiTxn,
-        paymentScreenshotUrl: downloadUrl || screenshotResult?.previewUrl,
+        paymentScreenshotUrl: downloadUrl || screenshotResult?.previewUrl || undefined,
         deviceType: deviceType,
         paymentGateway: 'upi_manual',
         notes: notes.trim() || undefined,
@@ -347,9 +379,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                       Official Payee
                     </span>
                   </div>
-                  <p className="text-xs text-emerald-950 font-semibold mt-1">
-                    Direct Artisan Handloom & Heirloom Pure Silk Weaves
-                  </p>
                 </div>
               </div>
 
@@ -467,6 +496,46 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               </div>
 
               <div className="p-4 sm:p-5 space-y-4">
+                {/* Verified Payee (UPI Owner Name) & Customer Name Overview for Trust */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50/70 to-blue-50/70 border-2 border-emerald-300 shadow-2xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    {/* Verified UPI Payee / Account Owner */}
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <ShieldCheck className="w-5 h-5 text-amber-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-900">
+                            UPI Owner / Payee Name
+                          </span>
+                          <span className="text-[9px] font-extrabold bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-300">
+                            Verified
+                          </span>
+                        </div>
+                        <p className="font-serif font-black text-sm text-neutral-950 truncate">
+                          {merchantUpiOwnerName}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Customer Name */}
+                    <div className="flex items-center gap-2.5 sm:border-l sm:border-emerald-200/90 sm:pl-3">
+                      <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-blue-900 block">
+                          Paying Customer
+                        </span>
+                        <p className="font-bold text-sm text-neutral-900 truncate">
+                          {name.trim() || currentCustomer?.name || 'Customer / Patron'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* 1. MOBILE USER INTERFACE */}
                 {deviceType === 'mobile' && (
                   <div className="space-y-4 text-center">
@@ -634,6 +703,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                             Pre-fills <strong>{formatPrice(cartGrandTotal)}</strong> and order reference <strong>#{orderNumber}</strong> automatically.
                           </p>
                           <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200 font-mono text-[11px] text-neutral-800 space-y-1">
+                            <div className="flex justify-between items-center text-emerald-900 font-sans font-bold pb-1 border-b border-neutral-200/80">
+                              <span>Verified Payee:</span>
+                              <span className="text-neutral-950 font-serif">{merchantUpiOwnerName}</span>
+                            </div>
                             <div className="flex justify-between items-center">
                               <span>UPI ID: <strong>{merchantUpiId}</strong></span>
                               <button
@@ -688,6 +761,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
 
                       {/* Merchant Credentials card with 1-click copy */}
                       <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 space-y-2">
+                        <div className="flex items-center justify-between pb-1 border-b border-neutral-200/80">
+                          <div>
+                            <span className="text-[10px] uppercase tracking-wider text-emerald-800 font-bold block">
+                              Verified Payee / UPI Owner
+                            </span>
+                            <span className="font-serif text-xs font-bold text-neutral-900">
+                              {merchantUpiOwnerName}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                            Verified
+                          </span>
+                        </div>
+
                         <div className="flex items-center justify-between">
                           <div>
                             <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-bold block">
@@ -752,301 +839,534 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               </div>
             </div>
 
-            {/* Step 3: Customer Guidance & Instructions Card */}
-            <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/50 p-4 sm:p-5 space-y-3.5">
-              <div className="flex items-center justify-between flex-wrap gap-2">
+            {/* Step 2: How to Complete Your Payment (Collapsible 3-step Instructions) */}
+            <div className="rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/60 p-4 sm:p-5 shadow-xs transition-all">
+              <button
+                type="button"
+                onClick={() => setIsHowToPayOpen(!isHowToPayOpen)}
+                className="w-full flex items-center justify-between flex-wrap gap-2 text-left cursor-pointer select-none group"
+                aria-expanded={isHowToPayOpen}
+              >
                 <div className="flex items-center gap-2">
-                  <span className="p-1 rounded-lg bg-indigo-600 text-white font-bold text-xs">
+                  <span className="p-1 px-2 rounded-lg bg-emerald-700 text-white font-extrabold text-xs tracking-wider">
                     STEP 2
                   </span>
-                  <h4 className="font-serif text-sm font-bold text-indigo-950">
-                    How to Find Your 12-Digit Reference No. & Screenshot
+                  <h4 className="font-serif text-base sm:text-lg font-bold text-emerald-950 group-hover:text-emerald-800 transition">
+                    How to Complete Your Payment
                   </h4>
                 </div>
-                <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-100/80 px-2.5 py-0.5 rounded-full border border-indigo-200">
-                  Required for Order Approval
-                </span>
-              </div>
-
-              <p className="text-xs text-neutral-600 leading-relaxed">
-                After completing the payment in your UPI app, take a full screenshot of the payment receipt. Make sure the <strong>12-digit reference number</strong> is clearly visible. Labels vary by app:
-              </p>
-
-              {/* App Reference Number Labels Tabs */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setActiveAppGuide('gpay')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                    activeAppGuide === 'gpay'
-                      ? 'bg-white border-blue-500 shadow-xs ring-2 ring-blue-500/20'
-                      : 'bg-white/80 border-neutral-200 hover:bg-white'
-                  }`}
-                >
-                  <p className="font-bold text-blue-700">Google Pay</p>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">Labeled as:</p>
-                  <p className="font-mono text-[11px] font-bold text-neutral-900 truncate">
-                    UPI transaction ID
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveAppGuide('phonepe')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                    activeAppGuide === 'phonepe'
-                      ? 'bg-white border-purple-500 shadow-xs ring-2 ring-purple-500/20'
-                      : 'bg-white/80 border-neutral-200 hover:bg-white'
-                  }`}
-                >
-                  <p className="font-bold text-purple-700">PhonePe</p>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">Labeled as:</p>
-                  <p className="font-mono text-[11px] font-bold text-neutral-900 truncate">
-                    UTR / Txn ID
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveAppGuide('paytm')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                    activeAppGuide === 'paytm'
-                      ? 'bg-white border-sky-500 shadow-xs ring-2 ring-sky-500/20'
-                      : 'bg-white/80 border-neutral-200 hover:bg-white'
-                  }`}
-                >
-                  <p className="font-bold text-sky-700">Paytm</p>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">Labeled as:</p>
-                  <p className="font-mono text-[11px] font-bold text-neutral-900 truncate">
-                    UPI Ref No.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveAppGuide('bhim')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                    activeAppGuide === 'bhim'
-                      ? 'bg-white border-orange-500 shadow-xs ring-2 ring-orange-500/20'
-                      : 'bg-white/80 border-neutral-200 hover:bg-white'
-                  }`}
-                >
-                  <p className="font-bold text-orange-700">BHIM / Banks</p>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">Labeled as:</p>
-                  <p className="font-mono text-[11px] font-bold text-neutral-900 truncate">
-                    Bank Ref / UTR
-                  </p>
-                </button>
-              </div>
-
-              {/* Visual Mockup Container Highlighting Reference Numbers on Typical Receipt */}
-              <div className="p-3.5 rounded-2xl bg-white border border-indigo-200 shadow-xs">
-                <div className="flex items-center justify-between text-[11px] text-neutral-500 mb-2">
-                  <span className="font-semibold text-neutral-700 flex items-center gap-1.5">
-                    <HelpCircle className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Typical UPI Receipt Mockup:</span>
-                  </span>
-                  <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    Paid to {merchantName}
-                  </span>
-                </div>
-
-                <div className="rounded-xl border border-dashed border-neutral-300 p-3 bg-neutral-50/80 space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-neutral-600">
-                    <span>Payment Status:</span>
-                    <span className="font-bold text-emerald-700 flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> Successful
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-neutral-600">
-                    <span>Amount Paid:</span>
-                    <span className="font-bold font-serif text-sm text-neutral-900">
-                      {formatPrice(cartGrandTotal)}
-                    </span>
-                  </div>
-
-                  {/* Highlighted Reference Number Box */}
-                  <div className="p-2.5 rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 animate-pulse">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider block text-amber-800">
-                        {activeAppGuide === 'gpay'
-                          ? 'Google Pay: UPI transaction ID'
-                          : activeAppGuide === 'phonepe'
-                          ? 'PhonePe: UTR No.'
-                          : activeAppGuide === 'paytm'
-                          ? 'Paytm: UPI Ref No.'
-                          : 'BHIM / Bank: UTR Reference No.'}
-                      </span>
-                      <span className="font-mono font-extrabold text-xs text-neutral-950 tracking-wider">
-                        4289 1049 8213
-                      </span>
-                    </div>
-                    <span className="text-[10px] bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded font-bold shrink-0 self-start sm:self-auto">
-                      👈 Capture this number in screenshot!
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Step 4: Mandatory Payment Screenshot Upload & Client-Side Compression */}
-            <div className="rounded-2xl border-2 border-dashed border-amber-300/80 bg-amber-50/40 p-4 sm:p-5 space-y-3.5">
-              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="p-1 rounded-lg bg-amber-600 text-white font-bold text-xs">
-                    STEP 3
+                  <span className="text-[11px] font-extrabold text-emerald-800 bg-emerald-100/90 px-3 py-1 rounded-full border border-emerald-300 shadow-2xs">
+                    ⚡ Fast Checkout · No Mandatory Screenshot
                   </span>
-                  <h4 className="font-serif text-sm font-bold text-amber-950">
-                    Upload Payment Screenshot <span className="text-rose-600">* Mandatory</span>
-                  </h4>
+                  <div className={`p-1.5 rounded-full bg-emerald-100 text-emerald-800 transition-transform duration-200 ${isHowToPayOpen ? 'rotate-180' : ''}`}>
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
                 </div>
-                <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-200/80 text-amber-900 border border-amber-300">
-                  Target: 150KB - 200KB (Text Clarity Preserved)
-                </span>
-              </div>
+              </button>
 
-              {/* Upload Drop Zone / Button */}
-              {!screenshotResult && (
-                <div className="space-y-3">
-                  <label
-                    htmlFor={fileInputId}
-                    className={`block w-full border-2 border-dashed rounded-2xl p-6 text-center transition cursor-pointer ${
-                      isCompressing
-                        ? 'bg-neutral-100 border-neutral-300 cursor-wait'
-                        : 'bg-white border-amber-300 hover:border-amber-500 hover:bg-amber-50/60 shadow-xs'
-                    }`}
-                  >
-                    <input
-                      id={fileInputId}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={handleFileSelect}
-                      disabled={isCompressing || isSubmitting}
-                      className="hidden"
-                    />
-
-                    {isCompressing ? (
-                      <div className="space-y-2 flex flex-col items-center">
-                        <RefreshCw className="w-8 h-8 text-amber-600 animate-spin" />
-                        <p className="font-bold text-xs text-neutral-800">
-                          Compressing screenshot with browser-image-compression...
-                        </p>
-                        <p className="text-[11px] text-neutral-500">
-                          Resizing to max 1000px & targeting 150KB–200KB while preserving text sharpness
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 flex flex-col items-center">
-                        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shadow-xs">
-                          <Upload className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-sm text-neutral-900">
-                            Tap to Select Payment Screenshot
-                          </p>
-                          <p className="text-xs text-neutral-500 mt-0.5">
-                            JPEG, PNG, or WebP screenshot from your photo gallery
-                          </p>
-                        </div>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 mt-1">
-                          <Sparkles className="w-3 h-3 text-emerald-600" />
-                          <span>Auto-compressed before upload to save mobile data</span>
-                        </span>
-                      </div>
-                    )}
-                  </label>
-
-                  {compressionError && (
-                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                      <span>{compressionError}</span>
+              {/* Numbered 3-Step Walkthrough (Collapsible) */}
+              {isHowToPayOpen ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs pt-3.5 border-t border-emerald-200/70 mt-3.5 animate-in fade-in duration-200">
+                  <div className="p-3 rounded-xl bg-white border border-emerald-200/90 shadow-2xs space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-emerald-900">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[11px] font-mono shrink-0">
+                        1
+                      </span>
+                      <span>Scan & Pay</span>
                     </div>
-                  )}
+                    <p className="text-[11px] text-neutral-600 leading-snug">
+                      Scan the QR code above and pay <strong>{formatPrice(cartGrandTotal)}</strong> using any UPI app (GPay, PhonePe, Paytm, BHIM).
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white border border-emerald-200/90 shadow-2xs space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-emerald-900">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[11px] font-mono shrink-0">
+                        2
+                      </span>
+                      <span>Locate 12-Digit UTR</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-600 leading-snug">
+                      Locate your <strong>12-digit UTR / UPI Transaction ID</strong> from your payment app success or history screen.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white border border-emerald-200/90 shadow-2xs space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-emerald-900">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[11px] font-mono shrink-0">
+                        3
+                      </span>
+                      <span>Type & Place Order</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-600 leading-snug">
+                      Enter the 12-digit number in the box below to instantly place your order. (<strong>No waiting, no screenshots needed on the site</strong>).
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => setIsHowToPayOpen(true)}
+                  className="mt-2.5 pt-2 border-t border-emerald-200/50 flex items-center justify-between text-[11px] text-emerald-900/90 font-medium cursor-pointer"
+                >
+                  <span>1. Pay via UPI App → 2. Locate 12-Digit UTR / Ref No → 3. Enter number below</span>
+                  <span className="text-[10px] text-emerald-700 font-bold underline ml-2 shrink-0">Show Details</span>
                 </div>
               )}
+            </div>
 
-              {/* Compressed Screenshot Confirmation Banner & Thumbnail */}
-              {screenshotResult && (
-                <div className="p-4 rounded-2xl bg-white border border-emerald-300 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                        <Check className="w-4 h-4" />
-                      </div>
-                      <span className="font-bold text-xs text-emerald-950">
-                        Screenshot Compressed & Verified!
-                      </span>
-                    </div>
+            {/* Step 3: App-Specific Quick Guides (With 4 Attached Payment Reference Images - Collapsible) */}
+            <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/50 p-4 sm:p-5 shadow-xs transition-all">
+              <button
+                type="button"
+                onClick={() => setIsAppGuidesOpen(!isAppGuidesOpen)}
+                className="w-full flex items-center justify-between flex-wrap gap-2 text-left cursor-pointer select-none group"
+                aria-expanded={isAppGuidesOpen}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="p-1 px-2 rounded-lg bg-indigo-600 text-white font-extrabold text-xs tracking-wider">
+                    STEP 3
+                  </span>
+                  <h4 className="font-serif text-base sm:text-lg font-bold text-indigo-950 group-hover:text-indigo-800 transition">
+                    Where to Find Your 12-Digit Number in Your App
+                  </h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-100 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                    Tap Any App to View Real Screenshot
+                  </span>
+                  <div className={`p-1.5 rounded-full bg-indigo-100 text-indigo-800 transition-transform duration-200 ${isAppGuidesOpen ? 'rotate-180' : ''}`}>
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
+              </button>
 
+              {isAppGuidesOpen ? (
+                <div className="space-y-4 pt-3.5 border-t border-indigo-100 mt-3.5 animate-in fade-in duration-200">
+                  {/* App selector buttons */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    {/* PhonePe */}
                     <button
                       type="button"
-                      onClick={handleRemoveScreenshot}
-                      disabled={isSubmitting}
-                      className="text-neutral-400 hover:text-rose-600 p-1 rounded-lg hover:bg-neutral-100 transition cursor-pointer flex items-center gap-1 text-[11px]"
-                      title="Remove and upload different image"
+                      onClick={() => setActiveAppGuide('phonepe')}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        activeAppGuide === 'phonepe'
+                          ? 'bg-purple-50 border-purple-500 shadow-xs ring-2 ring-purple-500/30'
+                          : 'bg-white border-neutral-200 hover:bg-neutral-50'
+                      }`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Remove</span>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-base">📱</span>
+                        <span className="font-bold text-purple-700">PhonePe</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500">Find 12-digit:</p>
+                      <p className="font-mono text-xs font-black text-purple-950">UTR</p>
+                    </button>
+
+                    {/* Google Pay */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveAppGuide('gpay')}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        activeAppGuide === 'gpay'
+                          ? 'bg-blue-50 border-blue-500 shadow-xs ring-2 ring-blue-500/30'
+                          : 'bg-white border-neutral-200 hover:bg-neutral-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-base">🔵</span>
+                        <span className="font-bold text-blue-700">Google Pay</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500">Find 12-digit:</p>
+                      <p className="font-mono text-xs font-black text-blue-950 truncate">UPI Txn ID</p>
+                    </button>
+
+                    {/* Paytm */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveAppGuide('paytm')}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        activeAppGuide === 'paytm'
+                          ? 'bg-sky-50 border-sky-500 shadow-xs ring-2 ring-sky-500/30'
+                          : 'bg-white border-neutral-200 hover:bg-neutral-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-base">🟣</span>
+                        <span className="font-bold text-sky-700">Paytm</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500">Find 12-digit:</p>
+                      <p className="font-mono text-xs font-black text-sky-950">Ref No.</p>
+                    </button>
+
+                    {/* BHIM */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveAppGuide('bhim')}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        activeAppGuide === 'bhim'
+                          ? 'bg-orange-50 border-orange-500 shadow-xs ring-2 ring-orange-500/30'
+                          : 'bg-white border-neutral-200 hover:bg-neutral-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-base">🟠</span>
+                        <span className="font-bold text-orange-700">BHIM App</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500">Find 12-digit:</p>
+                      <p className="font-mono text-xs font-black text-orange-950">Transaction ID</p>
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    {/* Thumbnail with Zoom trigger */}
-                    <div
-                      onClick={() => setPreviewZoomModal(screenshotResult.previewUrl)}
-                      className="relative group cursor-pointer shrink-0 rounded-xl overflow-hidden border border-neutral-300 shadow-xs"
-                      title="Click to zoom screenshot"
-                    >
-                      <img
-                        src={screenshotResult.previewUrl}
-                        alt="Compressed receipt"
-                        className="w-16 h-20 object-cover bg-neutral-100"
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
-                        <ZoomIn className="w-4 h-4" />
-                      </div>
-                    </div>
+                  {/* Active App Visual Reference Card with Attached Screenshot */}
+                  <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-indigo-200 shadow-xs">
+                    {activeAppGuide === 'phonepe' && (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">📱</span>
+                            <h5 className="font-bold text-sm text-purple-900">PhonePe Instructions</h5>
+                            <span className="text-[10px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-200">
+                              Red Box: 12-Digit UTR
+                            </span>
+                          </div>
+                          <p className="text-xs text-neutral-700 font-medium leading-relaxed">
+                            📱 <strong>PhonePe:</strong> Tap <em>View Details</em> on the success screen to find your <strong>12-digit UTR</strong>.
+                          </p>
+                          <p className="text-[11px] text-neutral-500">
+                            Look for the red box highlighted on the payment screen next to your debited bank account.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewGuideModal({
+                                app: 'PhonePe',
+                                image: '/assets/aistudio/Phonepe_6d38e6b0.jpeg',
+                                instruction: '📱 PhonePe: Tap View Details on the success screen to find your 12-digit UTR.',
+                                sampleRef: '668033855256',
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-700 hover:text-purple-900 hover:underline cursor-pointer pt-1"
+                          >
+                            <ZoomIn className="w-3.5 h-3.5" />
+                            <span>Tap to View Full Screen PhonePe Screenshot</span>
+                          </button>
+                        </div>
 
-                    {/* Compression Statistics Breakdown */}
-                    <div className="space-y-1 text-xs text-neutral-700 flex-1">
-                      <p className="font-semibold text-neutral-900 truncate">
-                        {screenshotResult.file.name}
-                      </p>
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <span className="text-neutral-500 line-through">
-                          {screenshotResult.originalSizeKB} KB
-                        </span>
-                        <ArrowRight className="w-3 h-3 text-emerald-600" />
-                        <span className="font-bold font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                          {screenshotResult.compressedSizeKB} KB
-                        </span>
-                        <span className="text-[10px] text-emerald-800 font-semibold">
-                          ({screenshotResult.reductionPercentage}% smaller)
-                        </span>
+                        {/* Attached Screenshot Thumbnail */}
+                        <div
+                          onClick={() =>
+                            setPreviewGuideModal({
+                              app: 'PhonePe',
+                              image: '/assets/aistudio/Phonepe_6d38e6b0.jpeg',
+                              instruction: '📱 PhonePe: Tap View Details on the success screen to find your 12-digit UTR.',
+                              sampleRef: '668033855256',
+                            })
+                          }
+                          className="relative group cursor-pointer shrink-0 rounded-xl overflow-hidden border-2 border-purple-400 shadow-sm bg-neutral-900 self-center sm:self-auto"
+                          title="Click to view PhonePe payment reference image"
+                        >
+                          <img
+                            src="/assets/aistudio/Phonepe_6d38e6b0.jpeg"
+                            alt="PhonePe UTR Reference Screenshot"
+                            className="w-24 sm:w-28 h-36 object-cover object-center group-hover:scale-105 transition duration-200"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white text-[10px] font-bold">
+                            <ZoomIn className="w-4 h-4 mr-1" /> Zoom
+                          </div>
+                          <span className="absolute bottom-1 right-1 bg-red-600 text-white font-mono text-[9px] font-black px-1 rounded shadow">
+                            UTR Box
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-[10px] text-neutral-500">
-                        Dimensions: {screenshotResult.width}×{screenshotResult.height}px · Format: {screenshotResult.mimeType}
-                      </p>
-                    </div>
+                    )}
+
+                    {activeAppGuide === 'gpay' && (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">🔵</span>
+                            <h5 className="font-bold text-sm text-blue-900">Google Pay Instructions</h5>
+                            <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200">
+                              Red Box: 12-Digit Txn ID
+                            </span>
+                          </div>
+                          <p className="text-xs text-neutral-700 font-medium leading-relaxed">
+                            🔵 <strong>Google Pay:</strong> Go to <em>Transaction History</em>, open the payment made to our store, and copy the <strong>12-digit UPI Transaction ID</strong>.
+                          </p>
+                          <p className="text-[11px] text-neutral-500">
+                            Check the red highlighted box under your bank card for the 12-digit UPI transaction ID.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewGuideModal({
+                                app: 'Google Pay',
+                                image: '/assets/aistudio/GooglePay_3d1a4bdf.jpeg',
+                                instruction: '🔵 Google Pay: Go to Transaction History, open the payment made to our store, and copy the 12-digit UPI Transaction ID.',
+                                sampleRef: '666794673924',
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer pt-1"
+                          >
+                            <ZoomIn className="w-3.5 h-3.5" />
+                            <span>Tap to View Full Screen Google Pay Screenshot</span>
+                          </button>
+                        </div>
+
+                        {/* Attached Screenshot Thumbnail */}
+                        <div
+                          onClick={() =>
+                            setPreviewGuideModal({
+                              app: 'Google Pay',
+                              image: '/assets/aistudio/GooglePay_3d1a4bdf.jpeg',
+                              instruction: '🔵 Google Pay: Go to Transaction History, open the payment made to our store, and copy the 12-digit UPI Transaction ID.',
+                              sampleRef: '666794673924',
+                            })
+                          }
+                          className="relative group cursor-pointer shrink-0 rounded-xl overflow-hidden border-2 border-blue-400 shadow-sm bg-neutral-900 self-center sm:self-auto"
+                          title="Click to view Google Pay payment reference image"
+                        >
+                          <img
+                            src="/assets/aistudio/GooglePay_3d1a4bdf.jpeg"
+                            alt="Google Pay UPI Transaction ID Reference Screenshot"
+                            className="w-24 sm:w-28 h-36 object-cover object-center group-hover:scale-105 transition duration-200"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white text-[10px] font-bold">
+                            <ZoomIn className="w-4 h-4 mr-1" /> Zoom
+                          </div>
+                          <span className="absolute bottom-1 right-1 bg-red-600 text-white font-mono text-[9px] font-black px-1 rounded shadow">
+                            Txn ID Box
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeAppGuide === 'paytm' && (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">🟣</span>
+                            <h5 className="font-bold text-sm text-sky-900">Paytm Instructions</h5>
+                            <span className="text-[10px] font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-200">
+                              Red Box: 12-Digit Ref No.
+                            </span>
+                          </div>
+                          <p className="text-xs text-neutral-700 font-medium leading-relaxed">
+                            🟣 <strong>Paytm:</strong> Find the <strong>12-digit Ref No</strong> displayed on the payment confirmation page.
+                          </p>
+                          <p className="text-[11px] text-neutral-500">
+                            Check the red highlighted box next to the date/timestamp on your Paytm green success screen.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewGuideModal({
+                                app: 'Paytm',
+                                image: '/assets/aistudio/Paytm_44207adf.jpeg',
+                                instruction: '🟣 Paytm: Find the 12-digit Ref No displayed on the payment confirmation page.',
+                                sampleRef: '219172152537',
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 hover:text-sky-900 hover:underline cursor-pointer pt-1"
+                          >
+                            <ZoomIn className="w-3.5 h-3.5" />
+                            <span>Tap to View Full Screen Paytm Screenshot</span>
+                          </button>
+                        </div>
+
+                        {/* Attached Screenshot Thumbnail */}
+                        <div
+                          onClick={() =>
+                            setPreviewGuideModal({
+                              app: 'Paytm',
+                              image: '/assets/aistudio/Paytm_44207adf.jpeg',
+                              instruction: '🟣 Paytm: Find the 12-digit Ref No displayed on the payment confirmation page.',
+                              sampleRef: '219172152537',
+                            })
+                          }
+                          className="relative group cursor-pointer shrink-0 rounded-xl overflow-hidden border-2 border-sky-400 shadow-sm bg-neutral-900 self-center sm:self-auto"
+                          title="Click to view Paytm payment reference image"
+                        >
+                          <img
+                            src="/assets/aistudio/Paytm_44207adf.jpeg"
+                            alt="Paytm Ref No Reference Screenshot"
+                            className="w-24 sm:w-28 h-36 object-cover object-top group-hover:scale-105 transition duration-200"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white text-[10px] font-bold">
+                            <ZoomIn className="w-4 h-4 mr-1" /> Zoom
+                          </div>
+                          <span className="absolute bottom-1 right-1 bg-red-600 text-white font-mono text-[9px] font-black px-1 rounded shadow">
+                            Ref No Box
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeAppGuide === 'bhim' && (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">🟠</span>
+                            <h5 className="font-bold text-sm text-orange-900">BHIM App Instructions</h5>
+                            <span className="text-[10px] font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded border border-orange-200">
+                              Red Box: 12-Digit Txn ID
+                            </span>
+                          </div>
+                          <p className="text-xs text-neutral-700 font-medium leading-relaxed">
+                            🟠 <strong>BHIM App:</strong> Find the <strong>12-digit Transaction ID</strong> displayed on the payment confirmation page.
+                          </p>
+                          <p className="text-[11px] text-neutral-500">
+                            Check the red highlighted box on the green BHIM receipt screen under your banking name.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewGuideModal({
+                                app: 'BHIM App',
+                                image: '/assets/aistudio/BHIM_9be98cb4.jpeg',
+                                instruction: '🟠 BHIM App: Find the 12-digit Transaction ID displayed on the payment confirmation page.',
+                                sampleRef: '193810919980',
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-orange-700 hover:text-orange-900 hover:underline cursor-pointer pt-1"
+                          >
+                            <ZoomIn className="w-3.5 h-3.5" />
+                            <span>Tap to View Full Screen BHIM Screenshot</span>
+                          </button>
+                        </div>
+
+                        {/* Attached Screenshot Thumbnail */}
+                        <div
+                          onClick={() =>
+                            setPreviewGuideModal({
+                              app: 'BHIM App',
+                              image: '/assets/aistudio/BHIM_9be98cb4.jpeg',
+                              instruction: '🟠 BHIM App: Find the 12-digit Transaction ID displayed on the payment confirmation page.',
+                              sampleRef: '193810919980',
+                            })
+                          }
+                          className="relative group cursor-pointer shrink-0 rounded-xl overflow-hidden border-2 border-orange-400 shadow-sm bg-neutral-900 self-center sm:self-auto"
+                          title="Click to view BHIM payment reference image"
+                        >
+                          <img
+                            src="/assets/aistudio/BHIM_9be98cb4.jpeg"
+                            alt="BHIM App Transaction ID Reference Screenshot"
+                            className="w-24 sm:w-28 h-36 object-cover object-center group-hover:scale-105 transition duration-200"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white text-[10px] font-bold">
+                            <ZoomIn className="w-4 h-4 mr-1" /> Zoom
+                          </div>
+                          <span className="absolute bottom-1 right-1 bg-red-600 text-white font-mono text-[9px] font-black px-1 rounded shadow">
+                            Txn ID Box
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
+              ) : (
+                <div
+                  onClick={() => setIsAppGuidesOpen(true)}
+                  className="mt-2.5 pt-2 border-t border-indigo-100 flex items-center justify-between text-[11px] text-indigo-900/90 font-medium cursor-pointer"
+                >
+                  <span>📱 PhonePe (UTR) · 🔵 Google Pay (UPI Txn ID) · 🟣 Paytm (Ref No) · 🟠 BHIM (Transaction ID)</span>
+                  <span className="text-[10px] text-indigo-700 font-bold underline ml-2 shrink-0">Show Visual Guides</span>
+                </div>
               )}
+            </div>
 
-              {/* Optional / Recommended: Type or Paste 12-digit UTR */}
-              <div className="pt-1">
-                <label className="block text-neutral-700 font-bold text-xs mb-1">
-                  12-Digit UTR / Transaction Reference Number{' '}
-                  <span className="text-neutral-400 font-normal">(Optional for faster lookup)</span>
-                </label>
-                <input
-                  type="text"
-                  maxLength={24}
-                  value={enteredUtr}
-                  onChange={(e) => setEnteredUtr(e.target.value)}
-                  placeholder="e.g. 428910498213 (from your payment receipt)"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 text-neutral-900 font-mono text-xs"
-                />
+            {/* Step 4: 12-Digit Reference Number Input & Rejection Disclaimer */}
+            <div className="rounded-2xl border-2 border-amber-400/90 bg-amber-50/50 p-4 sm:p-5 space-y-3.5 shadow-sm">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 px-2 rounded-lg bg-amber-600 text-white font-extrabold text-xs tracking-wider">
+                    STEP 4
+                  </span>
+                  <label htmlFor="utr-input-field" className="font-serif text-base font-bold text-amber-950">
+                    Enter Your 12-Digit Reference Number <span className="text-rose-600">*</span>
+                  </label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {enteredUtr.replace(/\D/g, '').length === 12 ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-extrabold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>12 / 12 Digits (Valid)</span>
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-bold bg-white text-neutral-600 px-2.5 py-0.5 rounded-full border border-amber-300">
+                      {enteredUtr.replace(/\D/g, '').length} / 12 Digits
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {/* 12-digit numeric input with instant feedback */}
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <input
+                    id="utr-input-field"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{12}"
+                    maxLength={12}
+                    value={enteredUtr}
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 12);
+                      setEnteredUtr(digitsOnly);
+                      if (errorMsg) setErrorMsg('');
+                    }}
+                    placeholder="Enter exactly 12 numeric digits (e.g. 668033855256)"
+                    className={`w-full p-3.5 pl-4 pr-12 rounded-2xl border-2 bg-white text-neutral-900 font-mono text-sm sm:text-base tracking-widest focus:outline-none transition shadow-inner ${
+                      enteredUtr.replace(/\D/g, '').length === 12
+                        ? 'border-emerald-500 focus:ring-4 focus:ring-emerald-500/20'
+                        : enteredUtr.length > 0
+                        ? 'border-amber-400 focus:ring-4 focus:ring-amber-500/20'
+                        : 'border-neutral-300 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20'
+                    }`}
+                  />
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {enteredUtr.replace(/\D/g, '').length === 12 && (
+                      <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <Check className="w-4 h-4 stroke-[3]" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] px-1">
+                  <span className="text-neutral-500">
+                    {enteredUtr.length === 0 && 'Type the 12 digits from your payment receipt.'}
+                    {enteredUtr.length > 0 && enteredUtr.length < 12 && (
+                      <span className="text-amber-800 font-semibold">
+                        ⚠️ Needs {12 - enteredUtr.length} more digit{12 - enteredUtr.length > 1 ? 's' : ''} (must be exactly 12 numeric digits).
+                      </span>
+                    )}
+                    {enteredUtr.length === 12 && (
+                      <span className="text-emerald-700 font-bold">
+                        ✓ Exactly 12 digits entered. Order ready to submit!
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-mono text-neutral-400 font-semibold">
+                    {enteredUtr.length}/12
+                  </span>
+                </div>
+              </div>
+
+              {/* Prominent Store Staff & Owner Rejection Disclaimer (Mandatory Requirement) */}
+              <div className="p-3 sm:p-3.5 rounded-xl bg-amber-100/80 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+                <div className="leading-snug space-y-0.5">
+                  <p className="font-bold text-amber-900">
+                    Store Verification Policy & Disclaimer:
+                  </p>
+                  <p className="text-[11px] text-amber-950">
+                    Store staff and store owners reserve all rights to reject or cancel an order if the 12-digit UTR does not match bank records or payment is not confirmed.
+                  </p>
+                </div>
+              </div>
+
             </div>
 
             {/* Step 5: Customer Delivery & Shipping Address */}
@@ -1054,7 +1374,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               <div className="flex items-center justify-between">
                 <h3 className="font-serif text-sm font-bold text-neutral-900 flex items-center gap-1.5">
                   <span className="p-1 rounded-lg bg-neutral-900 text-white font-bold text-xs">
-                    STEP 4
+                    STEP 5
                   </span>
                   <span>Delivery & Dispatch Address</span>
                 </h3>
@@ -1222,12 +1542,24 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                 </div>
               )}
 
-              {/* Mandatory Screenshot Missing Notice */}
-              {!screenshotResult && (
+              {/* 12-Digit Reference Status Notice */}
+              {enteredUtr.replace(/\D/g, '').length !== 12 ? (
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2">
                   <Info className="w-4 h-4 text-amber-700 shrink-0" />
                   <span>
-                    Upload your payment screenshot in <strong>Step 3</strong> above to enable order confirmation.
+                    Please enter your <strong>12-digit reference number / UTR</strong> in <strong>Step 4</strong> above to enable order confirmation (no screenshot upload required).
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      12-Digit UTR (<strong>{enteredUtr.replace(/\D/g, '')}</strong>) entered. Ready to place order!
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                    Instant Place
                   </span>
                 </div>
               )}
@@ -1236,9 +1568,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={!screenshotResult || isSubmitting || isCompressing}
+                  disabled={enteredUtr.replace(/\D/g, '').length !== 12 || isSubmitting || isCompressing}
                   className={`w-full py-4 px-6 rounded-2xl font-bold text-sm sm:text-base transition-all shadow-md flex items-center justify-center gap-2 ${
-                    !screenshotResult || isSubmitting || isCompressing
+                    enteredUtr.replace(/\D/g, '').length !== 12 || isSubmitting || isCompressing
                       ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed shadow-none'
                       : 'bg-gradient-to-r from-rose-900 via-rose-950 to-neutral-950 hover:from-rose-800 hover:to-neutral-900 text-white shadow-lg hover:shadow-xl cursor-pointer active:scale-98'
                   }`}
@@ -1252,7 +1584,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
                     <>
                       <FileCheck2 className="w-5 h-5 text-amber-300" />
                       <span>
-                        Confirm Order & Submit for Verification ({formatPrice(cartGrandTotal)})
+                        Place Order ({formatPrice(cartGrandTotal)})
                       </span>
                       <ArrowRight className="w-5 h-5 text-amber-300" />
                     </>
@@ -1264,7 +1596,56 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ onClose, onSuccess
         </div>
       </div>
 
-      {/* Screenshot Zoom Inspection Modal */}
+      {/* App Guide Screenshot Zoom Lightbox Modal */}
+      {previewGuideModal && (
+        <div
+          onClick={() => setPreviewGuideModal(null)}
+          className="fixed inset-0 z-60 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 cursor-zoom-out animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-lg w-full bg-white rounded-3xl p-4 sm:p-5 shadow-2xl overflow-hidden flex flex-col items-center max-h-[92vh]"
+          >
+            <div className="w-full flex items-center justify-between pb-3 border-b border-neutral-200">
+              <div className="flex items-center gap-2">
+                <span className="font-serif font-bold text-neutral-900 text-base sm:text-lg">
+                  {previewGuideModal.app} Payment Receipt Guide
+                </span>
+                <span className="text-[10px] font-bold uppercase bg-red-100 text-red-700 px-2 py-0.5 rounded-full border border-red-200">
+                  Red Box Highlighted
+                </span>
+              </div>
+              <button
+                onClick={() => setPreviewGuideModal(null)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-500 hover:text-neutral-900 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full my-3 p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-xs text-neutral-700 leading-snug">
+              <p className="font-semibold text-neutral-900">{previewGuideModal.instruction}</p>
+              <p className="text-[11px] text-neutral-600 mt-1.5">
+                Check the red rectangle highlighted on the receipt image below to locate your genuine 12-digit number, then enter it into the checkout box.
+              </p>
+            </div>
+
+            <div className="overflow-y-auto max-h-[62vh] w-full flex items-center justify-center bg-neutral-900 rounded-2xl p-2 border border-neutral-300">
+              <img
+                src={previewGuideModal.image}
+                alt={`${previewGuideModal.app} Reference Receipt`}
+                className="max-h-[58vh] w-auto object-contain rounded-xl"
+              />
+            </div>
+
+            <p className="text-[11px] text-neutral-500 mt-2 text-center">
+              Copy the 12-digit number marked in the red rectangle into the input field.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* User Screenshot Zoom Inspection Modal */}
       {previewZoomModal && (
         <div
           onClick={() => setPreviewZoomModal(null)}
