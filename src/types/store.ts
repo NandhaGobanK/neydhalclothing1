@@ -642,4 +642,27 @@ export interface StoreSettings {
   enableOrderDeletion?: boolean; // Dedicated Admin toggle: When enabled, authorized staff and admins can delete order records. When disabled, order deletion is completely blocked/hidden.
   isFreshBrandNew?: boolean; // True when reset to clean fresh state
   lastResetAt?: string; // Timestamp of latest fresh reset
+  heroBanners?: HeroBannerItem[]; // Homepage carousel banners
+  videoReels?: VideoReelItem[]; // Experience Neydhal clothing shorts & reels
 }
+
+export interface HeroBannerItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+  badge?: string;
+  buttonText?: string;
+  linkCategory?: string;
+}
+
+export interface VideoReelItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  videoUrl: string;
+  thumbnailUrl: string;
+  duration?: string;
+  author?: string;
+}
+

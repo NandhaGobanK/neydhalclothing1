@@ -737,12 +737,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [wishlist, setWishlist] = useState<string[]>(() =>
     loadFromStorage('aara_boutique_wishlist_v3', [])
   );
-  const [customerActiveTab, setCustomerActiveTabState] = useState<CustomerActiveTab>('categories');
-  const [previousCustomerTab, setPreviousCustomerTab] = useState<CustomerActiveTab>('categories');
+  const [customerActiveTab, setCustomerActiveTabState] = useState<CustomerActiveTab>('home');
+  const [previousCustomerTab, setPreviousCustomerTab] = useState<CustomerActiveTab>('home');
 
   const setCustomerActiveTab = useCallback((tab: CustomerActiveTab) => {
     setCustomerActiveTabState((prev) => {
-      if (prev !== tab && prev !== 'account') {
+      if (prev !== tab && prev !== 'account' && prev !== 'cart' && prev !== 'checkout') {
         setPreviousCustomerTab(prev);
       }
       return tab;
@@ -751,7 +751,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const closeCustomerAccount = useCallback(() => {
     setCustomerActiveTabState((curr) => {
-      return previousCustomerTab && previousCustomerTab !== 'account' ? previousCustomerTab : 'categories';
+      return previousCustomerTab && previousCustomerTab !== 'account' ? previousCustomerTab : 'home';
     });
   }, [previousCustomerTab]);
   const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState<string | null>(null);

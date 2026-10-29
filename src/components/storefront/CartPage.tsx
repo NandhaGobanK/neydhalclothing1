@@ -15,14 +15,17 @@ import {
   Sparkles,
   AlertCircle,
   Check,
+  X,
 } from 'lucide-react';
 
 interface CartPageProps {
+  onClose?: () => void;
   onContinueShopping?: () => void;
   onOpenProductDetails?: (product: Product) => void;
 }
 
 export const CartPage: React.FC<CartPageProps> = ({
+  onClose,
   onContinueShopping,
   onOpenProductDetails,
 }) => {
@@ -129,27 +132,30 @@ export const CartPage: React.FC<CartPageProps> = ({
     }
   }, [cartStockWarning, clearCartStockWarning]);
 
-  const handleBack = () => {
-    if (onContinueShopping) {
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    } else if (onContinueShopping) {
       onContinueShopping();
     } else {
-      setCustomerActiveTab('categories');
+      setCustomerActiveTab('home');
     }
   };
 
   return (
-    <div className="min-h-screen pb-28 bg-neutral-50/60">
+    <div className="min-h-screen pb-28 bg-white">
       {/* Top Header Bar */}
       <div className="sticky top-18 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200 px-4 py-4 shadow-2xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={handleBack}
-              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-neutral-700 hover:text-neutral-950 px-2.5 py-1.5 rounded-xl hover:bg-neutral-100 transition cursor-pointer"
+              onClick={handleClose}
+              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-neutral-700 hover:text-neutral-950 px-3 py-1.5 rounded-xl hover:bg-neutral-100 transition cursor-pointer border border-neutral-200 bg-white shadow-2xs"
+              title="Close bag"
             >
-              <ArrowLeft className="w-4 h-4 text-rose-900" />
-              <span>Continue Shopping</span>
+              <X className="w-4 h-4 text-neutral-700" />
+              <span>Close</span>
             </button>
             <div className="h-4 w-px bg-neutral-200 hidden sm:block" />
             <h1 className="font-serif font-bold text-base sm:text-lg text-neutral-900 hidden sm:block">
@@ -221,11 +227,11 @@ export const CartPage: React.FC<CartPageProps> = ({
             </div>
             <button
               type="button"
-              onClick={handleBack}
+              onClick={handleClose}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition cursor-pointer shadow-sm"
             >
-              <span>Explore Collections</span>
-              <ArrowRight className="w-4 h-4" />
+              <X className="w-4 h-4" />
+              <span>Close Bag</span>
             </button>
           </div>
         ) : (

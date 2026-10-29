@@ -82,14 +82,6 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onExploreCatalog }) => {
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Storefront Order Cancellation Policy Notice (Mandatory Requirement) */}
-            <div className="mt-4 pt-3 border-t border-white/10 flex items-center gap-2 text-[11px] sm:text-xs text-amber-200 font-medium">
-              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                <strong>Order Policy:</strong> No cancellation once the order is shipped
-              </span>
-            </div>
           </div>
 
           {/* Delivery & Assurance Strip below hero if enabled */}

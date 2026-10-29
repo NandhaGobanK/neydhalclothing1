@@ -9,6 +9,8 @@ import {
   CourierService,
   CustomerLoginBenefitCard,
   ResellerLoginPerk,
+  HeroBannerItem,
+  VideoReelItem,
 } from '../../types/store';
 import { ACTIVE_THEME_KEYS, THEME_TEMPLATES } from '../../utils/theme';
 import {
@@ -16,6 +18,8 @@ import {
   DEFAULT_STAFF_PERMISSIONS,
   DEFAULT_CUSTOMER_LOGIN_DISPLAY,
   DEFAULT_RESELLER_LOGIN_DISPLAY,
+  DEFAULT_HERO_BANNERS,
+  DEFAULT_VIDEO_REELS,
 } from '../../data/initialData';
 import { applyTemplateTokens } from '../../utils/upi';
 import { compressImageFile } from '../../utils/imageCompression';
@@ -62,6 +66,7 @@ import {
   ShieldCheck,
   UserCheck,
   Layers,
+  Play,
 } from 'lucide-react';
 
 export const SettingsManager: React.FC = () => {
@@ -290,6 +295,14 @@ export const SettingsManager: React.FC = () => {
   );
   const [resellerLoginSaveSuccess, setResellerLoginSaveSuccess] = useState(false);
 
+  // Homepage Carousel Banners & Video Reels State
+  const [adminHeroBanners, setAdminHeroBanners] = useState<HeroBannerItem[]>(() =>
+    settings.heroBanners && settings.heroBanners.length > 0 ? settings.heroBanners : DEFAULT_HERO_BANNERS
+  );
+  const [adminVideoReels, setAdminVideoReels] = useState<VideoReelItem[]>(() =>
+    settings.videoReels && settings.videoReels.length > 0 ? settings.videoReels : DEFAULT_VIDEO_REELS
+  );
+
   // Quick section navigation filter tab
   const [activeSettingsSection, setActiveSettingsSection] = useState<
     'all' | 'branding' | 'login_pages' | 'storefront' | 'chat' | 'payment_delivery' | 'profile'
@@ -298,6 +311,12 @@ export const SettingsManager: React.FC = () => {
   // Synchronize local form state when settings update from Firestore
   useEffect(() => {
     if (settings) {
+      if (settings.heroBanners && settings.heroBanners.length > 0) {
+        setAdminHeroBanners(settings.heroBanners);
+      }
+      if (settings.videoReels && settings.videoReels.length > 0) {
+        setAdminVideoReels(settings.videoReels);
+      }
       if (settings.logoUrl !== undefined) setLogoUrl(settings.logoUrl || '');
       if (settings.boutiqueName) setBoutiqueName(settings.boutiqueName);
       if (settings.tagline !== undefined) setTagline(settings.tagline);
@@ -684,6 +703,8 @@ export const SettingsManager: React.FC = () => {
         perks: resellerPerks,
         adminNote: resellerAdminNote.trim(),
       },
+      heroBanners: adminHeroBanners,
+      videoReels: adminVideoReels,
       ...(isAdmin ? { adminPin: adminPin.trim() || '889988' } : {}),
     });
 
@@ -1470,6 +1491,277 @@ export const SettingsManager: React.FC = () => {
                       className="w-full p-2.5 rounded-xl border border-neutral-300 text-neutral-900 text-xs"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* 1st Tier: Neydhal Clothing Carousel Banners (Admin Manageable) */}
+              <div className="pt-5 border-t border-neutral-200 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-amber-600" />
+                    <span className="font-bold text-neutral-800 text-xs">
+                      Homepage Automatic Carousel Banners ({adminHeroBanners.length})
+                    </span>
+                  </div>
+                  {canEditStorefront && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newBanner: HeroBannerItem = {
+                          id: `banner-${Date.now()}`,
+                          title: 'New Saree Launch',
+                          subtitle: 'Exclusive handloom weave fresh off the pit loom',
+                          imageUrl: '/assets/images/hero_saree_atelier_1791651761357.jpg',
+                          badge: 'Atelier Launch',
+                          buttonText: 'Explore Collection',
+                          linkCategory: 'Kanjivaram Silk',
+                        };
+                        setAdminHeroBanners((prev) => [...prev, newBanner]);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Banner</span>
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-neutral-500">
+                  Manage the promotional banners that automatically slide on the customer home page.
+                </p>
+
+                <div className="space-y-3">
+                  {adminHeroBanners.map((banner, idx) => (
+                    <div
+                      key={banner.id}
+                      className="p-3.5 rounded-xl border border-neutral-200 bg-neutral-50/70 space-y-2.5 text-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-neutral-800">Banner #{idx + 1}</span>
+                        {canEditStorefront && adminHeroBanners.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAdminHeroBanners((prev) => prev.filter((b) => b.id !== banner.id))
+                            }
+                            className="text-rose-600 hover:text-rose-800 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remove</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Banner Title</label>
+                          <input
+                            type="text"
+                            disabled={!canEditStorefront}
+                            value={banner.title}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAdminHeroBanners((prev) =>
+                                prev.map((b) => (b.id === banner.id ? { ...b, title: val } : b))
+                              );
+                            }}
+                            className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Banner Subtitle</label>
+                          <input
+                            type="text"
+                            disabled={!canEditStorefront}
+                            value={banner.subtitle}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAdminHeroBanners((prev) =>
+                                prev.map((b) => (b.id === banner.id ? { ...b, subtitle: val } : b))
+                              );
+                            }}
+                            className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Image URL</label>
+                          <input
+                            type="text"
+                            disabled={!canEditStorefront}
+                            value={banner.imageUrl}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAdminHeroBanners((prev) =>
+                                prev.map((b) => (b.id === banner.id ? { ...b, imageUrl: val } : b))
+                              );
+                            }}
+                            placeholder="/assets/images/..."
+                            className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Badge Text</label>
+                          <input
+                            type="text"
+                            disabled={!canEditStorefront}
+                            value={banner.badge || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAdminHeroBanners((prev) =>
+                                prev.map((b) => (b.id === banner.id ? { ...b, badge: val } : b))
+                              );
+                            }}
+                            placeholder="e.g. Salem Atelier Special"
+                            className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3rd Tier: Experience Neydhal Shorts & Reels (Admin Manageable Video Links) */}
+              <div className="pt-5 border-t border-neutral-200 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Play className="w-4 h-4 text-rose-600" />
+                    <span className="font-bold text-neutral-800 text-xs">
+                      Experience Neydhal Shorts & Reels Video Links ({adminVideoReels.length})
+                    </span>
+                  </div>
+                  {canEditStorefront && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newReel: VideoReelItem = {
+                          id: `reel-${Date.now()}`,
+                          title: 'Salem Atelier Loom Craft',
+                          subtitle: 'Hand-interlocking pure silk threads and gold zari border',
+                          videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-woman-weaving-on-a-loom-42868-large.mp4',
+                          thumbnailUrl: '/assets/images/hero_saree_atelier_1791651761357.jpg',
+                          duration: '0:45',
+                          author: 'Neydhal Atelier',
+                        };
+                        setAdminVideoReels((prev) => [...prev, newReel]);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-rose-900 hover:bg-rose-800 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Video Reel</span>
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-neutral-500">
+                  Update the video links, reel titles, and cover thumbnails displayed in the customer "Experience Neydhal clothing: shorts and reels" carousel.
+                </p>
+
+                <div className="space-y-3">
+                  {adminVideoReels.map((reel, idx) => (
+                    <div
+                      key={reel.id}
+                      className="p-3.5 rounded-xl border border-neutral-200 bg-neutral-50/70 space-y-2.5 text-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-neutral-800">Reel #{idx + 1}: {reel.title}</span>
+                        {canEditStorefront && adminVideoReels.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAdminVideoReels((prev) => prev.filter((r) => r.id !== reel.id))
+                            }
+                            className="text-rose-600 hover:text-rose-800 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remove</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Reel Title</label>
+                          <input
+                            type="text"
+                            disabled={!canEditStorefront}
+                            value={reel.title}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAdminVideoReels((prev) =>
+                                prev.map((r) => (r.id === reel.id ? { ...r, title: val } : r))
+                              );
+                            }}
+                            className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Video File URL (MP4 / WebM / Stream)</label>
+                          <input
+                            type="text"
+                            disabled={!canEditStorefront}
+                            value={reel.videoUrl}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAdminVideoReels((prev) =>
+                                prev.map((r) => (r.id === reel.id ? { ...r, videoUrl: val } : r))
+                              );
+                            }}
+                            placeholder="https://..."
+                            className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Thumbnail Poster URL</label>
+                          <input
+                            type="text"
+                            disabled={!canEditStorefront}
+                            value={reel.thumbnailUrl}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAdminVideoReels((prev) =>
+                                prev.map((r) => (r.id === reel.id ? { ...r, thumbnailUrl: val } : r))
+                              );
+                            }}
+                            placeholder="/assets/images/..."
+                            className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900 font-mono"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Duration</label>
+                            <input
+                              type="text"
+                              disabled={!canEditStorefront}
+                              value={reel.duration || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setAdminVideoReels((prev) =>
+                                  prev.map((r) => (r.id === reel.id ? { ...r, duration: val } : r))
+                                );
+                              }}
+                              placeholder="e.g. 0:45"
+                              className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-neutral-600 mb-0.5">Author Tag</label>
+                            <input
+                              type="text"
+                              disabled={!canEditStorefront}
+                              value={reel.author || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setAdminVideoReels((prev) =>
+                                  prev.map((r) => (r.id === reel.id ? { ...r, author: val } : r))
+                                );
+                              }}
+                              placeholder="e.g. Neydhal Atelier"
+                              className="w-full p-2 rounded-lg border border-neutral-300 bg-white text-xs text-neutral-900"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

@@ -40,6 +40,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
     settings,
     customerLoginWithGoogle,
     setIsResellerPortalOpen,
+    setCustomerActiveTab,
   } = useStore();
 
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
@@ -137,6 +138,7 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
           setErrorMsg(res.error || 'Google authentication was not completed. Please try again.');
         }
       } else {
+        setCustomerActiveTab('home');
         onSuccess?.();
       }
     } catch (err: any) {
@@ -261,10 +263,6 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
       <main className="relative z-10 max-w-5xl mx-auto w-full px-4 py-8 sm:py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center flex-1">
         {/* Left Column: Boutique Presentation & Privacy Assurance */}
         <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>{settings.customerLoginDisplay?.badgeText || 'Patron Verification Required'}</span>
-          </div>
 
           <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight">
             {settings.boutiqueName || 'Neydhal Handloom Atelier'}

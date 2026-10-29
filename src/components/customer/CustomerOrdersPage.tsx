@@ -125,13 +125,35 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
   } = useStore();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [stageFilter, setStageFilter] = useState<'all' | OrderStatus>('all');
+  const [stageFilter, setStageFilter] = useState<'all' | 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Cancelled' | 'Refunded'>('all');
 
-  const pendingCount = useMemo(() => {
-    return customerOrders.filter((o) => {
+  const stageCounts = useMemo(() => {
+    const counts = {
+      all: customerOrders.length,
+      pending: 0,
+      confirmed: 0,
+      shipped: 0,
+      delivered: 0,
+      cancelled: 0,
+      refunded: 0,
+    };
+    customerOrders.forEach((o) => {
       const s = (o.status || '').toLowerCase().trim();
-      return s === 'pending' || s === 'pending_verification' || s === 'pending_payment';
-    }).length;
+      if (s === 'pending' || s === 'pending_verification' || s === 'pending_payment') {
+        counts.pending += 1;
+      } else if (s === 'confirmed') {
+        counts.confirmed += 1;
+      } else if (s === 'shipped') {
+        counts.shipped += 1;
+      } else if (s === 'delivered') {
+        counts.delivered += 1;
+      } else if (s === 'cancelled') {
+        counts.cancelled += 1;
+      } else if (s === 'refunded' || (o as any).refundStatus === 'refunded') {
+        counts.refunded += 1;
+      }
+    });
+    return counts;
   }, [customerOrders]);
 
   const filteredOrders = useMemo(() => {
@@ -147,6 +169,10 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
             orderStatusLower !== 'pending_verification' &&
             orderStatusLower !== 'pending_payment'
           ) {
+            return false;
+          }
+        } else if (stageFilterLower === 'refunded') {
+          if (orderStatusLower !== 'refunded' && (order as any).refundStatus !== 'refunded') {
             return false;
           }
         } else if (orderStatusLower !== stageFilterLower) {
@@ -191,7 +217,7 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen pb-28 bg-neutral-50/60">
+    <div className="min-h-screen pb-28 bg-white">
       {/* Top Header */}
       <div className="sticky top-18 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200 px-4 py-4 shadow-2xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
@@ -249,103 +275,207 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
           </div>
         )}
 
-        {/* Filter Bar & Search */}
-        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-neutral-200 shadow-2xs space-y-3">
-          <div className="relative">
-            <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by Order #, UTR, Saree name, or SKU..."
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition"
-            />
-          </div>
+        {/* Filter Bar & Search: Boxed, color-coded stage boxes with right-corner search bar below */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-neutral-200 shadow-2xs space-y-4">
+          {/* Boxed and Color-Coded Stage Filters (2 columns per row for mobile & tablet, flex wrap for desktop - NO scrollbar) */}
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                Filter by Order Status
+              </span>
+              {stageFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setStageFilter('all')}
+                  className="text-[11px] font-semibold text-rose-700 hover:underline cursor-pointer"
+                >
+                  Clear Status Filter
+                </button>
+              )}
+            </div>
 
-          {/* Color-Coded Stage Filters */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setStageFilter('all')}
-              className={`px-3 py-1 rounded-full whitespace-nowrap transition cursor-pointer font-semibold ${
-                stageFilter === 'all'
-                  ? 'bg-neutral-900 text-white'
-                  : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-              }`}
-            >
-              All Orders ({customerOrders.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStageFilter('Pending')}
-              className={`px-3 py-1 rounded-full whitespace-nowrap transition cursor-pointer font-semibold flex items-center gap-1.5 ${
-                stageFilter === 'Pending'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span>Pending</span>
-              {pendingCount > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:flex lg:flex-wrap gap-2 text-xs">
+              {/* All Orders Box */}
+              <button
+                type="button"
+                onClick={() => setStageFilter('all')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-between lg:justify-start gap-2 w-full lg:w-auto ${
+                  stageFilter === 'all'
+                    ? 'bg-neutral-900 border-neutral-900 text-white shadow-sm'
+                    : 'bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-50'
+                }`}
+              >
+                <span>All Orders</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    stageFilter === 'Pending'
-                      ? 'bg-amber-800 text-amber-100'
-                      : 'bg-amber-200 text-amber-900'
+                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold ${
+                    stageFilter === 'all' ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-neutral-600'
                   }`}
                 >
-                  {pendingCount}
+                  {stageCounts.all}
                 </span>
+              </button>
+
+              {/* Pending Box */}
+              <button
+                type="button"
+                onClick={() => setStageFilter('Pending')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-between lg:justify-start gap-2 w-full lg:w-auto ${
+                  stageFilter === 'Pending'
+                    ? 'bg-amber-500 border-amber-600 text-white shadow-sm'
+                    : 'bg-amber-50/80 border-amber-300 text-amber-900 hover:bg-amber-100/80'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${stageFilter === 'Pending' ? 'bg-white' : 'bg-amber-500'}`} />
+                  <span className="truncate">Pending</span>
+                </span>
+                <span
+                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${
+                    stageFilter === 'Pending' ? 'bg-amber-700 text-amber-100' : 'bg-amber-200/80 text-amber-900'
+                  }`}
+                >
+                  {stageCounts.pending}
+                </span>
+              </button>
+
+              {/* Confirmed Box */}
+              <button
+                type="button"
+                onClick={() => setStageFilter('Confirmed')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-between lg:justify-start gap-2 w-full lg:w-auto ${
+                  stageFilter === 'Confirmed'
+                    ? 'bg-blue-600 border-blue-700 text-white shadow-sm'
+                    : 'bg-blue-50/80 border-blue-300 text-blue-900 hover:bg-blue-100/80'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${stageFilter === 'Confirmed' ? 'bg-white' : 'bg-blue-500'}`} />
+                  <span className="truncate">Confirmed</span>
+                </span>
+                <span
+                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${
+                    stageFilter === 'Confirmed' ? 'bg-blue-800 text-blue-100' : 'bg-blue-200/80 text-blue-900'
+                  }`}
+                >
+                  {stageCounts.confirmed}
+                </span>
+              </button>
+
+              {/* Shipped Box */}
+              <button
+                type="button"
+                onClick={() => setStageFilter('Shipped')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-between lg:justify-start gap-2 w-full lg:w-auto ${
+                  stageFilter === 'Shipped'
+                    ? 'bg-purple-600 border-purple-700 text-white shadow-sm'
+                    : 'bg-purple-50/80 border-purple-300 text-purple-900 hover:bg-purple-100/80'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${stageFilter === 'Shipped' ? 'bg-white' : 'bg-purple-500'}`} />
+                  <span className="truncate">Shipped</span>
+                </span>
+                <span
+                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${
+                    stageFilter === 'Shipped' ? 'bg-purple-800 text-purple-100' : 'bg-purple-200/80 text-purple-900'
+                  }`}
+                >
+                  {stageCounts.shipped}
+                </span>
+              </button>
+
+              {/* Delivered Box */}
+              <button
+                type="button"
+                onClick={() => setStageFilter('Delivered')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-between lg:justify-start gap-2 w-full lg:w-auto ${
+                  stageFilter === 'Delivered'
+                    ? 'bg-emerald-600 border-emerald-700 text-white shadow-sm'
+                    : 'bg-emerald-50/80 border-emerald-300 text-emerald-900 hover:bg-emerald-100/80'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${stageFilter === 'Delivered' ? 'bg-white' : 'bg-emerald-500'}`} />
+                  <span className="truncate">Delivered</span>
+                </span>
+                <span
+                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${
+                    stageFilter === 'Delivered' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-200/80 text-emerald-900'
+                  }`}
+                >
+                  {stageCounts.delivered}
+                </span>
+              </button>
+
+              {/* Cancelled Box */}
+              <button
+                type="button"
+                onClick={() => setStageFilter('Cancelled')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-between lg:justify-start gap-2 w-full lg:w-auto ${
+                  stageFilter === 'Cancelled'
+                    ? 'bg-rose-600 border-rose-700 text-white shadow-sm'
+                    : 'bg-rose-50/80 border-rose-300 text-rose-900 hover:bg-rose-100/80'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${stageFilter === 'Cancelled' ? 'bg-white' : 'bg-rose-500'}`} />
+                  <span className="truncate">Cancelled</span>
+                </span>
+                <span
+                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${
+                    stageFilter === 'Cancelled' ? 'bg-rose-800 text-rose-100' : 'bg-rose-200/80 text-rose-900'
+                  }`}
+                >
+                  {stageCounts.cancelled}
+                </span>
+              </button>
+
+              {/* Refunded Box */}
+              <button
+                type="button"
+                onClick={() => setStageFilter('Refunded')}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-between lg:justify-start gap-2 w-full lg:w-auto ${
+                  stageFilter === 'Refunded'
+                    ? 'bg-cyan-600 border-cyan-700 text-white shadow-sm'
+                    : 'bg-cyan-50/80 border-cyan-300 text-cyan-900 hover:bg-cyan-100/80'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${stageFilter === 'Refunded' ? 'bg-white' : 'bg-cyan-500'}`} />
+                  <span className="truncate">Refunded</span>
+                </span>
+                <span
+                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${
+                    stageFilter === 'Refunded' ? 'bg-cyan-800 text-cyan-100' : 'bg-cyan-200/80 text-cyan-900'
+                  }`}
+                >
+                  {stageCounts.refunded}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Search bar positioned below boxes on the right side corner in small length */}
+          <div className="flex items-center justify-end pt-1">
+            <div className="relative w-full sm:w-72">
+              <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by Order #, UTR, or Saree..."
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition bg-neutral-50/50 focus:bg-white"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 text-xs font-bold"
+                >
+                  ×
+                </button>
               )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setStageFilter('Confirmed')}
-              className={`px-3 py-1 rounded-full whitespace-nowrap transition cursor-pointer font-semibold flex items-center gap-1.5 ${
-                stageFilter === 'Confirmed'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-              <span>Confirmed</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStageFilter('Shipped')}
-              className={`px-3 py-1 rounded-full whitespace-nowrap transition cursor-pointer font-semibold flex items-center gap-1.5 ${
-                stageFilter === 'Shipped'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-purple-500" />
-              <span>Shipped</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStageFilter('Delivered')}
-              className={`px-3 py-1 rounded-full whitespace-nowrap transition cursor-pointer font-semibold flex items-center gap-1.5 ${
-                stageFilter === 'Delivered'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>Delivered</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStageFilter('Cancelled')}
-              className={`px-3 py-1 rounded-full whitespace-nowrap transition cursor-pointer font-semibold flex items-center gap-1.5 ${
-                stageFilter === 'Cancelled'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>Cancelled</span>
-            </button>
+            </div>
           </div>
         </div>
 

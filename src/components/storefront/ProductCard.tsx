@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Product } from '../../types/store';
 import { formatPrice, calculateDiscount } from '../../utils/upi';
-import { Play, ShoppingBag, Eye, Star, Plus, Minus, Check, Heart, Sparkles, Download, Clock } from 'lucide-react';
+import { Play, ShoppingBag, Eye, Star, Plus, Minus, Check, Heart, Sparkles, Clock } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { downloadSingleImage } from '../../utils/imageDownload';
 import { isProductRestocked, getRestockRemainingTime } from '../../utils/productValidation';
 
 interface ProductCardProps {
@@ -44,8 +43,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           : 'bg-white border border-neutral-200/80 text-neutral-900'
       }`}
     >
-      {/* Product Image Area */}
-      <div className="relative aspect-4/5 max-h-52 sm:max-h-60 md:max-h-68 bg-neutral-100 overflow-hidden">
+      {/* Product Image Area: Calibrated to exact 356 × 498 pixels aspect ratio */}
+      <div className="relative aspect-[356/498] bg-neutral-100 overflow-hidden">
         <img
           src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
           alt={product.title}
@@ -53,8 +52,31 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500 ease-out"
         />
 
-        {/* Top Badges (Discount Offer % Tag, Restocked Badge & Video Reel) */}
+        {/* Top Badges (Offer Tag, Stock Tag directly below Offer, Restocked Badge & Video Reel) */}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start z-10">
+          {discount.hasDiscount && (
+            <div className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-bold shadow-md tracking-wider">
+              {discount.discountPercentage}% OFF
+            </div>
+          )}
+
+          {/* Stock tag placed directly below the Offer tag */}
+          {!isOutOfStock ? (
+            product.stockCount !== undefined && product.stockCount <= 3 ? (
+              <div className="px-2 py-0.5 rounded-full bg-rose-900/90 text-rose-200 text-[10px] font-bold border border-rose-700/60 shadow-xs backdrop-blur-xs">
+                Only {product.stockCount} Left
+              </div>
+            ) : (
+              <div className="px-2 py-0.5 rounded-full bg-emerald-950/85 text-emerald-300 text-[10px] font-bold border border-emerald-700/50 backdrop-blur-xs">
+                {product.stockCount ? `${product.stockCount} in stock` : 'In Stock'}
+              </div>
+            )
+          ) : (
+            <div className="px-2 py-0.5 rounded-md bg-rose-600 text-white font-bold text-[10px] shadow-sm">
+              Out of Stock
+            </div>
+          )}
+
           {hasRestockTag && !isOutOfStock && (
             <div 
               title={restockTimeLeft ? `Restocked! Tag expires in ${restockTimeLeft}` : 'Recently Restocked'}
@@ -62,11 +84,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
             >
               <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
               <span>Restocked</span>
-            </div>
-          )}
-          {discount.hasDiscount && (
-            <div className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-bold shadow-md tracking-wider">
-              {discount.discountPercentage}% OFF
             </div>
           )}
           {hasVideo && (
@@ -77,8 +94,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
           )}
         </div>
 
-        {/* Top-Right Action Controls (Wishlist Heart & Quick Image Download) */}
-        <div className="absolute top-3 right-3 z-25 flex flex-col gap-1.5 items-end">
+        {/* Top-Right Action Controls (Wishlist Heart only - Download is exclusive to Product Detail page) */}
+        <div className="absolute top-3 right-3 z-15 flex flex-col gap-1.5 items-end">
           <button
             type="button"
             onClick={(e) => {
@@ -98,23 +115,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
               fill={inWishlist ? 'currentColor' : 'none'}
             />
           </button>
-
-          {/* Quick Image Download Button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              const img = product.images[0];
-              if (img) {
-                downloadSingleImage(img, `${product.title}_${product.productCode || 'sku'}.jpg`);
-              }
-            }}
-            className="w-8 h-8 rounded-full bg-white/85 hover:bg-white text-neutral-700 hover:text-emerald-700 shadow-md backdrop-blur-md flex items-center justify-center transition-all duration-200 hover:scale-105 cursor-pointer opacity-90 hover:opacity-100"
-            title="Download product photo"
-            aria-label="Download product photo"
-          >
-            <Download className="w-3.5 h-3.5" />
-          </button>
         </div>
 
         {/* Prominent Out-of-Stock Center Overlay */}
@@ -128,19 +128,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenDetails
               Sold out · Restock in progress
             </p>
           </div>
-        )}
-
-        {/* Stock availability badge */}
-        {!isOutOfStock && (
-          product.stockCount !== undefined && product.stockCount <= 3 ? (
-            <div className="absolute top-12.5 right-3 px-2.5 py-0.5 rounded-full bg-rose-900/90 text-rose-200 text-[10px] font-medium border border-rose-700/60 shadow-xs z-10">
-              Only {product.stockCount} Left
-            </div>
-          ) : (
-            <div className="absolute top-12.5 right-3 px-2.5 py-0.5 rounded-full bg-emerald-950/85 text-emerald-300 text-[10px] font-medium border border-emerald-700/50 backdrop-blur-xs z-10">
-              {product.stockCount ? `${product.stockCount} Avail` : 'In Stock'}
-            </div>
-          )
         )}
 
         {/* SKU Identifier Badge */}

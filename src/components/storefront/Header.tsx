@@ -7,17 +7,21 @@ import { isProductRestocked } from '../../utils/productValidation';
 interface HeaderProps {
   onOpenAdmin: () => void;
   onOpenInstructions?: () => void;
+  onOpenNotifications?: () => void;
   onSelectCategory?: (category: string) => void;
   onSelectWishlist?: () => void;
   selectedCategory?: string;
+  hideCategoryNav?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenAdmin,
   onOpenInstructions,
+  onOpenNotifications,
   onSelectCategory,
   onSelectWishlist,
   selectedCategory = 'all',
+  hideCategoryNav = false,
 }) => {
   const {
     settings,
@@ -25,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
     publicProducts,
     categories: boutiqueCategories,
     currentCustomer,
+    customerNotifications,
     setIsCustomerAuthModalOpen,
     setCustomerActiveTab,
   } = useStore();
@@ -128,6 +133,24 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden md:inline">Instructions</span>
           </button>
 
+          {/* Bell symbol notification option placed beside instructions */}
+          <button
+            onClick={onOpenNotifications}
+            className="relative p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-neutral-800/80 hover:bg-neutral-700 text-amber-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+            title="Notifications & Restock Updates"
+            aria-label="Store Notifications"
+          >
+            <Bell className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden md:inline">Notifications</span>
+            {customerNotifications && customerNotifications.filter((n) => !n.read && !n.isRead).length > 0 && (
+              <span className="absolute -top-1 -right-1 sm:static flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-black leading-none shadow-2xs">
+                {customerNotifications.filter((n) => !n.read && !n.isRead).length > 9
+                  ? '9+'
+                  : customerNotifications.filter((n) => !n.read && !n.isRead).length}
+              </span>
+            )}
+          </button>
+
           {/* My Account Pill Button (Matches screenshot image_3af3307a.png) */}
           <button
             onClick={() => {
@@ -164,40 +187,42 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Row 2: Dedicated Saree Categories Navigation Strip (Separated from utility icons!) */}
-      <nav aria-label="Saree Collections & Categories" className="border-t border-white/10 bg-[#2d053f] sm:bg-[#280437] shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 text-xs">
-            {categories.map((cat) => {
-              const isSelected = selectedCategory === cat.id;
-              const restocked = isCatRestocked(cat.id);
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => onSelectCategory?.(cat.id)}
-                  className={`px-3 py-1 rounded-full whitespace-nowrap transition shrink-0 flex items-center gap-1.5 cursor-pointer font-medium text-xs ${
-                    isSelected
-                      ? 'bg-amber-400 text-neutral-950 font-bold shadow-xs'
-                      : 'text-neutral-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <span>{cat.label}</span>
-                  {restocked && (
-                    <span
-                      className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-0.5 ${
-                        isSelected ? 'bg-neutral-950 text-amber-300' : 'bg-emerald-600 text-white'
-                      }`}
-                    >
-                      <Sparkles className="w-2.5 h-2.5 text-amber-300" />
-                      <span>Restocked</span>
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+      {/* Row 2: Dedicated Saree Categories Navigation Strip (Hidden on Home page as requested) */}
+      {!hideCategoryNav && (
+        <nav aria-label="Saree Collections & Categories" className="border-t border-white/10 bg-[#2d053f] sm:bg-[#280437] shadow-xs">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 text-xs">
+              {categories.map((cat) => {
+                const isSelected = selectedCategory === cat.id;
+                const restocked = isCatRestocked(cat.id);
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => onSelectCategory?.(cat.id)}
+                    className={`px-3 py-1 rounded-full whitespace-nowrap transition shrink-0 flex items-center gap-1.5 cursor-pointer font-medium text-xs ${
+                      isSelected
+                        ? 'bg-amber-400 text-neutral-950 font-bold shadow-xs'
+                        : 'text-neutral-300 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    {restocked && (
+                      <span
+                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-0.5 ${
+                          isSelected ? 'bg-neutral-950 text-amber-300' : 'bg-emerald-600 text-white'
+                        }`}
+                      >
+                        <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                        <span>Restocked</span>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
+      )}
     </header>
   );
 };

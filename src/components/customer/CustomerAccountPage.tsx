@@ -19,14 +19,11 @@ import {
   MessageCircle,
   Wallet,
   Database,
-  Bell,
-  BellRing,
   Package,
   Sparkles,
   ChevronRight,
   ChevronDown,
   ChevronUp,
-  CheckCheck,
   Clock,
 } from 'lucide-react';
 
@@ -67,58 +64,6 @@ export const CustomerAccountPage: React.FC<CustomerAccountPageProps> = ({ onBack
   const [addrState, setAddrState] = useState('');
   const [addrPincode, setAddrPincode] = useState('');
   const [addrIsDefault, setAddrIsDefault] = useState(false);
-
-  // Notifications State
-  const [showNotificationsSection, setShowNotificationsSection] = useState(true);
-  const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'orders'>('all');
-  const [readNotifIds, setReadNotifIds] = useState<string[]>(() => {
-    if (!currentCustomer) return [];
-    try {
-      const stored = localStorage.getItem(`neydhal_read_notifs_${currentCustomer.id}`);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>(() => {
-    if (!currentCustomer) return [];
-    try {
-      const stored = localStorage.getItem(`neydhal_dismissed_notifs_${currentCustomer.id}`);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const markAsRead = (id: string) => {
-    setReadNotifIds((prev) => {
-      if (prev.includes(id)) return prev;
-      const next = [...prev, id];
-      if (currentCustomer) {
-        localStorage.setItem(`neydhal_read_notifs_${currentCustomer.id}`, JSON.stringify(next));
-      }
-      return next;
-    });
-  };
-
-  const markAllAsRead = () => {
-    const allIds = customerNotifications.map((n) => n.id);
-    setReadNotifIds(allIds);
-    if (currentCustomer) {
-      localStorage.setItem(`neydhal_read_notifs_${currentCustomer.id}`, JSON.stringify(allIds));
-    }
-  };
-
-  const dismissNotification = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDismissedNotifIds((prev) => {
-      const next = [...prev, id];
-      if (currentCustomer) {
-        localStorage.setItem(`neydhal_dismissed_notifs_${currentCustomer.id}`, JSON.stringify(next));
-      }
-      return next;
-    });
-  };
 
   // Instant Close Handler: Returns to the exact previous page from which the patron opened Account
   const handleClose = () => {
@@ -179,153 +124,6 @@ export const CustomerAccountPage: React.FC<CustomerAccountPageProps> = ({ onBack
     setCustomerActiveTab('categories');
   };
 
-  // Compute Notifications tailored to current patron
-  const customerNotifications = React.useMemo(() => {
-    if (!currentCustomer) return [];
-    const notifs: Array<{
-      id: string;
-      type: 'order' | 'shipping' | 'whatsapp' | 'upi' | 'security' | 'privilege';
-      title: string;
-      message: string;
-      badge: string;
-      time: string;
-      actionLabel?: string;
-      onAction?: () => void;
-    }> = [];
-
-    // 1. Live Order Status Updates from store orders
-    const matchedOrders = (orders || []).filter((o) => {
-      const phoneMatch = currentCustomer.phone && o.customer?.phone && o.customer.phone.replace(/\D/g, '').includes(currentCustomer.phone.replace(/\D/g, ''));
-      const emailMatch = currentCustomer.email && o.customer?.email && o.customer.email.toLowerCase() === currentCustomer.email.toLowerCase();
-      const idMatch = (o as any).customerId === currentCustomer.id;
-      return phoneMatch || emailMatch || idMatch;
-    });
-
-    matchedOrders.slice(0, 4).forEach((o) => {
-      if (o.status === 'Shipped') {
-        notifs.push({
-          id: `order_shipped_${o.id}`,
-          type: 'shipping',
-          title: `Order #${o.orderNumber} Dispatched`,
-          message: `Your package has been dispatched via ${o.shippingDetails?.courierName || 'Courier'}. Tracking: ${o.shippingDetails?.trackingNumber || 'Active'}`,
-          badge: 'Shipped',
-          time: o.shippingDetails?.shippedAt ? new Date(o.shippingDetails.shippedAt).toLocaleDateString() : 'In Transit',
-          actionLabel: 'Track Order',
-          onAction: () => setCustomerActiveTab('orders'),
-        });
-      } else if (o.status === 'Delivered') {
-        notifs.push({
-          id: `order_delivered_${o.id}`,
-          type: 'order',
-          title: `Order #${o.orderNumber} Delivered`,
-          message: `Your Salem silk parcel has been safely delivered to ${o.customer?.city || 'your destination'}.`,
-          badge: 'Delivered',
-          time: new Date(o.createdAt).toLocaleDateString(),
-          actionLabel: 'View Order',
-          onAction: () => setCustomerActiveTab('orders'),
-        });
-      } else if (o.status === 'Confirmed') {
-        notifs.push({
-          id: `order_confirmed_${o.id}`,
-          type: 'order',
-          title: `Order #${o.orderNumber} Confirmed`,
-          message: `Payment verified. Your handloom sarees are undergoing artisan quality check in Salem.`,
-          badge: 'Confirmed',
-          time: new Date(o.createdAt).toLocaleDateString(),
-          actionLabel: 'View Order',
-          onAction: () => setCustomerActiveTab('orders'),
-        });
-      } else if (o.status === 'Pending' || o.status === 'pending_verification') {
-        notifs.push({
-          id: `order_pending_${o.id}`,
-          type: 'order',
-          title: `Order #${o.orderNumber} Verification in Progress`,
-          message: `Payment screenshot received. Our boutique staff is verifying your order.`,
-          badge: 'Verifying',
-          time: new Date(o.createdAt).toLocaleDateString(),
-          actionLabel: 'View Details',
-          onAction: () => setCustomerActiveTab('orders'),
-        });
-      }
-    });
-
-    // 2. WhatsApp Product Updates Notification
-    if (currentCustomer.whatsappNumber) {
-      notifs.push({
-        id: `wa_active_${currentCustomer.whatsappNumber}`,
-        type: 'whatsapp',
-        title: 'WhatsApp Product Updates Active',
-        message: `Linked WhatsApp +91 ${currentCustomer.whatsappNumber} will receive real-time notifications for newly arrived handloom weaves, bridal silks, and dispatch photos.`,
-        badge: 'Product Updates',
-        time: 'Active',
-      });
-    } else {
-      notifs.push({
-        id: 'wa_missing',
-        type: 'whatsapp',
-        title: 'Add WhatsApp for Direct Product Updates',
-        message: 'Link your 10-digit WhatsApp number to receive catalog launches, high-res saree photos, and dispatch tracking directly.',
-        badge: 'Action Needed',
-        time: 'Pending',
-        actionLabel: 'Edit Profile',
-        onAction: () => setIsEditingProfile(true),
-      });
-    }
-
-    // 3. UPI Refund Protection Notification
-    if (currentCustomer.upiNumber) {
-      notifs.push({
-        id: `upi_active_${currentCustomer.upiNumber}`,
-        type: 'upi',
-        title: 'UPI Instant Refund Protection Active',
-        message: `UPI Mobile +91 ${currentCustomer.upiNumber} is securely mapped in the database for instant, zero-delay refund routing to your bank account.`,
-        badge: 'UPI Refund',
-        time: 'Protected',
-      });
-    } else {
-      notifs.push({
-        id: 'upi_missing',
-        type: 'upi',
-        title: 'Register UPI Mobile for Instant Refunds',
-        message: 'Add your UPI mobile number so any order adjustments or out-of-stock items can be refunded to your account immediately.',
-        badge: 'Action Needed',
-        time: 'Pending',
-        actionLabel: 'Edit Profile',
-        onAction: () => setIsEditingProfile(true),
-      });
-    }
-
-    // 4. Database Mapping Notification
-    notifs.push({
-      id: `db_mapping_${currentCustomer.id}`,
-      type: 'security',
-      title: 'Google Account Mapped in Database',
-      message: `Your Google account (${currentCustomer.email || 'patron account'}) is synchronized with your phone numbers in Firestore. If you ever forget your login, use "Find Previous Account" on the sign-in page.`,
-      badge: 'Database Synced',
-      time: 'Live',
-    });
-
-    // 5. Exclusive Atelier Privileges
-    notifs.push({
-      id: 'privilege_welcome',
-      type: 'privilege',
-      title: 'Patron Membership Privileges',
-      message: 'Enjoy authentic Salem handloom silk sarees, verified pure zari collections, and dedicated artisan concierge assistance.',
-      badge: 'Patron Perk',
-      time: 'Heritage',
-    });
-
-    return notifs.filter((n) => !dismissedNotifIds.includes(n.id));
-  }, [currentCustomer, orders, dismissedNotifIds]);
-
-  const unreadCount = customerNotifications.filter((n) => !readNotifIds.includes(n.id)).length;
-
-  const filteredNotifications = customerNotifications.filter((n) => {
-    if (notificationFilter === 'unread') return !readNotifIds.includes(n.id);
-    if (notificationFilter === 'orders') return n.type === 'order' || n.type === 'shipping';
-    return true;
-  });
-
   if (!currentCustomer) {
     return (
       <div className="min-h-screen pb-28 bg-neutral-50/60 p-6 flex flex-col items-center justify-center">
@@ -377,26 +175,8 @@ export const CustomerAccountPage: React.FC<CustomerAccountPageProps> = ({ onBack
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setShowNotificationsSection((prev) => !prev)}
-              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition cursor-pointer ${
-                showNotificationsSection
-                  ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-2xs'
-                  : 'bg-white text-neutral-700 hover:text-neutral-950 border-neutral-200 hover:bg-neutral-50'
-              }`}
-            >
-              <Bell className="w-3.5 h-3.5 text-amber-600" />
-              <span>Notifications</span>
-              {unreadCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-black leading-tight">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
               onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-700 hover:text-rose-900 px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-700 hover:text-rose-900 px-3.5 py-2 rounded-xl border border-rose-200 hover:bg-rose-50 transition cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Log Out</span>
@@ -406,188 +186,6 @@ export const CustomerAccountPage: React.FC<CustomerAccountPageProps> = ({ onBack
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* TOP NOTIFICATIONS SECTION */}
-        {showNotificationsSection && (
-          <div className="bg-white rounded-3xl border border-amber-200/80 p-5 sm:p-6 shadow-sm space-y-4 ring-1 ring-amber-500/10">
-            <div className="flex items-center justify-between gap-3 flex-wrap border-b border-neutral-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center">
-                  <BellRing className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-serif font-bold text-base text-neutral-900">
-                      Notifications & Alerts
-                    </h2>
-                    {unreadCount > 0 ? (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                        {unreadCount} New
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        All Caught Up
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    Live updates on your handloom orders, WhatsApp alerts, and UPI refund protection
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {unreadCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={markAllAsRead}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 hover:text-amber-950 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 transition cursor-pointer"
-                  >
-                    <CheckCheck className="w-3.5 h-3.5" />
-                    <span>Mark all read</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowNotificationsSection(false)}
-                  className="p-1 text-neutral-400 hover:text-neutral-700 rounded-lg hover:bg-neutral-100 transition cursor-pointer"
-                  title="Collapse notifications"
-                >
-                  <ChevronUp className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setNotificationFilter('all')}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                  notificationFilter === 'all'
-                    ? 'bg-neutral-900 text-white font-bold'
-                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                }`}
-              >
-                All ({customerNotifications.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setNotificationFilter('unread')}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                  notificationFilter === 'unread'
-                    ? 'bg-neutral-900 text-white font-bold'
-                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                }`}
-              >
-                <span>Unread</span>
-                {unreadCount > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-rose-500" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setNotificationFilter('orders')}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                  notificationFilter === 'orders'
-                    ? 'bg-neutral-900 text-white font-bold'
-                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                }`}
-              >
-                Orders & Shipping
-              </button>
-            </div>
-
-            {/* Notification Cards */}
-            {filteredNotifications.length === 0 ? (
-              <div className="text-center py-6 bg-neutral-50 rounded-2xl border border-neutral-100 p-4 space-y-1">
-                <p className="text-xs font-semibold text-neutral-700">No notifications in this view.</p>
-                <p className="text-[11px] text-neutral-400">All updates are current.</p>
-              </div>
-            ) : (
-              <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-                {filteredNotifications.map((n) => {
-                  const isRead = readNotifIds.includes(n.id);
-                  return (
-                    <div
-                      key={n.id}
-                      onClick={() => markAsRead(n.id)}
-                      className={`p-3.5 rounded-2xl border transition relative flex items-start gap-3 cursor-pointer ${
-                        !isRead
-                          ? 'bg-amber-50/40 border-amber-200/90 shadow-2xs'
-                          : 'bg-neutral-50/70 border-neutral-200/70 opacity-90'
-                      }`}
-                    >
-                      <div className="w-9 h-9 rounded-xl bg-white border border-neutral-200 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-                        {n.type === 'shipping' ? (
-                          <Truck className="w-4 h-4 text-purple-600" />
-                        ) : n.type === 'order' ? (
-                          <Package className="w-4 h-4 text-rose-700" />
-                        ) : n.type === 'whatsapp' ? (
-                          <MessageCircle className="w-4 h-4 text-emerald-600" />
-                        ) : n.type === 'upi' ? (
-                          <Wallet className="w-4 h-4 text-amber-600" />
-                        ) : n.type === 'security' ? (
-                          <Database className="w-4 h-4 text-blue-600" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 text-amber-500" />
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-neutral-200/70 text-neutral-800">
-                              {n.badge}
-                            </span>
-                            {!isRead && (
-                              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" title="Unread" />
-                            )}
-                          </div>
-                          <span className="text-[10px] text-neutral-400 font-mono">
-                            {n.time}
-                          </span>
-                        </div>
-
-                        <h4 className="font-bold text-xs text-neutral-900 mt-1">
-                          {n.title}
-                        </h4>
-                        <p className="text-xs text-neutral-600 mt-0.5 leading-relaxed">
-                          {n.message}
-                        </p>
-
-                        {n.actionLabel && (
-                          <div className="mt-2.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                markAsRead(n.id);
-                                if (n.onAction) n.onAction();
-                              }}
-                              className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-900 hover:text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 px-3 py-1 rounded-xl transition cursor-pointer shadow-2xs"
-                            >
-                              <span>{n.actionLabel}</span>
-                              <ChevronRight className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => dismissNotification(n.id, e)}
-                        className="p-1 text-neutral-300 hover:text-neutral-600 rounded-lg hover:bg-neutral-200/50 transition cursor-pointer shrink-0"
-                        title="Dismiss notification"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Header Profile Summary Pill */}
         <div className="p-6 rounded-3xl bg-gradient-to-r from-[#4a1205] via-[#5c1a08] to-[#3a0d03] text-white shadow-md flex items-center justify-between gap-4 flex-wrap border border-amber-600/40">
@@ -986,37 +584,7 @@ export const CustomerAccountPage: React.FC<CustomerAccountPageProps> = ({ onBack
           )}
         </div>
 
-        {/* SECTION 3: PROFILE PRIVACY */}
-        <div className="bg-white rounded-3xl border border-neutral-200 p-6 shadow-2xs space-y-4">
-          <div className="flex items-center gap-2 border-b border-neutral-100 pb-3">
-            <ShieldCheck className="w-4 h-4 text-emerald-700" />
-            <h2 className="font-serif font-bold text-base text-neutral-900">
-              Profile Privacy & Data Isolation
-            </h2>
-          </div>
 
-          <div className="space-y-3 text-xs text-neutral-600">
-            <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 flex items-start gap-3">
-              <ShieldCheck className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-bold text-xs text-neutral-900">Strict Patron Isolation</h4>
-                <p className="mt-0.5 leading-relaxed text-neutral-600">
-                  Your saved addresses, contact numbers, and 12-digit payment reference records are cryptographically bound to your customer profile. No other customer or guest visitor can view your personal details.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200/80 flex items-start gap-3">
-              <Truck className="w-5 h-5 text-purple-700 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-bold text-xs text-neutral-900">Encrypted Courier Dispatch</h4>
-                <p className="mt-0.5 leading-relaxed text-neutral-600">
-                  Shipping addresses are shared exclusively with trusted courier partners (DTDC, Blue Dart, Speed Post) strictly for order delivery purposes.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

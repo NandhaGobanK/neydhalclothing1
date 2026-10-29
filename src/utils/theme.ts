@@ -46,7 +46,7 @@ export const THEME_TEMPLATES: Record<StoreTheme, ThemeTemplate> = {
     swatchPrimary: '#881337',
     swatchAccent: '#d97706',
     light: {
-      pageBg: 'bg-rose-50/30',
+      pageBg: 'bg-white',
       pageText: 'text-neutral-900',
       headerBg: 'bg-rose-950/95',
       headerText: 'text-rose-100',
@@ -108,7 +108,7 @@ export const THEME_TEMPLATES: Record<StoreTheme, ThemeTemplate> = {
     swatchPrimary: '#171717',
     swatchAccent: '#f59e0b',
     light: {
-      pageBg: 'bg-neutral-50',
+      pageBg: 'bg-white',
       pageText: 'text-neutral-900',
       headerBg: 'bg-neutral-900/95',
       headerText: 'text-neutral-100',
@@ -170,7 +170,7 @@ export const THEME_TEMPLATES: Record<StoreTheme, ThemeTemplate> = {
     swatchPrimary: '#be185d',
     swatchAccent: '#eab308',
     light: {
-      pageBg: 'bg-pink-50/30',
+      pageBg: 'bg-white',
       pageText: 'text-neutral-900',
       headerBg: 'bg-pink-950/95',
       headerText: 'text-pink-100',
@@ -232,7 +232,7 @@ export const THEME_TEMPLATES: Record<StoreTheme, ThemeTemplate> = {
     swatchPrimary: '#0f766e',
     swatchAccent: '#d97706',
     light: {
-      pageBg: 'bg-teal-50/30',
+      pageBg: 'bg-white',
       pageText: 'text-neutral-900',
       headerBg: 'bg-teal-950/95',
       headerText: 'text-teal-100',
@@ -294,7 +294,7 @@ export const THEME_TEMPLATES: Record<StoreTheme, ThemeTemplate> = {
     swatchPrimary: '#fefce8',
     swatchAccent: '#475569',
     light: {
-      pageBg: 'bg-stone-50',
+      pageBg: 'bg-white',
       pageText: 'text-stone-900',
       headerBg: 'bg-stone-900/95',
       headerText: 'text-stone-100',
@@ -356,7 +356,7 @@ export const THEME_TEMPLATES: Record<StoreTheme, ThemeTemplate> = {
     swatchPrimary: '#c2410c',
     swatchAccent: '#ea580c',
     light: {
-      pageBg: 'bg-amber-50/20',
+      pageBg: 'bg-white',
       pageText: 'text-neutral-900',
       headerBg: 'bg-amber-950/95',
       headerText: 'text-amber-100',
@@ -418,7 +418,7 @@ export const THEME_TEMPLATES: Record<StoreTheme, ThemeTemplate> = {
     swatchPrimary: '#7e22ce',
     swatchAccent: '#c084fc',
     light: {
-      pageBg: 'bg-purple-50/20',
+      pageBg: 'bg-white',
       pageText: 'text-neutral-900',
       headerBg: 'bg-purple-950/95',
       headerText: 'text-purple-100',
@@ -480,7 +480,7 @@ export const THEME_TEMPLATES: Record<StoreTheme, ThemeTemplate> = {
     swatchPrimary: '#065f46',
     swatchAccent: '#b45309',
     light: {
-      pageBg: 'bg-emerald-50/20',
+      pageBg: 'bg-white',
       pageText: 'text-neutral-900',
       headerBg: 'bg-emerald-950/95',
       headerText: 'text-emerald-100',

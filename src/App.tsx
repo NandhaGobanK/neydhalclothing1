@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { StoreProvider, useStore } from './context/StoreContext';
+import React, { useState, useEffect, useRef } from 'react';
+import { StoreProvider, useStore, CustomerActiveTab } from './context/StoreContext';
 import { Header } from './components/storefront/Header';
 import { AnnouncementBar } from './components/storefront/AnnouncementBar';
 import { HeroBanner } from './components/storefront/HeroBanner';
@@ -11,6 +11,7 @@ import { OrderSuccessModal } from './components/storefront/OrderSuccessModal';
 import { TrackOrderModal } from './components/storefront/TrackOrderModal';
 import { OrderCancellationModal } from './components/storefront/OrderCancellationModal';
 import { InstructionsModal } from './components/storefront/InstructionsModal';
+import { NotificationsModal } from './components/storefront/NotificationsModal';
 import { Footer } from './components/storefront/Footer';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminAuthModal } from './components/admin/AdminAuthModal';
@@ -33,6 +34,7 @@ import { CustomerOrderDetailPage } from './components/customer/CustomerOrderDeta
 import { CustomerAccountPage } from './components/customer/CustomerAccountPage';
 import { ProductDetailPage } from './components/storefront/ProductDetailPage';
 import { PrepaidCheckoutPage } from './components/storefront/PrepaidCheckoutPage';
+import { HomePage } from './components/storefront/HomePage';
 
 function MainAppContent() {
   const {
@@ -114,6 +116,15 @@ function MainAppContent() {
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  // Track the originating tab so Cart close returns exactly to where the user was
+  const previousTabBeforeCartRef = useRef<CustomerActiveTab>('home');
+  useEffect(() => {
+    if (customerActiveTab !== 'cart' && customerActiveTab !== 'checkout') {
+      previousTabBeforeCartRef.current = customerActiveTab;
+    }
+  }, [customerActiveTab]);
 
   // Handle URL deep links & redirects (#track, ?order=, /track, #admin, /admin, ?product=, #instructions)
   useEffect(() => {
@@ -155,6 +166,15 @@ function MainAppContent() {
         search.includes('instructions')
       ) {
         setIsInstructionsOpen(true);
+      }
+
+      // Notifications link handling (#notifications, ?notifications)
+      if (
+        hash.includes('notifications') ||
+        pathname === '/notifications' ||
+        search.includes('notifications')
+      ) {
+        setIsNotificationsOpen(true);
       }
 
       // 4. Reseller B2B Portal deep-link (#reseller, ?reseller, /reseller)
@@ -307,7 +327,13 @@ function MainAppContent() {
         </>
       ) : (!currentCustomer && !isAdminLoggedIn) ? (
         <>
-          <CustomerLoginPage onSuccess={() => {}} onOpenAdmin={handleOpenAdmin} />
+          <CustomerLoginPage
+            onSuccess={() => {
+              setCustomerActiveTab('home');
+              setSelectedCategory('all');
+            }}
+            onOpenAdmin={handleOpenAdmin}
+          />
           {/* Admin Auth Modal if triggered via secret shortcut (Ctrl+Shift+A) or #admin */}
           {showAdminAuthModal && (
             <AdminAuthModal
@@ -378,17 +404,28 @@ function MainAppContent() {
           <Header
             onOpenAdmin={handleOpenAdmin}
             onOpenInstructions={() => setIsInstructionsOpen(true)}
+            onOpenNotifications={() => setIsNotificationsOpen(true)}
             selectedCategory={selectedCategory}
             onSelectCategory={(cat) => {
               setSelectedCategory(cat);
               setCustomerActiveTab('categories');
             }}
             onSelectWishlist={() => setCustomerActiveTab('wishlist')}
+            hideCategoryNav={customerActiveTab === 'home'}
           />
 
-          {/* Tabbed Storefront Views (Home page completely removed) */}
+          {/* Tabbed Storefront Views (Home, Categories, Search, Wishlist, Orders, Cart, etc.) */}
           <div className="flex-1 pb-20 sm:pb-24">
-            {customerActiveTab === 'product-detail' && selectedProduct ? (
+            {customerActiveTab === 'home' ? (
+              <HomePage
+                onSelectCategory={(cat) => {
+                  setSelectedCategory(cat);
+                  setCustomerActiveTab('categories');
+                }}
+                onSelectProduct={(p) => openProductPage(p)}
+                onExploreCatalog={() => setCustomerActiveTab('categories')}
+              />
+            ) : customerActiveTab === 'product-detail' && selectedProduct ? (
               <ProductDetailPage
                 product={selectedProduct}
                 onBack={() => setCustomerActiveTab('categories')}
@@ -436,7 +473,7 @@ function MainAppContent() {
               />
             ) : customerActiveTab === 'cart' ? (
               <CartPage
-                onContinueShopping={() => setCustomerActiveTab('categories')}
+                onClose={() => setCustomerActiveTab(previousTabBeforeCartRef.current || 'home')}
                 onOpenProductDetails={(product) => openProductPage(product)}
               />
             ) : customerActiveTab === 'checkout' ? (
@@ -447,11 +484,14 @@ function MainAppContent() {
                 }}
               />
             ) : (
-              /* Fallback to Categories (No Home Page!) */
-              <CategoryBrowser
-                onOpenDetails={(product) => openProductPage(product)}
-                selectedCategoryName={selectedCategory}
-                onSelectCategory={(cat) => setSelectedCategory(cat)}
+              /* Fallback to Home */
+              <HomePage
+                onSelectCategory={(cat) => {
+                  setSelectedCategory(cat);
+                  setCustomerActiveTab('categories');
+                }}
+                onSelectProduct={(p) => openProductPage(p)}
+                onExploreCatalog={() => setCustomerActiveTab('categories')}
               />
             )}
 
@@ -475,6 +515,18 @@ function MainAppContent() {
               setIsInstructionsOpen(false);
               if (typeof window !== 'undefined' && window.location.hash.includes('instructions')) {
                 const cleanHash = window.location.hash.replace(/[#&?]instructions(=[^&]*)?/g, '');
+                window.history.replaceState(null, '', `${window.location.pathname}${cleanHash}`);
+              }
+            }}
+          />
+
+          {/* Dedicated Notifications & Restock Alerts Modal (Opened via Top Bell Symbol) */}
+          <NotificationsModal
+            isOpen={isNotificationsOpen}
+            onClose={() => {
+              setIsNotificationsOpen(false);
+              if (typeof window !== 'undefined' && window.location.hash.includes('notifications')) {
+                const cleanHash = window.location.hash.replace(/[#&?]notifications(=[^&]*)?/g, '');
                 window.history.replaceState(null, '', `${window.location.pathname}${cleanHash}`);
               }
             }}
@@ -518,7 +570,7 @@ function MainAppContent() {
             onClose={() => setIsCustomerAuthModalOpen(false)}
             onSuccess={() => {
               setIsCustomerAuthModalOpen(false);
-              setCustomerActiveTab('account');
+              setCustomerActiveTab('home');
             }}
           />
 

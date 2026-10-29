@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore, CustomerActiveTab } from '../../context/StoreContext';
-import { Grid, Search, Heart, ShoppingBag, Package } from 'lucide-react';
+import { Home, Grid, Search, Heart, ShoppingBag, Package } from 'lucide-react';
 import { THEME_TEMPLATES, getThemeColors } from '../../utils/theme';
 
 interface BottomNavBarProps {
@@ -53,6 +53,12 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   const totalAccountAlerts = (customerUnreadChatCount || 0) + unreadNotifsCount;
 
   const navItems = [
+    {
+      id: 'home' as const,
+      label: 'Home',
+      icon: Home,
+      action: () => onTabChange('home'),
+    },
     {
       id: 'categories' as const,
       label: 'Categories',

@@ -8,6 +8,8 @@ import {
   ProductAttributeDefinition,
   CustomerLoginDisplaySettings,
   ResellerLoginDisplaySettings,
+  HeroBannerItem,
+  VideoReelItem,
 } from '../types/store';
 
 export const DEFAULT_CHAT_TEMPLATES: OrderStatusChatTemplates = {
@@ -284,6 +286,93 @@ export const DEFAULT_RESELLER_LOGIN_DISPLAY: ResellerLoginDisplaySettings = {
     'Resellers cannot log in without administrator authorization. Once your access request is approved on the admin Reseller Ledger, your account is saved in the database for instant authentication.',
 };
 
+export const DEFAULT_HERO_BANNERS: HeroBannerItem[] = [
+  {
+    id: 'banner-01',
+    title: 'Salem Handloom Heritage Silks',
+    subtitle: 'Woven on authentic pit looms in our Salem atelier using certified pure mulberry silk',
+    imageUrl: '/assets/images/hero_saree_atelier_1791651761357.jpg',
+    badge: 'Salem Atelier Special',
+    buttonText: 'Explore Collection',
+    linkCategory: 'Kanjivaram Silk',
+  },
+  {
+    id: 'banner-02',
+    title: 'Bridal Kanjivaram Masterweaves',
+    subtitle: 'Tested gold zari borders crafted for eternal bridal celebrations and heirloom legacies',
+    imageUrl: '/assets/images/saree_kanjivaram_crimson_1791651781402.jpg',
+    badge: 'Bridal Edit 2026',
+    buttonText: 'View Bridal Weaves',
+    linkCategory: 'Kanjivaram Silk',
+  },
+  {
+    id: 'banner-03',
+    title: 'Banarasi Kadwa & Brocade Drapes',
+    subtitle: 'Intricate tactile floral jaals and antique meenakari motifs from the ghats of Varanasi',
+    imageUrl: '/assets/images/saree_banarasi_emerald_1791651794836.jpg',
+    badge: 'Royal Kadwa',
+    buttonText: 'Discover Banarasi',
+    linkCategory: 'Banarasi Brocade',
+  },
+  {
+    id: 'banner-04',
+    title: 'Featherlight Chanderi Tissue Sarees',
+    subtitle: 'Glimmering gossamer drapes with shimmering Roopa Kalabattu silver zari reflection',
+    imageUrl: '/assets/images/saree_chanderi_lavender_1791651806313.jpg',
+    badge: 'Festive Sheer Edit',
+    buttonText: 'Shop Chanderi',
+    linkCategory: 'Chanderi Tissue',
+  },
+];
+
+export const DEFAULT_VIDEO_REELS: VideoReelItem[] = [
+  {
+    id: 'reel-01',
+    title: 'Master Weaver on the Salem Pit Loom',
+    subtitle: 'Interlocking warp and pure gold zari threads thread-by-thread in our Salem workshop',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-woman-weaving-on-a-loom-42868-large.mp4',
+    thumbnailUrl: '/assets/images/hero_saree_atelier_1791651761357.jpg',
+    duration: '0:45',
+    author: 'Neydhal Atelier',
+  },
+  {
+    id: 'reel-02',
+    title: 'Draping the Royal Crimson Kanjivaram',
+    subtitle: 'Grand pallu pleats and heirloom drape styling tutorial for auspicious morning rituals',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-woman-draped-in-a-traditional-sari-42875-large.mp4',
+    thumbnailUrl: '/assets/images/saree_kanjivaram_crimson_1791651781402.jpg',
+    duration: '0:58',
+    author: 'Salem Handlooms',
+  },
+  {
+    id: 'reel-03',
+    title: 'Pure Silk Testing & Zari Glow Under Sunlight',
+    subtitle: 'Authenticity demonstration of certified mulberry silk and genuine gold sheen',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-close-up-of-colorful-silky-fabrics-42870-large.mp4',
+    thumbnailUrl: '/assets/images/saree_banarasi_emerald_1791651794836.jpg',
+    duration: '0:38',
+    author: 'Artisan Check',
+  },
+  {
+    id: 'reel-04',
+    title: 'Warping & Spooling Silk Threads at Dawn',
+    subtitle: 'Behind the scenes at Salem: preparing 100 meters of raw mulberry silk warp',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-threading-threads-on-a-wooden-loom-42867-large.mp4',
+    thumbnailUrl: '/assets/images/saree_chanderi_lavender_1791651806313.jpg',
+    duration: '1:12',
+    author: 'Workshop Salem',
+  },
+  {
+    id: 'reel-05',
+    title: 'Cutting the Banarasi Kadwa Jaal Motifs',
+    subtitle: 'Meticulous hand-shearing of zari floats on the reverse side of the kadwa weave',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-craftsman-weaving-colorful-threads-42869-large.mp4',
+    thumbnailUrl: '/assets/images/saree_banarasi_emerald_1791651794836.jpg',
+    duration: '0:52',
+    author: 'Master Craft',
+  },
+];
+
 export const INITIAL_SETTINGS: StoreSettings = {
   boutiqueName: 'Neydhal',
   logoUrl: '/logo.png',
@@ -348,6 +437,8 @@ export const INITIAL_SETTINGS: StoreSettings = {
   adminPin: '889988', // 6-digit access PIN
   adminGoogleEmail: 'nandhagoban21@gmail.com',
   customStoreDomain: 'https://neydhalclothing.in', // Official custom domain
+  heroBanners: DEFAULT_HERO_BANNERS,
+  videoReels: DEFAULT_VIDEO_REELS,
   courierServices: [
     {
       id: 'courier-dtdc-salem',
