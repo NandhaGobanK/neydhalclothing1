@@ -387,7 +387,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
               </div>
               <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200/80 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span><strong>Zero Storage Bloat</strong> & auto-updated weaver stock</span>
+                <span><strong>Zero Storage Bloat</strong> & auto-updated store stock</span>
               </div>
             </div>
           </div>

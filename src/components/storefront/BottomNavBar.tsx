@@ -88,6 +88,16 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     },
   ];
 
+  const handleNavClick = (action: () => void) => {
+    // Reset window scroll to top
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+    action();
+  };
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40 backdrop-blur-md border-t transition-all duration-300 px-2 sm:px-4 py-2"
@@ -105,7 +115,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             <button
               key={item.id}
               type="button"
-              onClick={item.action}
+              onClick={() => handleNavClick(item.action)}
               className={`relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition cursor-pointer ${
                 isActive
                   ? 'font-bold'

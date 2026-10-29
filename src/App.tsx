@@ -31,6 +31,7 @@ import { CartPage } from './components/storefront/CartPage';
 import { CustomerOrdersPage } from './components/customer/CustomerOrdersPage';
 import { CustomerOrderDetailPage } from './components/customer/CustomerOrderDetailPage';
 import { CustomerAccountPage } from './components/customer/CustomerAccountPage';
+import { ProductDetailPage } from './components/storefront/ProductDetailPage';
 
 function MainAppContent() {
   const {
@@ -67,6 +68,9 @@ function MainAppContent() {
     isResellerPortalOpen,
     setIsResellerPortalOpen,
     currentCustomer,
+    selectedProduct,
+    setSelectedProduct,
+    openProductPage,
   } = useStore();
 
   // If anything opens the cart state, seamlessly route to the full-page Cart
@@ -77,8 +81,25 @@ function MainAppContent() {
     }
   }, [isCartOpen, setCustomerActiveTab, setIsCartOpen]);
 
+  // Seamlessly transition any modal-driven product requests to the dedicated Product Detail Page
+  useEffect(() => {
+    if (activeProductModal) {
+      openProductPage(activeProductModal);
+      setActiveProductModal(null);
+    }
+  }, [activeProductModal, openProductPage, setActiveProductModal]);
+
   // Keep device activity & 15-minute idle detection active across the app
   useStaffIdleTracker();
+
+  // Reset scroll to top whenever navigating between tabs
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+  }, [customerActiveTab]);
 
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -170,7 +191,7 @@ function MainAppContent() {
           return pId === prodCode || pCode === cleanSearchCode || pCode === prodCode;
         });
         if (found) {
-          setActiveProductModal(found);
+          openProductPage(found);
         }
       }
     };
@@ -357,15 +378,21 @@ function MainAppContent() {
 
           {/* Tabbed Storefront Views (Home page completely removed) */}
           <div className="flex-1 pb-20 sm:pb-24">
-            {customerActiveTab === 'categories' ? (
+            {customerActiveTab === 'product-detail' && selectedProduct ? (
+              <ProductDetailPage
+                product={selectedProduct}
+                onBack={() => setCustomerActiveTab('categories')}
+                onSelectProduct={(p) => openProductPage(p)}
+              />
+            ) : customerActiveTab === 'categories' ? (
               <CategoryBrowser
-                onOpenDetails={(product) => setActiveProductModal(product)}
+                onOpenDetails={(product) => openProductPage(product)}
                 selectedCategoryName={selectedCategory}
                 onSelectCategory={(cat) => setSelectedCategory(cat)}
               />
             ) : customerActiveTab === 'wishlist' ? (
               <WishlistBrowser
-                onOpenDetails={(product) => setActiveProductModal(product)}
+                onOpenDetails={(product) => openProductPage(product)}
                 onExploreCatalog={() => setCustomerActiveTab('categories')}
               />
             ) : customerActiveTab === 'search' ? (
@@ -373,7 +400,7 @@ function MainAppContent() {
                 <ProductGrid
                   selectedCategory={selectedCategory}
                   onSelectCategory={setSelectedCategory}
-                  onOpenDetails={(product) => setActiveProductModal(product)}
+                  onOpenDetails={(product) => openProductPage(product)}
                 />
               </main>
             ) : customerActiveTab === 'orders' ? (
@@ -389,7 +416,7 @@ function MainAppContent() {
                 onBack={() => setCustomerActiveTab('orders')}
                 onOpenProductDetails={(prodId: string) => {
                   const match = products.find((p) => p.id === prodId);
-                  if (match) setActiveProductModal(match);
+                  if (match) openProductPage(match);
                 }}
               />
             ) : customerActiveTab === 'account' ? (
@@ -399,12 +426,12 @@ function MainAppContent() {
             ) : customerActiveTab === 'cart' ? (
               <CartPage
                 onContinueShopping={() => setCustomerActiveTab('categories')}
-                onOpenProductDetails={(product) => setActiveProductModal(product)}
+                onOpenProductDetails={(product) => openProductPage(product)}
               />
             ) : (
               /* Fallback to Categories (No Home Page!) */
               <CategoryBrowser
-                onOpenDetails={(product) => setActiveProductModal(product)}
+                onOpenDetails={(product) => openProductPage(product)}
                 selectedCategoryName={selectedCategory}
                 onSelectCategory={(cat) => setSelectedCategory(cat)}
               />
@@ -434,15 +461,6 @@ function MainAppContent() {
               }
             }}
           />
-
-          {/* Product Detail Modal */}
-          {activeProductModal && (
-            <ProductDetailModal
-              product={activeProductModal}
-              onClose={() => setActiveProductModal(null)}
-              onSelectProduct={(p) => setActiveProductModal(p)}
-            />
-          )}
 
           {/* Prepaid Checkout Flow Modal */}
           {isCheckoutOpen && (

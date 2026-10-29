@@ -304,7 +304,7 @@ export const CartPage: React.FC<CartPageProps> = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-600" />
                     <h3 className="font-serif font-bold text-sm text-neutral-900">
-                      Handcrafted Pairings & Blouse Matches
+                      Recommended Pairings & Matches
                     </h3>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

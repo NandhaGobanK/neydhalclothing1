@@ -988,7 +988,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-bold text-xs transition cursor-pointer"
                     >
                       <ArrowLeft className="w-4 h-4 text-neutral-800" />
-                      <span>← Back to My Orders</span>
+                      <span>Back to My Orders</span>
                     </button>
 
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1600,8 +1600,8 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           </div>
                           <p className="text-[11px] text-purple-200/80 truncate mt-0.5">
                             {selectedCustomerOrder.assignedStaffName
-                              ? `Concierge: ${selectedCustomerOrder.assignedStaffName} · Chat minimized`
-                              : 'Salem handloom workshop desk · Click Expand Chat to message'}
+                              ? `Support Concierge: ${selectedCustomerOrder.assignedStaffName} · Chat minimized`
+                              : 'Customer Support Desk · Click Expand Chat to message'}
                           </p>
                         </div>
                       </div>
@@ -1635,11 +1635,11 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         <div className="flex items-center gap-2">
                           <MessageSquare className="w-4 h-4 text-purple-700" />
                           <h4 className="font-bold text-xs sm:text-sm text-neutral-900">
-                            Boutique Concierge & Dispatch Desk
+                            Store Concierge & Dispatch Desk
                           </h4>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-200 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            <span>Live Master Weaver Support</span>
+                            <span>Live Support Available</span>
                           </span>
                         </div>
 
@@ -1648,7 +1648,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             type="button"
                             onClick={() => setIsChatMinimized(true)}
                             className="px-2.5 py-1 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
-                            title="Minimize Live Master Weaver Support"
+                            title="Minimize Live Support"
                           >
                             <Minus className="w-3.5 h-3.5" />
                             <span>Minimize</span>
@@ -1657,7 +1657,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             type="button"
                             onClick={() => setIsChatMaximized(true)}
                             className="px-2.5 py-1 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-900 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                            title="Maximize Live Master Weaver Support to full screen"
+                            title="Maximize Live Support to full screen"
                           >
                             <Maximize2 className="w-3.5 h-3.5" />
                             <span>Maximize</span>
@@ -1673,7 +1673,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     </div>
                   )}
 
-                  {/* Maximized Master Weaver Chat Modal Dialog Overlay */}
+                  {/* Maximized Support Chat Modal Dialog Overlay */}
                   {isChatMaximized && (
                     <div className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 animate-in fade-in duration-200">
                       <div className="w-full max-w-4xl h-[92vh] sm:h-[88vh] bg-white rounded-3xl shadow-2xl flex flex-col border border-purple-400/40 overflow-hidden animate-in zoom-in-95 duration-200">
@@ -1686,11 +1686,11 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-serif font-bold text-sm sm:text-base text-white">
-                                  Live Master Weaver Support
+                                  Live Customer Support
                                 </h3>
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                  <span>Atelier Dispatch Active</span>
+                                  <span>Dispatch Desk Active</span>
                                 </span>
                                 <span className="font-mono text-xs text-amber-300 bg-amber-950/60 border border-amber-400/40 px-2 py-0.5 rounded">
                                   #{selectedCustomerOrder.orderNumber}
@@ -1698,8 +1698,8 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                               </div>
                               <p className="text-xs text-purple-200/80 mt-0.5">
                                 {selectedCustomerOrder.assignedStaffName
-                                  ? `Dedicated Weaver Concierge: ${selectedCustomerOrder.assignedStaffName}`
-                                  : 'Direct concierge channel with Salem handloom artisan masters & packaging team'}
+                                  ? `Dedicated Support Concierge: ${selectedCustomerOrder.assignedStaffName}`
+                                  : 'Direct concierge channel with customer care & dispatch team'}
                               </p>
                             </div>
                           </div>
@@ -1928,7 +1928,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       <h4 className="font-serif font-bold text-neutral-800 text-base">No notifications found</h4>
                       <p className="text-xs text-neutral-500 max-w-sm mx-auto">
                         {notifFilter === 'all'
-                          ? 'You are all caught up! Updates regarding restocked handloom sarees and parcel tracking will appear here.'
+                          ? 'You are all caught up! Updates regarding restocked products and parcel tracking will appear here.'
                           : `No ${notifFilter} updates at this moment.`}
                       </p>
                     </div>

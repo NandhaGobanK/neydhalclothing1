@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
 import {
   Product,
   Order,
@@ -100,7 +100,8 @@ export type CustomerActiveTab =
   | 'order-detail'
   | 'account'
   | 'cart'
-  | 'home';
+  | 'home'
+  | 'product-detail';
 
 interface StoreContextType {
   // Products
@@ -290,6 +291,9 @@ interface StoreContextType {
   setCustomerActiveTab: (tab: CustomerActiveTab) => void;
   selectedCustomerOrderId: string | null;
   setSelectedCustomerOrderId: (id: string | null) => void;
+  selectedProduct: Product | null;
+  setSelectedProduct: (product: Product | null) => void;
+  openProductPage: (product: Product) => void;
 
   // Wishlist
   wishlist: string[];
@@ -718,7 +722,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   );
   const [customerActiveTab, setCustomerActiveTab] = useState<CustomerActiveTab>('categories');
   const [selectedCustomerOrderId, setSelectedCustomerOrderId] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const openProductPage = useCallback((prod: Product) => {
+    setSelectedProduct(prod);
+    setCustomerActiveTab('product-detail');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+  }, []);
 
   // Centralized SKU Registry State
   const [skus, setSkus] = useState<SkuRecord[]>(() =>
@@ -6073,6 +6088,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setCustomerActiveTab,
         selectedCustomerOrderId,
         setSelectedCustomerOrderId,
+        selectedProduct,
+        setSelectedProduct,
+        openProductPage,
         wishlist: activeWishlist,
         toggleWishlist,
         isInWishlist,

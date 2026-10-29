@@ -9,7 +9,7 @@ interface OrderSuccessModalProps {
 }
 
 export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose }) => {
-  const { lastPlacedOrder, settings, setIsTrackOrderOpen } = useStore();
+  const { lastPlacedOrder, settings, setSelectedCustomerOrderId, setCustomerActiveTab } = useStore();
   const [copiedId, setCopiedId] = React.useState(false);
 
   if (!lastPlacedOrder) return null;
@@ -49,10 +49,10 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
           </div>
 
           <h2 className="font-serif text-2xl sm:text-3xl font-bold">
-            Handloom Order Placed!
+            Order Placed Successfully!
           </h2>
           <p className="text-amber-200 text-xs sm:text-sm mt-1 max-w-sm mx-auto">
-            Your boutique order has been recorded in our workshop ledger.
+            Your order has been recorded and is being prepared for dispatch.
           </p>
 
           {/* Big Bold Order Number Badge */}
@@ -76,7 +76,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
           {/* Items summary */}
           <div className="border border-neutral-200 rounded-2xl p-4 bg-neutral-50/70">
             <h3 className="font-serif text-sm font-bold text-neutral-900 mb-2">
-              Ordered Heirlooms ({lastPlacedOrder.items.length})
+              Ordered Items ({lastPlacedOrder.items.length})
             </h3>
             <div className="divide-y divide-neutral-200/60">
               {lastPlacedOrder.items.map((item) => {
@@ -266,17 +266,28 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({ onClose })
           <button
             onClick={() => {
               onClose();
-              setIsTrackOrderOpen(true);
-              window.location.hash = `track?order=${encodeURIComponent(lastPlacedOrder.orderNumber)}`;
+              setSelectedCustomerOrderId(lastPlacedOrder.id);
+              setCustomerActiveTab('order-detail');
+              if (typeof window !== 'undefined') {
+                window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                document.documentElement.scrollTop = 0;
+                document.body.scrollTop = 0;
+              }
             }}
             className="flex-1 py-3 px-4 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
           >
             <Truck className="w-4 h-4 text-amber-300" />
-            <span>Track Order Now</span>
+            <span>Track in My Orders</span>
           </button>
 
           <button
-            onClick={onClose}
+            onClick={() => {
+              onClose();
+              setCustomerActiveTab('categories');
+              if (typeof window !== 'undefined') {
+                window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+              }
+            }}
             className="py-3 px-5 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
           >
             <span>Back to Store</span>

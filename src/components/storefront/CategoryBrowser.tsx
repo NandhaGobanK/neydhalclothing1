@@ -468,7 +468,7 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-5">
               {categoryProducts.map((product) => {
                 const inWishlist = isInWishlist(product.id);
                 const isOutOfStock = product.stockStatus === 'out_of_stock' || (product.stockCount !== undefined && product.stockCount <= 0);
@@ -481,14 +481,14 @@ export const CategoryBrowser: React.FC<CategoryBrowserProps> = ({
                   <div
                     key={product.id}
                     onClick={() => onOpenDetails(product)}
-                    className="group bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs hover:shadow-md transition-all duration-200 flex flex-col cursor-pointer relative"
+                    className="group bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-2xs hover:shadow-md transition-all duration-200 flex flex-col cursor-pointer relative max-w-sm w-full"
                   >
-                    {/* Top image container with wishlist heart, restocked badge & discount badge */}
-                    <div className="relative aspect-3/4 overflow-hidden bg-neutral-100">
+                    {/* Top image container: calibrated so card fits comfortably on a single screen */}
+                    <div className="relative aspect-4/5 max-h-52 sm:max-h-60 md:max-h-68 overflow-hidden bg-neutral-100">
                       <img
                         src={product.images[0] || '/assets/images/hero_saree_atelier_1791651761357.jpg'}
                         alt={product.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                       />
 

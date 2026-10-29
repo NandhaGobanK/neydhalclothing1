@@ -19,9 +19,12 @@ import {
   User,
 } from 'lucide-react';
 
-export const getOrderStatusColorTheme = (status: OrderStatus) => {
-  switch (status) {
-    case 'Pending':
+export const getOrderStatusColorTheme = (status: OrderStatus | string) => {
+  const norm = (status || '').toLowerCase().trim();
+  switch (norm) {
+    case 'pending':
+    case 'pending_verification':
+    case 'pending_payment':
       return {
         badgeBg: 'bg-amber-100 text-amber-800 border-amber-300',
         pillBg: 'bg-amber-500 text-white',
@@ -31,7 +34,7 @@ export const getOrderStatusColorTheme = (status: OrderStatus) => {
         icon: Clock,
         label: 'Pending Verification',
       };
-    case 'Confirmed':
+    case 'confirmed':
       return {
         badgeBg: 'bg-blue-100 text-blue-800 border-blue-300',
         pillBg: 'bg-blue-600 text-white',
@@ -41,7 +44,7 @@ export const getOrderStatusColorTheme = (status: OrderStatus) => {
         icon: CheckCircle2,
         label: 'Order Confirmed',
       };
-    case 'Shipped':
+    case 'shipped':
       return {
         badgeBg: 'bg-purple-100 text-purple-800 border-purple-300',
         pillBg: 'bg-purple-600 text-white',
@@ -51,7 +54,7 @@ export const getOrderStatusColorTheme = (status: OrderStatus) => {
         icon: Truck,
         label: 'Shipped / In Transit',
       };
-    case 'Delivered':
+    case 'delivered':
       return {
         badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-300',
         pillBg: 'bg-emerald-600 text-white',
@@ -61,7 +64,7 @@ export const getOrderStatusColorTheme = (status: OrderStatus) => {
         icon: CheckCircle2,
         label: 'Delivered',
       };
-    case 'Cancelled':
+    case 'cancelled':
       return {
         badgeBg: 'bg-rose-100 text-rose-800 border-rose-300',
         pillBg: 'bg-rose-600 text-white',
@@ -71,7 +74,7 @@ export const getOrderStatusColorTheme = (status: OrderStatus) => {
         icon: XCircle,
         label: 'Cancelled',
       };
-    case 'Refunded':
+    case 'refunded':
       return {
         badgeBg: 'bg-cyan-100 text-cyan-800 border-cyan-300',
         pillBg: 'bg-cyan-600 text-white',
@@ -80,6 +83,16 @@ export const getOrderStatusColorTheme = (status: OrderStatus) => {
         lightBg: 'bg-cyan-50/70',
         icon: RotateCcw,
         label: 'Refunded',
+      };
+    case 'rejected':
+      return {
+        badgeBg: 'bg-red-100 text-red-800 border-red-300',
+        pillBg: 'bg-red-600 text-white',
+        border: 'border-red-200',
+        accent: 'text-red-700',
+        lightBg: 'bg-red-50/70',
+        icon: XCircle,
+        label: 'Verification Rejected',
       };
     default:
       return {
@@ -107,7 +120,6 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
     customerOrders,
     currentCustomer,
     setIsCustomerAuthModalOpen,
-    setIsTrackOrderOpen,
     setSelectedCustomerOrderId,
     setCustomerActiveTab,
   } = useStore();
@@ -115,11 +127,31 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<'all' | OrderStatus>('all');
 
+  const pendingCount = useMemo(() => {
+    return customerOrders.filter((o) => {
+      const s = (o.status || '').toLowerCase().trim();
+      return s === 'pending' || s === 'pending_verification' || s === 'pending_payment';
+    }).length;
+  }, [customerOrders]);
+
   const filteredOrders = useMemo(() => {
     return customerOrders.filter((order) => {
       // Stage filter
-      if (stageFilter !== 'all' && order.status !== stageFilter) {
-        return false;
+      if (stageFilter !== 'all') {
+        const orderStatusLower = (order.status || '').toLowerCase().trim();
+        const stageFilterLower = stageFilter.toLowerCase().trim();
+
+        if (stageFilterLower === 'pending') {
+          if (
+            orderStatusLower !== 'pending' &&
+            orderStatusLower !== 'pending_verification' &&
+            orderStatusLower !== 'pending_payment'
+          ) {
+            return false;
+          }
+        } else if (orderStatusLower !== stageFilterLower) {
+          return false;
+        }
       }
 
       // Search filter
@@ -183,15 +215,8 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsTrackOrderOpen(true)}
-              className="text-xs font-semibold text-neutral-700 hover:text-neutral-950 px-3 py-1.5 rounded-xl border border-neutral-200 hover:bg-neutral-100 transition cursor-pointer"
-            >
-              Lookup by Phone / Number
-            </button>
-            <button
-              type="button"
               onClick={handleExplore}
-              className="text-xs font-semibold text-white px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 transition cursor-pointer"
+              className="text-xs font-semibold text-white px-3.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 transition cursor-pointer"
             >
               Browse Collections
             </button>
@@ -261,6 +286,17 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
             >
               <span className="w-2 h-2 rounded-full bg-amber-500" />
               <span>Pending</span>
+              {pendingCount > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    stageFilter === 'Pending'
+                      ? 'bg-amber-800 text-amber-100'
+                      : 'bg-amber-200 text-amber-900'
+                  }`}
+                >
+                  {pendingCount}
+                </span>
+              )}
             </button>
             <button
               type="button"
@@ -323,7 +359,7 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
               <h3 className="font-serif font-bold text-base text-neutral-900">No Orders Found</h3>
               <p className="text-xs text-neutral-500 mt-1">
                 {customerOrders.length === 0
-                  ? "You haven't placed any orders yet. Discover our pure handloom weaves today!"
+                  ? "You haven't placed any orders yet. Discover our latest collections today!"
                   : 'No orders match your current filter or search criteria.'}
               </p>
             </div>
@@ -332,7 +368,7 @@ export const CustomerOrdersPage: React.FC<CustomerOrdersPageProps> = ({
               onClick={handleExplore}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition cursor-pointer"
             >
-              <span>Explore Saree Collections</span>
+              <span>Explore Products</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

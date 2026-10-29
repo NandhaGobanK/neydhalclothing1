@@ -295,12 +295,12 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
           </div>
 
           <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight">
-            {settings.customerLoginDisplay?.headline || 'Exclusive Handloom Catalog Access'}
+            {settings.customerLoginDisplay?.headline || 'Customer Account & Order Hub'}
           </h2>
 
           <p className="text-purple-100/90 text-xs sm:text-sm leading-relaxed max-w-lg mx-auto lg:mx-0">
             {settings.customerLoginDisplay?.description ||
-              'To preserve the authenticity and privacy of our artisan handloom heirlooms, our masterweave catalog, limited weaves, and bespoke reservations are reserved exclusively for verified patrons registered with Google.'}
+              'Sign in to easily access your past orders, real-time courier tracking, exclusive store discounts, and instant customer support.'}
           </p>
 
           {/* Privacy & Member Privileges List */}
@@ -312,28 +312,28 @@ export const CustomerLoginPage: React.FC<CustomerLoginPageProps> = ({ onSuccess,
                     id: 'benefit-data',
                     title: 'Strict Data Isolation',
                     description:
-                      'Your orders, delivery addresses, and purchases are completely private and isolated in dedicated patron storage.',
+                      'Your orders, delivery addresses, and purchases are completely private and secure.',
                     iconName: 'lock',
                   },
                   {
                     id: 'benefit-wishlist',
                     title: 'Private Wishlist',
                     description:
-                      'Bookmark favorite Kanjivaram and Banarasi weaves across your personal devices.',
+                      'Save your favorite sarees and products across all your devices.',
                     iconName: 'heart',
                   },
                   {
                     id: 'benefit-tracking',
                     title: 'Order Tracking & Photos',
                     description:
-                      'Track dispatch milestones and view high-resolution packaging photos of your sarees.',
+                      'Track dispatch milestones and view high-resolution photos of your orders.',
                     iconName: 'package',
                   },
                   {
                     id: 'benefit-chat',
                     title: 'Direct Concierge Chat',
                     description:
-                      'Instant live chat directly with our Salem handloom workshop masters.',
+                      'Instant live chat directly with our store support and customer desk.',
                     iconName: 'message',
                   },
                 ]

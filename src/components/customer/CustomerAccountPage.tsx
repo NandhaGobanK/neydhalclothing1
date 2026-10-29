@@ -125,7 +125,7 @@ export const CustomerAccountPage: React.FC<CustomerAccountPageProps> = ({ onBack
               onClick={handleReturn}
               className="w-full py-2.5 rounded-xl border border-neutral-200 text-neutral-700 font-semibold text-xs hover:bg-neutral-100 transition cursor-pointer"
             >
-              &larr; Back to Shopping
+              Back to Shopping
             </button>
           </div>
         </div>
@@ -144,7 +144,7 @@ export const CustomerAccountPage: React.FC<CustomerAccountPageProps> = ({ onBack
             className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-neutral-700 hover:text-neutral-950 px-3 py-1.5 rounded-xl hover:bg-neutral-100 transition cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4 text-rose-900" />
-            <span>&larr; Back to Shopping</span>
+            <span>Back to Shopping</span>
           </button>
 
           <button

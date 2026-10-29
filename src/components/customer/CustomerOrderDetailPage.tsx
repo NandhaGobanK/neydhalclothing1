@@ -89,7 +89,7 @@ export const CustomerOrderDetailPage: React.FC<CustomerOrderDetailPageProps> = (
             onClick={handleReturn}
             className="px-5 py-2.5 rounded-xl bg-neutral-900 text-white font-bold text-xs hover:bg-neutral-800 transition cursor-pointer"
           >
-            &larr; Back to My Orders
+            Back to My Orders
           </button>
         </div>
       </div>
@@ -107,27 +107,21 @@ export const CustomerOrderDetailPage: React.FC<CustomerOrderDetailPageProps> = (
   // Stages for the visual timeline stepper
   const stages: { key: OrderStatus; label: string; desc: string }[] = [
     { key: 'Pending', label: 'Order Placed', desc: '12-digit UTR submitted' },
-    { key: 'Confirmed', label: 'Weaving & Packed', desc: 'Payment verified & handloom inspection' },
+    { key: 'Confirmed', label: 'Verified & Packed', desc: 'Payment verified & order packed' },
     { key: 'Shipped', label: 'In Transit', desc: 'Handed over to courier partner' },
     { key: 'Delivered', label: 'Delivered', desc: 'Delivered to recipient address' },
   ];
 
-  const getStageIndex = (status: OrderStatus) => {
-    switch (status) {
-      case 'Pending':
-        return 0;
-      case 'Confirmed':
-        return 1;
-      case 'Shipped':
-        return 2;
-      case 'Delivered':
-        return 3;
-      case 'Cancelled':
-      case 'Refunded':
-        return -1;
-      default:
-        return 0;
+  const getStageIndex = (status: OrderStatus | string) => {
+    const s = (status || '').toLowerCase().trim();
+    if (s === 'pending' || s === 'pending_verification' || s === 'pending_payment') {
+      return 0;
     }
+    if (s === 'confirmed') return 1;
+    if (s === 'shipped') return 2;
+    if (s === 'delivered') return 3;
+    if (s === 'cancelled' || s === 'refunded' || s === 'rejected') return -1;
+    return 0;
   };
 
   const currentStageIndex = getStageIndex(order.status);
@@ -143,7 +137,7 @@ export const CustomerOrderDetailPage: React.FC<CustomerOrderDetailPageProps> = (
             className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-neutral-700 hover:text-neutral-950 px-3 py-1.5 rounded-xl hover:bg-neutral-100 transition cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4 text-rose-900" />
-            <span>&larr; Back to My Orders</span>
+            <span>Back to My Orders</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -450,7 +444,7 @@ export const CustomerOrderDetailPage: React.FC<CustomerOrderDetailPageProps> = (
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-amber-700" />
               <h3 className="font-serif font-bold text-sm text-neutral-900">
-                Direct Atelier Weaver Concierge
+                Direct Store Support Concierge
               </h3>
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
@@ -459,7 +453,7 @@ export const CustomerOrderDetailPage: React.FC<CustomerOrderDetailPageProps> = (
           </div>
 
           <p className="text-xs text-neutral-500">
-            Chat directly with our Salem handloom weavers and dispatch team regarding custom draping queries, delivery updates, or silk care.
+            Chat directly with our store support and dispatch team regarding order queries, delivery updates, or product care.
           </p>
 
           <OrderLiveChat

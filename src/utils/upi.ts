@@ -168,7 +168,7 @@ export function formatWhatsAppOrderMessage(order: Order, settings: StoreSettings
     ? 'Delivery Charges: *Free*'
     : `Delivery Charges: *${formatPrice(order.shippingFee)}*`;
 
-  const message = `🛍️ *NEW HANDLOOM ORDER*
+  const message = `🛍️ *NEW ORDER*
 Boutique: *${settings.boutiqueName}*
 Order Reference: *#${order.orderNumber}*
 Date: ${new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -371,7 +371,7 @@ ${settings.boutiqueName}`;
 • Items: ${itemsSummary}
 • Payment UTR: *${order.upiTransactionId}* (Verified)
 
-Your pure silk heirloom is being inspected and packed in our signature tamper-proof box. We will notify you once dispatched!
+Your order is being inspected and packed in our signature box. We will notify you once dispatched!
 
 Track status:
 🔗 ${trackingLink}${staffSignature}
@@ -385,13 +385,13 @@ ${settings.boutiqueName}`;
 
       return `Namaste ${order.customer.name},
 
-📦 Your handloom saree order *#${order.orderNumber}* has been *DISPATCHED*!
+📦 Your order *#${order.orderNumber}* has been *DISPATCHED*!
 
 • Courier Partner: *${courier}*
 • Tracking / Consignment ID: *${trackingId}*
 • Items: ${itemsSummary}
 
-_Please note: As our shipments are insured and artisan-direct, you can monitor your order status on our boutique website using your order number or phone number:_
+_You can monitor your order status on our website using your order number:_
 🔗 ${trackingLink}${staffSignature}
 
 Delivery is typically completed within 2–5 business days.
@@ -403,9 +403,9 @@ ${settings.boutiqueName}`;
 
 🎉 Your order *#${order.orderNumber}* has been *DELIVERED*!
 
-We hope you cherish the craftsmanship and texture of your handloom drape. If you'd like to share photos or tag us on Instagram, find us at *${settings.instagramHandle}*.${staffSignature}
+We hope you cherish your new purchase. If you'd like to share photos or tag us on Instagram, find us at *${settings.instagramHandle}*.${staffSignature}
 
-Thank you for supporting authentic Indian weavers.
+Thank you for shopping with us!
 Warm regards,
 ${settings.boutiqueName}`;
 
@@ -546,7 +546,7 @@ export function formatWhatsAppCancellationApproved(
 Your cancellation request for order *#${order.orderNumber}* has been *APPROVED* by *${settings.boutiqueName}*.
 
 • Status: *CANCELLED & CLOSED*
-• Inventory Action: *Handloom piece auto-restocked to boutique ledger*
+• Inventory Action: *Item auto-restocked to store inventory*
 • Refund Amount: *${formatPrice(order.totalAmount)}*${utrText}${destinationUpi}
 
 ${order.refundDetails?.refundStatus === 'processed' ? 'Your refund has been completed directly to your UPI.' : 'Your refund transaction is being processed by our accounts desk.'}
@@ -555,7 +555,7 @@ Order record:
 🔗 ${trackingLink}${staffSignature}
 
 Warm regards,
-${settings.boutiqueName} Atelier`;
+${settings.boutiqueName}`;
 }
 
 /**
@@ -585,7 +585,7 @@ We are unable to approve cancellation at this stage:
 ${courier ? `• Courier Partner: *${courier}*` : ''}
 ${trackingId ? `• Consignment ID: *${trackingId}*` : ''}
 
-Your authentic handloom saree remains safely on its way to your destination. Track live delivery:
+Your order remains safely on its way to your destination. Track live delivery:
 🔗 ${trackingLink}${staffSignature}
 
 Warm regards,

@@ -904,7 +904,7 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({ onClose }) => 
                 className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-xs border border-amber-300 shadow-2xs transition cursor-pointer"
               >
                 <ArrowLeft className="w-4 h-4 text-amber-700" />
-                <span>← Back to My Orders</span>
+                <span>Back to My Orders</span>
               </button>
 
               <div className="flex items-center gap-2 flex-wrap">

@@ -2014,7 +2014,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                             className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-purple-900 hover:text-purple-950 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 transition cursor-pointer"
                           >
                             <ChevronLeft className="w-4 h-4 text-purple-800" />
-                            <span>&larr; Back to Categories</span>
+                            <span>Back to Categories</span>
                           </button>
 
                           <div>
@@ -2988,7 +2988,7 @@ export const ResellerPortal: React.FC<ResellerPortalProps> = ({
                         className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-bold text-xs transition cursor-pointer"
                       >
                         <ArrowLeft className="w-4 h-4 text-purple-900" />
-                        <span>← Back to My Dropships</span>
+                        <span>Back to My Dropships</span>
                       </button>
 
                       <div className="flex items-center gap-2 flex-wrap">
